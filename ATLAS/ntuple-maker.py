@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # dependencies = [
-# "rich", "uproot", "numpy", "awkward", "numba", "pyarrow"
+# "rich", "uproot", "numpy", "awkward", "numba", "pyarrow", "click"
 # ]
 # ///
 
@@ -10,6 +10,7 @@ import awkward as ak
 import numpy as np
 import numba as nb
 from rich import print
+import click
 from pathlib import Path
 
 point = "[green][b]‣[/b][/green]"
@@ -182,164 +183,189 @@ def rec_flatten(arr):
     return flat
 
 
-with up.open("DAOD_TREASURE.treasure.pool.root") as f:
-    t = f["CollectionTree"]
-    event = t.arrays(expressions=event_aliases.keys(), aliases=event_aliases)
-    jet = t.arrays(expressions=jet_aliases.keys(), aliases=jet_aliases)
-    largeRjet = t.arrays(
-        expressions=largeRjet_aliases.keys(), aliases=largeRjet_aliases
-    )
-    c_const = t.arrays(expressions=c_const_aliases.keys(), aliases=c_const_aliases)
-    n_const = t.arrays(expressions=n_const_aliases.keys(), aliases=n_const_aliases)
-    track = t.arrays(expressions=track_aliases.keys(), aliases=track_aliases)
-    electron = t.arrays(expressions=elec_aliases.keys(), aliases=elec_aliases)
-    muon = t.arrays(expressions=muon_aliases.keys(), aliases=muon_aliases)
-    photon = t.arrays(expressions=muon_aliases.keys(), aliases=muon_aliases)
-    met = t.arrays(expressions=muon_aliases.keys(), aliases=muon_aliases)
-
-    if len(event) == 0:
-        print("[b][red]ERROR: No events[/red][/b]")
-        exit(0)
-
-    print(f"{point} Read {len(event)} events")
-    print(
-        f"{point} Peaking at the first event to connect constituent containers and hashes."
-    )
-    print("  (Uproot can't read EventFormatStream...)")
-    hashes, counts = np.unique(
-        ak.flatten(jet.constLinks.m_persKey[0], axis=None), return_counts=True
-    )
-    c_count = len(c_const[0].pt)
-    n_count = len(n_const[0].pt)
-    if c_count == counts[0] and n_count == counts[1]:
-        c_hash = hashes[0]
-        n_hash = hashes[1]
-    elif c_count == counts[1] and n_count == counts[0]:
-        c_hash = hashes[1]
-        n_hash = hashes[0]
-    else:
-        print(
-            f"[b][red]ERROR: There were {c_count} charged constituents and {n_count} neutral consitituents,\n"
-            f"but {counts[0]} links to {hashes[0]:08X} and {counts[1]} to {hashes[1]:08X}[/red][/b]"
+@click.command()
+@click.argument(
+    "input",
+    type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=Path),
+    required=True,
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(exists=False, dir_okay=True, file_okay=False, path_type=Path),
+    required=True,
+)
+def ntuple_maker(input, output):
+    with up.open(input) as f:
+        t = f["CollectionTree"]
+        event = t.arrays(expressions=event_aliases.keys(), aliases=event_aliases)
+        jet = t.arrays(expressions=jet_aliases.keys(), aliases=jet_aliases)
+        largeRjet = t.arrays(
+            expressions=largeRjet_aliases.keys(), aliases=largeRjet_aliases
         )
-        exit(0)
-    print(
-        f"  [blue]{c_hash:08X} ({c_hash})[/] corresponds to charged container and [blue]{n_hash:08X} ({n_hash})[/] to neutral"
-    )
-    hashes, counts = np.unique(
-        ak.flatten(jet.trackLinks.m_persKey[0], axis=None), return_counts=True
-    )
-    if len(hashes) == 0 or len(hashes) > 2 or (len(hashes == 2) and hashes[0] != 0):
+        c_const = t.arrays(expressions=c_const_aliases.keys(), aliases=c_const_aliases)
+        n_const = t.arrays(expressions=n_const_aliases.keys(), aliases=n_const_aliases)
+        track = t.arrays(expressions=track_aliases.keys(), aliases=track_aliases)
+        electron = t.arrays(expressions=elec_aliases.keys(), aliases=elec_aliases)
+        muon = t.arrays(expressions=muon_aliases.keys(), aliases=muon_aliases)
+        photon = t.arrays(expressions=muon_aliases.keys(), aliases=muon_aliases)
+        met = t.arrays(expressions=muon_aliases.keys(), aliases=muon_aliases)
+
+        if len(event) == 0:
+            print("[b][red]ERROR: No events[/red][/b]")
+            exit(0)
+
+        print(f"{point} Read {len(event)} events")
         print(
-            f"[b][red]ERROR: There were {len(hashes)} different track container hashes[/][/]"
+            f"{point} Peaking at the first event to connect constituent containers and hashes."
         )
-        exit(0)
-    print(f"  Track container hash is [blue]{hashes[1]:08X} ({hashes[1]})[/]")
-    print(f"{point} Following ElementLinks")
-    jet_chargedConstIdx = jet.constLinks.m_persIndex[jet.constLinks.m_persKey == c_hash]
-    jet_neutralConstIdx = jet.constLinks.m_persIndex[jet.constLinks.m_persKey == n_hash]
-    jet_cConst = select_per_jet(c_const, jet_chargedConstIdx)
-    jet_nConst = select_per_jet(n_const, jet_neutralConstIdx)
-    jet_const = ak.concatenate([jet_cConst, jet_nConst], axis=2)
-    jet_track = select_per_jet(
-        track, jet.trackLinks.m_persIndex[jet.trackLinks.m_persKey != 0]
-    )
+        print("  (Uproot can't read EventFormatStream...)")
+        hashes, counts = np.unique(
+            ak.flatten(jet.constLinks.m_persKey[0], axis=None), return_counts=True
+        )
+        c_count = len(c_const[0].pt)
+        n_count = len(n_const[0].pt)
+        if c_count == counts[0] and n_count == counts[1]:
+            c_hash = hashes[0]
+            n_hash = hashes[1]
+        elif c_count == counts[1] and n_count == counts[0]:
+            c_hash = hashes[1]
+            n_hash = hashes[0]
+        else:
+            print(
+                f"[b][red]ERROR: There were {c_count} charged constituents and {n_count} neutral consitituents,\n"
+                f"but {counts[0]} links to {hashes[0]:08X} and {counts[1]} to {hashes[1]:08X}[/red][/b]"
+            )
+            exit(0)
+        print(
+            f"  [blue]{c_hash:08X} ({c_hash})[/] corresponds to charged container and [blue]{n_hash:08X} ({n_hash})[/] to neutral"
+        )
+        hashes, counts = np.unique(
+            ak.flatten(jet.trackLinks.m_persKey[0], axis=None), return_counts=True
+        )
+        if len(hashes) == 0 or len(hashes) > 2 or (len(hashes == 2) and hashes[0] != 0):
+            print(
+                f"[b][red]ERROR: There were {len(hashes)} different track container hashes[/][/]"
+            )
+            exit(0)
+        print(f"  Track container hash is [blue]{hashes[1]:08X} ({hashes[1]})[/]")
+        print(f"{point} Following ElementLinks")
+        jet_chargedConstIdx = jet.constLinks.m_persIndex[
+            jet.constLinks.m_persKey == c_hash
+        ]
+        jet_neutralConstIdx = jet.constLinks.m_persIndex[
+            jet.constLinks.m_persKey == n_hash
+        ]
+        jet_cConst = select_per_jet(c_const, jet_chargedConstIdx)
+        jet_nConst = select_per_jet(n_const, jet_neutralConstIdx)
+        jet_const = ak.concatenate([jet_cConst, jet_nConst], axis=2)
+        jet_track = select_per_jet(
+            track, jet.trackLinks.m_persIndex[jet.trackLinks.m_persKey != 0]
+        )
 
-    print(f"{point} Writing...")
-    Path("Out").mkdir()
-    print(f"  {point} Events")
-    eventIndex = make_idx(event.eventNumber)
-    event_out = ak.zip({"eventIndex": eventIndex, **ak.unzip(event, how=dict)})
-    Path("Out/Event").mkdir()
-    ak.to_parquet(rec_flatten(event_out), "Out/Event/data.parquet")
+        print(f"{point} Writing...")
+        output.mkdir()
+        print(f"  {point} Events")
+        eventIndex = make_idx(event.eventNumber)
+        event_out = ak.zip({"eventIndex": eventIndex, **ak.unzip(event, how=dict)})
+        (output / "Event").mkdir()
+        ak.to_parquet(rec_flatten(event_out), output / "Event/data.parquet")
 
-    print(f"  {point} Jets")
-    jetIndex = make_idx(jet.pt)
-    jet_out = ak.zip(
-        {
-            "jetIndex": jetIndex,
-            "eventIndex": eventIndex,
-            "pt": jet.pt,
-            "eta": jet.eta,
-            "phi": jet.phi,
-            "m": jet.m,
-        }
-    )
-    Path("Out/Jet").mkdir()
-    ak.to_parquet(rec_flatten(jet_out), "Out/Jet/data.parquet")  #
+        print(f"  {point} Jets")
+        jetIndex = make_idx(jet.pt)
+        jet_out = ak.zip(
+            {
+                "jetIndex": jetIndex,
+                "eventIndex": eventIndex,
+                "pt": jet.pt,
+                "eta": jet.eta,
+                "phi": jet.phi,
+                "m": jet.m,
+            }
+        )
+        (output / "Jet").mkdir()
+        ak.to_parquet(rec_flatten(jet_out), output / "Jet/data.parquet")  #
 
-    print(f"  {point} Constituents")
-    constIndex = make_idx(jet_const.pt)
-    const_out = ak.zip(
-        {
-            "constIndex": constIndex,
-            "jetIndex": jetIndex,
-            "eventIndex": eventIndex,
-            **ak.unzip(jet_const, how=dict),
-        }
-    )
-    Path("Out/Const").mkdir()
-    ak.to_parquet(rec_flatten(const_out), "Out/Const/data.parquet")
+        print(f"  {point} Constituents")
+        constIndex = make_idx(jet_const.pt)
+        const_out = ak.zip(
+            {
+                "constIndex": constIndex,
+                "jetIndex": jetIndex,
+                "eventIndex": eventIndex,
+                **ak.unzip(jet_const, how=dict),
+            }
+        )
+        (output / "Const").mkdir()
+        ak.to_parquet(rec_flatten(const_out), output / "Const/data.parquet")
 
-    print(f"  {point} Tracks")
-    trackIndex = make_idx(jet_track.q_p)
-    track_out = ak.zip(
-        {
-            "trackIndex": trackIndex,
-            "jetIndex": jetIndex,
-            "eventIndex": eventIndex,
-            **ak.unzip(jet_track, how=dict),
-        }
-    )
-    Path("Out/Track").mkdir()
-    ak.to_parquet(rec_flatten(track_out), "Out/Track/data.parquet")
+        print(f"  {point} Tracks")
+        trackIndex = make_idx(jet_track.q_p)
+        track_out = ak.zip(
+            {
+                "trackIndex": trackIndex,
+                "jetIndex": jetIndex,
+                "eventIndex": eventIndex,
+                **ak.unzip(jet_track, how=dict),
+            }
+        )
+        (output / "Track").mkdir()
+        ak.to_parquet(rec_flatten(track_out), output / "Track/data.parquet")
 
-    print(f"  {point} Large R Jets")
-    lrjetIndex = make_idx(largeRjet.pt)
-    lrjet_out = ak.zip(
-        {
-            "jetIndex": lrjetIndex,
-            "eventIndex": eventIndex,
-            **ak.unzip(largeRjet, how=dict),
-        }
-    )
-    Path("Out/LargeRJet").mkdir()
-    ak.to_parquet(rec_flatten(lrjet_out), "Out/LargeRJet/data.parquet")
+        print(f"  {point} Large R Jets")
+        lrjetIndex = make_idx(largeRjet.pt)
+        lrjet_out = ak.zip(
+            {
+                "jetIndex": lrjetIndex,
+                "eventIndex": eventIndex,
+                **ak.unzip(largeRjet, how=dict),
+            }
+        )
+        (output / "LargeRJet").mkdir()
+        ak.to_parquet(rec_flatten(lrjet_out), output / "LargeRJet/data.parquet")
 
-    print(f"  {point} Electrons")
-    electronIndex = make_idx(electron.pt)
-    electron_out = ak.zip(
-        {
-            "electronIndex": electronIndex,
-            "eventIndex": eventIndex,
-            **ak.unzip(electron, how=dict),
-        }
-    )
-    Path("Out/Electron").mkdir()
-    ak.to_parquet(rec_flatten(electron_out), "Out/Electron/data.parquet")
+        print(f"  {point} Electrons")
+        electronIndex = make_idx(electron.pt)
+        electron_out = ak.zip(
+            {
+                "electronIndex": electronIndex,
+                "eventIndex": eventIndex,
+                **ak.unzip(electron, how=dict),
+            }
+        )
+        (output / "Electron").mkdir()
+        ak.to_parquet(rec_flatten(electron_out), output / "Electron/data.parquet")
 
-    print(f"  {point} Muons")
-    muonIndex = make_idx(muon.pt)
-    muon_out = ak.zip(
-        {"muonIndex": muonIndex, "eventIndex": eventIndex, **ak.unzip(muon, how=dict)}
-    )
-    Path("Out/Muon").mkdir()
-    ak.to_parquet(rec_flatten(muon_out), "Out/Muon/data.parquet")
+        print(f"  {point} Muons")
+        muonIndex = make_idx(muon.pt)
+        muon_out = ak.zip(
+            {
+                "muonIndex": muonIndex,
+                "eventIndex": eventIndex,
+                **ak.unzip(muon, how=dict),
+            }
+        )
+        (output / "Muon").mkdir()
+        ak.to_parquet(rec_flatten(muon_out), output / "Muon/data.parquet")
 
-    print(f"  {point} Photons")
-    photonIndex = make_idx(photon.pt)
-    photon_out = ak.zip(
-        {
-            "photonIndex": photonIndex,
-            "eventIndex": eventIndex,
-            **ak.unzip(photon, how=dict),
-        }
-    )
-    Path("Out/Photon").mkdir()
-    ak.to_parquet(rec_flatten(photon_out), "Out/Photon/data.parquet")
+        print(f"  {point} Photons")
+        photonIndex = make_idx(photon.pt)
+        photon_out = ak.zip(
+            {
+                "photonIndex": photonIndex,
+                "eventIndex": eventIndex,
+                **ak.unzip(photon, how=dict),
+            }
+        )
+        (output / "Photon").mkdir()
+        ak.to_parquet(rec_flatten(photon_out), output / "Photon/data.parquet")
 
-    print(f"  {point} MET")
-    met_out = ak.zip({"eventIndex": eventIndex, **ak.unzip(met, how=dict)})
-    Path("Out/MET").mkdir()
-    ak.to_parquet(met_out, "Out/MET/data.parquet")
-    print(f"{point} DONE")
+        print(f"  {point} MET")
+        met_out = ak.zip({"eventIndex": eventIndex, **ak.unzip(met, how=dict)})
+        (output / "MET").mkdir()
+        ak.to_parquet(met_out, output / "MET/data.parquet")
+        print(f"{point} DONE")
+
+
+if __name__ == "__main__":
+    ntuple_maker()
