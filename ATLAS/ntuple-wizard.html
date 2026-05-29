@@ -1,0 +1,1828 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ATLAS TREASURE Parquet Wizard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Iosevka+Charon:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Franklin:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --lbl-dark-blue: #00313c;
+      --lbl-teal: #007681;
+      --lbl-light-gray: #b1b3b3;
+      --lbl-dark-gray: #63666a;
+      --lbl-orange: #d57800;
+      --lbl-green: #74aa50;
+      --lbl-yellow: #eaaa00;
+      --lbl-red: #e04b39;
+      --lbl-dusty-rose: #e8927c;
+      --lbl-olive-green: #ac9f3c;
+      --lbl-blue: #4298b5;
+      --lbl-purple: #5d4777;
+      --lbl-burgundy: #672e45;
+      --pcdf-bg: var(--lbl-dark-blue);
+      --pcdf-surface: #002832;
+      --pcdf-panel: rgba(0, 37, 46, 0.96);
+      --pcdf-panel-strong: rgba(0, 31, 38, 0.98);
+      --pcdf-border: rgba(177, 179, 179, 0.34);
+      --pcdf-body-font: "Libre Franklin", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --pcdf-code-font: "Iosevka Charon", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --bs-body-font-family: var(--pcdf-body-font);
+      --bs-font-monospace: var(--pcdf-code-font);
+      --bs-body-bg: var(--pcdf-bg);
+      --bs-body-color: #ffffff;
+      --bs-primary: var(--lbl-teal);
+      --bs-primary-rgb: 0, 118, 129;
+      --bs-info: var(--lbl-blue);
+      --bs-info-rgb: 66, 152, 181;
+      --bs-warning: var(--lbl-yellow);
+      --bs-warning-rgb: 234, 170, 0;
+      --bs-secondary-color: #d8dedf;
+      --bs-border-color: var(--pcdf-border);
+      --bs-link-color: var(--lbl-yellow);
+      --bs-link-hover-color: var(--lbl-yellow);
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: var(--pcdf-body-font);
+      background:
+        linear-gradient(180deg, var(--lbl-dark-blue) 0%, #002832 48%, var(--lbl-dark-blue) 100%);
+      background-color: var(--lbl-dark-blue);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    /* Small Bootstrap-compatible fallback so the static page still renders when
+       the CDN stylesheet is unavailable in a batch or offline environment. */
+    .container-fluid {
+      margin-left: auto;
+      margin-right: auto;
+      width: 100%;
+    }
+
+    .row {
+      --bs-gutter-x: 1.5rem;
+      --bs-gutter-y: 0;
+      display: flex;
+      flex-wrap: wrap;
+      margin-left: calc(-0.5 * var(--bs-gutter-x));
+      margin-right: calc(-0.5 * var(--bs-gutter-x));
+      margin-top: calc(-1 * var(--bs-gutter-y));
+    }
+
+    .row > * {
+      flex-shrink: 0;
+      margin-top: var(--bs-gutter-y);
+      max-width: 100%;
+      padding-left: calc(var(--bs-gutter-x) * 0.5);
+      padding-right: calc(var(--bs-gutter-x) * 0.5);
+      width: 100%;
+    }
+
+    .g-3, .gx-3 { --bs-gutter-x: 1rem; }
+    .g-3, .gy-3 { --bs-gutter-y: 1rem; }
+    .g-4, .gx-4 { --bs-gutter-x: 1.5rem; }
+    .g-4, .gy-4 { --bs-gutter-y: 1.5rem; }
+    .col-12 { flex: 0 0 auto; width: 100%; }
+    .justify-content-center { justify-content: center; }
+    .align-items-start { align-items: flex-start; }
+    .align-items-stretch { align-items: stretch; }
+    .align-self-start { align-self: flex-start; }
+    .d-none { display: none !important; }
+    .d-block { display: block !important; }
+    .d-flex { display: flex !important; }
+    .d-grid { display: grid !important; }
+    .flex-column { flex-direction: column !important; }
+    .flex-wrap { flex-wrap: wrap !important; }
+    .flex-fill { flex: 1 1 auto !important; }
+    .justify-content-between { justify-content: space-between !important; }
+    .vstack { align-self: stretch; display: flex; flex: 1 1 auto; flex-direction: column; }
+    .gap-2 { gap: 0.5rem !important; }
+    .gap-3 { gap: 1rem !important; }
+    .gap-4 { gap: 1.5rem !important; }
+    .p-3 { padding: 1rem !important; }
+    .p-md-4 { padding: 1.5rem !important; }
+    .px-3 { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .px-lg-4 { padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
+    .py-2 { padding-bottom: 0.5rem !important; padding-top: 0.5rem !important; }
+    .py-4 { padding-bottom: 1.5rem !important; padding-top: 1.5rem !important; }
+    .py-lg-5 { padding-bottom: 3rem !important; padding-top: 3rem !important; }
+    .mb-0 { margin-bottom: 0 !important; }
+    .mb-1 { margin-bottom: 0.25rem !important; }
+    .mb-2 { margin-bottom: 0.5rem !important; }
+    .mb-3 { margin-bottom: 1rem !important; }
+    .mb-4 { margin-bottom: 1.5rem !important; }
+    .mt-2 { margin-top: 0.5rem !important; }
+    .mt-4 { margin-top: 1.5rem !important; }
+    .ps-3 { padding-left: 1rem !important; }
+    .pt-4 { padding-top: 1.5rem !important; }
+    .h-100 { height: 100% !important; }
+    .text-center { text-align: center !important; }
+    .fw-bold { font-weight: 700 !important; }
+    .fw-semibold { font-weight: 600 !important; }
+    .small { font-size: 0.875em; }
+    .lead { font-size: 1.25rem; font-weight: 400; }
+    .display-5 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.15; }
+    .h4 { font-size: 1.5rem; }
+    .h5 { font-size: 1.25rem; }
+    .h6 { font-size: 1rem; }
+    .rounded-3 { border-radius: 0.5rem !important; }
+    .rounded-4 { border-radius: 1rem !important; }
+    .rounded-pill { border-radius: 50rem !important; }
+    .border { border: 1px solid var(--bs-border-color); }
+    .border-top { border-top: 1px solid var(--bs-border-color); }
+    .card { border: 1px solid var(--bs-border-color); border-radius: 0.5rem; }
+    .card-body { padding: 1rem; }
+    .btn { border: 1px solid transparent; border-radius: 0.375rem; cursor: pointer; display: inline-block; font-size: 1rem; line-height: 1.5; padding: 0.375rem 0.75rem; text-align: center; text-decoration: none; vertical-align: middle; }
+    .badge { border-radius: 0.375rem; display: inline-block; font-size: 0.75em; font-weight: 700; line-height: 1; padding: 0.35em 0.65em; }
+    .form-check { display: block; min-height: 1.5rem; padding-left: 1.5em; }
+    .form-check-input { height: 1em; margin-left: -1.5em; margin-top: 0.25em; vertical-align: top; width: 1em; }
+    .form-check-label { cursor: pointer; }
+    .form-control, .form-select { border: 1px solid var(--bs-border-color); border-radius: 0.375rem; display: block; font-size: 1rem; line-height: 1.5; padding: 0.375rem 0.75rem; width: 100%; }
+    .accordion-item { border: 1px solid var(--bs-border-color); }
+    .accordion-button { border: 0; display: flex; padding: 1rem 1.25rem; text-align: left; width: 100%; }
+    .accordion-collapse.collapse:not(.show) { display: none; }
+    .accordion-body { padding: 1rem 1.25rem; }
+    .alert { border: 1px solid transparent; border-radius: 0.375rem; padding: 1rem; }
+    .visually-hidden { clip: rect(0, 0, 0, 0) !important; border: 0 !important; height: 1px !important; margin: -1px !important; overflow: hidden !important; padding: 0 !important; position: absolute !important; white-space: nowrap !important; width: 1px !important; }
+
+    @media (min-width: 768px) {
+      .col-md-4 { flex: 0 0 auto; width: 33.333333%; }
+      .col-md-6 { flex: 0 0 auto; width: 50%; }
+      .d-md-flex { display: flex !important; }
+    }
+
+    @media (min-width: 992px) {
+      .col-lg-6 { flex: 0 0 auto; width: 50%; }
+      .text-lg-start { text-align: left !important; }
+      .px-lg-4 { padding-left: 1.5rem !important; padding-right: 1.5rem !important; }
+      .py-lg-5 { padding-bottom: 3rem !important; padding-top: 3rem !important; }
+    }
+
+    @media (min-width: 1200px) {
+      .col-xl-4 { flex: 0 0 auto; width: 33.333333%; }
+      .col-xl-5 { flex: 0 0 auto; width: 41.666667%; }
+      .col-xl-7 { flex: 0 0 auto; width: 58.333333%; }
+    }
+
+    @media (min-width: 1400px) {
+      .col-xxl-11 { flex: 0 0 auto; width: 91.666667%; }
+    }
+
+    .pcdf-page-width {
+      max-width: 98rem;
+    }
+
+    .wizard-progress {
+      display: grid;
+      gap: 0.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    }
+
+    .wizard-step,
+    .script-column,
+    .summary-column {
+      min-width: 0;
+    }
+
+    .generate-grid {
+      align-items: start;
+    }
+
+    .generate-heading {
+      min-height: 1.8rem;
+    }
+
+    .wizard-shell {
+      backdrop-filter: blur(16px);
+      background: var(--pcdf-panel);
+      border: 1px solid var(--pcdf-border);
+      box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35);
+    }
+
+    .card,
+    .accordion-item,
+    .accordion-button,
+    .form-control,
+    .form-select,
+    .form-check.p-3 {
+      background-color: var(--pcdf-panel-strong);
+      border-color: var(--pcdf-border) !important;
+      color: #ffffff;
+    }
+
+    .text-secondary {
+      color: #d8dedf !important;
+    }
+
+    .form-label,
+    .form-check-label {
+      overflow-wrap: anywhere;
+    }
+
+    .btn {
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(0, 0, 0, 0.18));
+      border-width: 1px;
+      box-shadow: 0 0.2rem 0 rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      font-weight: 600;
+      text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+      transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
+      white-space: normal;
+    }
+
+    .btn:hover,
+    .btn:focus-visible {
+      box-shadow: 0 0.28rem 0 rgba(0, 0, 0, 0.36), 0 0 0 0.2rem rgba(234, 170, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      box-shadow: 0 0.08rem 0 rgba(0, 0, 0, 0.42), inset 0 2px 0 rgba(0, 0, 0, 0.18);
+      transform: translateY(1px);
+    }
+
+    .btn:disabled,
+    .btn.disabled {
+      box-shadow: none;
+      cursor: not-allowed;
+      opacity: 0.58;
+      transform: none;
+    }
+
+    .accordion-button:not(.collapsed),
+    .accordion-button:focus {
+      background-color: rgba(0, 118, 129, 0.3);
+      color: #ffffff;
+      box-shadow: 0 0 0 0.2rem rgba(234, 170, 0, 0.18);
+    }
+
+    .step-pill {
+      background-color: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--pcdf-border);
+      color: var(--bs-secondary-color);
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .step-pill.active {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--lbl-teal) 88%, white), var(--lbl-teal));
+      border-color: var(--lbl-yellow);
+      color: #ffffff;
+    }
+
+    .btn-primary {
+      --bs-btn-bg: var(--lbl-teal);
+      --bs-btn-border-color: var(--lbl-yellow);
+      --bs-btn-hover-bg: color-mix(in srgb, var(--lbl-teal) 80%, white);
+      --bs-btn-hover-border-color: var(--lbl-yellow);
+      --bs-btn-active-bg: var(--lbl-dark-blue);
+      --bs-btn-active-border-color: var(--lbl-yellow);
+      background-color: var(--lbl-teal);
+      background-image: linear-gradient(180deg, color-mix(in srgb, var(--lbl-teal) 82%, white), var(--lbl-teal));
+      border-color: var(--lbl-yellow);
+      color: #ffffff;
+    }
+
+    .btn-outline-light,
+    .btn-outline-info {
+      --bs-btn-color: #ffffff;
+      --bs-btn-border-color: var(--pcdf-border);
+      --bs-btn-hover-bg: rgba(234, 170, 0, 0.16);
+      --bs-btn-hover-border-color: var(--lbl-yellow);
+      --bs-btn-hover-color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.08);
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.14));
+      border-color: var(--pcdf-border);
+      color: #ffffff;
+    }
+
+    .btn-outline-light:hover,
+    .btn-outline-info:hover,
+    .btn-outline-light:focus-visible,
+    .btn-outline-info:focus-visible {
+      background-color: rgba(234, 170, 0, 0.16);
+      border-color: var(--lbl-yellow);
+      color: #ffffff;
+    }
+
+    .form-check-input:checked {
+      background-color: var(--lbl-teal);
+      border-color: var(--lbl-yellow);
+    }
+
+    .object-card {
+      cursor: pointer;
+      display: block;
+      min-width: 0;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+      width: 100%;
+    }
+
+    .object-card .card-body {
+      min-width: 0;
+    }
+
+    .object-card .form-check {
+      align-items: start;
+      display: grid;
+      gap: 0.65rem;
+      grid-template-columns: auto minmax(0, 1fr);
+      padding-left: 0;
+    }
+
+    .object-card .form-check-input {
+      margin-left: 0;
+      margin-top: 0.15rem;
+    }
+
+    .object-card .form-check-label {
+      line-height: 1.25;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .object-card:has(.object-toggle:checked) {
+      border-color: var(--lbl-yellow) !important;
+      background: rgba(0, 118, 129, 0.16);
+      transform: translateY(-2px);
+    }
+
+    .variable-grid {
+      columns: 2 16rem;
+    }
+
+    .variable-grid .form-check {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    code,
+    pre,
+    kbd,
+    samp,
+    .code-output {
+      font-family: var(--pcdf-code-font);
+    }
+
+    .code-output {
+      min-height: 34rem;
+      max-height: 78vh;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: auto;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      white-space: pre;
+      tab-size: 4;
+      background: var(--lbl-dark-blue);
+      color: #ffffff;
+      border-color: rgba(234, 170, 0, 0.45) !important;
+    }
+
+    .python-preview {
+      min-height: 46rem;
+    }
+
+    .slurm-preview {
+      min-height: 30rem;
+    }
+
+
+    @media (max-width: 767.98px) {
+      .code-output {
+        font-size: 0.78rem;
+      }
+    }
+
+    .code-output code {
+      color: inherit;
+    }
+
+    .syntax-keyword { color: var(--lbl-yellow); font-weight: 700; }
+    .syntax-string { color: var(--lbl-green); }
+    .syntax-comment { color: var(--lbl-light-gray); font-style: italic; }
+    .syntax-number { color: var(--lbl-dusty-rose); }
+    .syntax-builtin { color: var(--lbl-blue); }
+
+    .object-meta {
+      align-items: flex-start;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .object-meta .badge,
+    .variable-grid .badge {
+      display: inline-flex;
+      line-height: 1.25;
+      max-width: 100%;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      text-align: start;
+      white-space: normal;
+    }
+
+    .dependency-note {
+      color: var(--lbl-yellow);
+    }
+
+    .slurm-settings .form-label {
+      color: var(--bs-secondary-color);
+      font-size: 0.86rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .slurm-settings .form-switch {
+      align-items: center;
+      display: flex;
+      flex: 0 0 auto;
+      gap: 0.5rem;
+      padding-left: 0;
+    }
+
+    .slurm-settings .form-switch .form-check-input {
+      flex: 0 0 auto;
+      margin-left: 0;
+      margin-top: 0;
+    }
+
+    .slurm-settings .form-switch .form-check-label {
+      overflow-wrap: normal;
+      white-space: nowrap;
+    }
+
+    .action-bar {
+      display: grid;
+      gap: 0.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    }
+
+    .alert-info {
+      background-color: rgba(66, 152, 181, 0.16);
+      border-color: rgba(66, 152, 181, 0.55);
+      color: #ffffff;
+    }
+
+    .slurm-settings .form-control,
+    .slurm-settings .form-select {
+      min-height: 2.35rem;
+    }
+
+    .submission-steps li + li {
+      margin-top: 0.35rem;
+    }
+
+    .text-bg-info {
+      background-color: var(--lbl-blue) !important;
+      color: var(--lbl-dark-blue) !important;
+    }
+
+    .text-bg-warning {
+      background-color: var(--lbl-yellow) !important;
+      color: var(--lbl-dark-blue) !important;
+    }
+
+    .text-bg-secondary {
+      background-color: var(--lbl-dark-gray) !important;
+      color: #ffffff !important;
+    }
+  </style>
+</head>
+<body>
+  <main class="container-fluid px-3 px-lg-4 py-4 py-lg-5">
+    <section class="row justify-content-center">
+      <div class="col-12 col-xxl-11 pcdf-page-width">
+        <div class="mb-4 text-center text-lg-start">
+          <h1 class="display-5 fw-bold">ATLAS TREASURE → Parquet script wizard</h1>
+          <p class="lead text-secondary mb-0">Interactively select DAOD objects and variables, then download a custom Python script that writes each selected object to its own Parquet folder.</p>
+        </div>
+
+        <div class="wizard-shell rounded-4 p-3 p-md-4">
+          <div class="wizard-progress mb-4" aria-label="Wizard progress">
+            <button class="btn step-pill active flex-fill" type="button" data-step-target="0">1. Input format</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="1">2. Objects</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="2">3. Variables</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="3">4. Generate</button>
+          </div>
+
+          <form id="wizardForm">
+            <section class="wizard-step" data-step="0">
+              <div class="row g-4 align-items-stretch">
+                <div class="col-lg-6">
+                  <div class="card h-100 border-secondary-subtle">
+                    <div class="card-body">
+                      <h2 class="h4 card-title">Choose the DAOD input</h2>
+                      <p class="text-secondary">TREASURE includes PHYSLITE-like analysis objects plus additional content from the TREASURE derivation. PHYSLITE can be used directly, but jet constituent Particle Flow containers are not available there.</p>
+                      <div class="vstack gap-3 mt-4">
+                        <label class="form-check p-3 border rounded-3">
+                          <input class="form-check-input" type="radio" name="inputFormat" id="formatTreasure" value="TREASURE" checked>
+                          <span class="form-check-label fw-semibold">DAOD_TREASURE</span>
+                          <span class="d-block small text-secondary">Enable all objects, including jet constituents linked from AntiKt4EMPFlow jets.</span>
+                        </label>
+                        <label class="form-check p-3 border rounded-3">
+                          <input class="form-check-input" type="radio" name="inputFormat" id="formatPhyslite" value="PHYSLITE">
+                          <span class="form-check-label fw-semibold">DAOD_PHYSLITE</span>
+                          <span class="d-block small text-secondary">Disable the jet constituent object because charged and neutral PFO constituent containers are unavailable.</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-lg-6">
+                  <div class="card h-100 border-secondary-subtle">
+                    <div class="card-body">
+                      <h2 class="h4 card-title">Generated script behavior</h2>
+                      <ul class="text-secondary mb-0">
+                        <li>Uses <code>uproot</code>, <code>awkward</code>, <code>numba</code>, <code>pyarrow</code>, <code>rich</code>, and <code>click</code>, matching <code>ATLAS/ntuple-maker.py</code>.</li>
+                        <li>Reads the selected branches from <code>CollectionTree</code>.</li>
+                        <li>Writes <code>Event/data.parquet</code>, <code>Jet/data.parquet</code>, and other selected object folders under the requested output directory.</li>
+                        <li>Adds object-local indices plus <code>eventIndex</code> links; jet constituents and ghost tracks also include <code>jetIndex</code>.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="wizard-step d-none" data-step="1">
+              <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+                <div>
+                  <h2 class="h4 mb-1">Select output objects</h2>
+                  <p class="text-secondary mb-0">Each checked object becomes a subdirectory with a <code>data.parquet</code> file. Deselecting an object also deselects any objects that depend on it.</p>
+                </div>
+                <div class="d-flex flex-wrap gap-2 align-self-start" role="group" aria-label="Object selection shortcuts">
+                  <button class="btn btn-outline-light" type="button" id="selectRecommended">Recommended</button>
+                  <button class="btn btn-outline-light" type="button" id="selectAll">All available</button>
+                  <button class="btn btn-outline-light" type="button" id="selectNone">None</button>
+                </div>
+              </div>
+              <div class="row g-3" id="objectList"></div>
+            </section>
+
+            <section class="wizard-step d-none" data-step="2">
+              <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+                <div>
+                  <h2 class="h4 mb-1">Choose variables</h2>
+                  <p class="text-secondary mb-0">Variables are grouped by object. Four-vector components are required and cannot be deselected.</p>
+                </div>
+                <button class="btn btn-outline-info align-self-start" type="button" id="restoreDefaults">Restore selected defaults</button>
+              </div>
+              <div class="accordion" id="variableAccordion"></div>
+            </section>
+
+            <section class="wizard-step d-none" data-step="3">
+              <div class="row g-4 generate-grid">
+                <div class="col-xl-5 summary-column">
+                  <h2 class="h4 generate-heading">Review configuration</h2>
+                  <div id="summary" class="vstack gap-3 mb-4"></div>
+
+                  <div class="card border-secondary-subtle mb-4 slurm-settings">
+                    <div class="card-body">
+                      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                        <div>
+                          <h3 class="h5 mb-1">SLURM / NERSC Perlmutter</h3>
+                          <p class="text-secondary mb-0">Generate an <code>sbatch</code> wrapper for the Python converter.</p>
+                        </div>
+                        <div class="form-check form-switch">
+                          <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
+                          <label class="form-check-label" for="enableSlurm">On</label>
+                        </div>
+                      </div>
+                      <div class="row g-3">
+                        <div class="col-md-6">
+                          <label class="form-label" for="slurmAccount">NERSC project account</label>
+                          <input class="form-control slurm-input" id="slurmAccount" value="&lt;NERSC_PROJECT&gt;">
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="slurmQos">QOS</label>
+                          <input class="form-control slurm-input" id="slurmQos" value="regular">
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="slurmNodes">CPU nodes</label>
+                          <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="4">
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="slurmJobsPerNode">Conversions per node</label>
+                          <input class="form-control slurm-input" id="slurmJobsPerNode" type="number" min="1" max="128" value="8">
+                          <div class="form-text text-secondary">CPUs per conversion are computed from Perlmutter's 128 CPU cores per CPU node.</div>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="slurmTime">Wall time</label>
+                          <input class="form-control slurm-input" id="slurmTime" value="02:00:00">
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label" for="slurmPythonPath">Python script path on Perlmutter</label>
+                          <input class="form-control slurm-input" id="slurmPythonPath" value="ntuple-maker.py">
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label" for="slurmInputManifest">Input manifest path</label>
+                          <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
+                          <div class="form-text text-secondary">One DAOD path per non-empty line. The wrapper distributes this list across nodes with GNU parallel inside one wide job.</div>
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label" for="slurmOutputBase">Output base directory</label>
+                          <input class="form-control slurm-input" id="slurmOutputBase" value="$SCRATCH/pcdf-output">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="action-bar">
+                    <button class="btn btn-outline-light" type="button" id="downloadScript">Download Python</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript">Download SLURM</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadBundle">Download bundle (.tar)</button>
+                  </div>
+                  <div class="alert alert-info mt-4 mb-0">
+                    <p class="mb-2">Local run: <code>uv run ntuple-maker.py input.pool.root -o parquet-output</code>.</p>
+                    <ol class="submission-steps mb-0 ps-3">
+                      <li>Create an input manifest on Perlmutter: <code>find $SCRATCH/daod -name '*.root' &gt; $SCRATCH/pcdf-inputs.txt</code>.</li>
+                      <li>Download the tar bundle or both individual scripts, then copy them to Perlmutter, for example with <code>scp</code>. Extract a bundle with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
+                      <li>Edit the SLURM account, manifest path, and output base directory, or set them in the wizard before downloading.</li>
+                      <li>On Perlmutter, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
+                      <li>Monitor with <code>squeue -u $USER</code>; inspect <code>pcdf-ntuple-&lt;jobid&gt;.out</code>, <code>.err</code>, and per-node GNU parallel logs in the output base directory.</li>
+                    </ol>
+                  </div>
+                </div>
+                <div class="col-xl-7 script-column">
+                  <h2 class="h4 generate-heading">Generated scripts</h2>
+                  <label for="scriptHighlight" class="form-label fw-semibold">Generated Python script</label>
+                  <pre id="scriptHighlight" class="form-control code-output python-preview mb-4" tabindex="0" aria-live="polite"><code></code></pre>
+                  <textarea id="scriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+
+                  <label for="slurmScriptHighlight" class="form-label fw-semibold">Generated SLURM submission script</label>
+                  <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" aria-live="polite"><code></code></pre>
+                  <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+                </div>
+              </div>
+            </section>
+
+            <div class="d-flex justify-content-between gap-3 mt-4 pt-4 border-top border-secondary-subtle">
+              <button class="btn btn-outline-light" type="button" id="prevStep">Back</button>
+              <button class="btn btn-primary" type="button" id="nextStep">Next</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const OBJECTS = {
+      Event: {
+        title: "Events",
+        folder: "Event",
+        indexName: "eventIndex",
+        description: "Run/event identifiers and beam spot coordinates from the original ntuple maker.",
+        recommended: true,
+        requiredReason: "Event is always included to provide eventIndex links for every output folder.",
+        aliases: {
+          runNumber: "EventInfoAuxDyn.runNumber",
+          eventNumber: "EventInfoAuxDyn.eventNumber",
+          beamX: "EventInfoAuxDyn.beamPosX",
+          beamY: "EventInfoAuxDyn.beamPosY",
+          beamZ: "EventInfoAuxDyn.beamPosZ"
+        }
+      },
+      Jet: {
+        title: "Small-R jets",
+        folder: "Jet",
+        indexName: "jetIndex",
+        description: "Small-radius jet four-vectors and original parton flavor label.",
+        recommended: true,
+        dependsOn: ["Event"],
+        requiredVariables: ["pt", "eta", "phi", "m"],
+        aliases: {
+          pt: "AnalysisJetsAuxDyn.pt",
+          eta: "AnalysisJetsAuxDyn.eta",
+          phi: "AnalysisJetsAuxDyn.phi",
+          m: "AnalysisJetsAuxDyn.m",
+          flavor: "AnalysisJetsAuxDyn.PartonTruthLabelID"
+        }
+      },
+      Const: {
+        title: "Jet constituents",
+        folder: "Const",
+        indexName: "constIndex",
+        description: "Charged and neutral PFO constituent four-vectors from the original ntuple maker; TREASURE only.",
+        recommended: true,
+        requiresTreasure: true,
+        dependsOn: ["Jet"],
+        requiredVariables: ["pt", "eta", "phi", "m"],
+        aliases: {
+          pt: ["CHSGChargedParticleFlowObjectsAuxDyn.pt", "CHSGNeutralParticleFlowObjectsAuxDyn.pt"],
+          eta: ["CHSGChargedParticleFlowObjectsAuxDyn.eta", "CHSGNeutralParticleFlowObjectsAuxDyn.eta"],
+          phi: ["CHSGChargedParticleFlowObjectsAuxDyn.phi", "CHSGNeutralParticleFlowObjectsAuxDyn.phi"],
+          m: ["CHSGChargedParticleFlowObjectsAuxDyn.m", "CHSGNeutralParticleFlowObjectsAuxDyn.m"]
+        }
+      },
+      Track: {
+        title: "Jet ghost tracks",
+        folder: "Track",
+        indexName: "trackIndex",
+        description: "Original per-jet track trajectory parameters reached through jet GhostTrack links.",
+        recommended: true,
+        dependsOn: ["Jet"],
+        aliases: {
+          q_p: "InDetTrackParticlesAuxDyn.qOverP",
+          theta: "InDetTrackParticlesAuxDyn.theta",
+          phi: "InDetTrackParticlesAuxDyn.phi",
+          d0: "InDetTrackParticlesAuxDyn.d0",
+          z0: "InDetTrackParticlesAuxDyn.z0"
+        }
+      },
+      LargeRJet: {
+        title: "Large-R jets",
+        folder: "LargeRJet",
+        indexName: "largeRJetIndex",
+        description: "Large-radius jet four-vectors and original truth label.",
+        recommended: true,
+        dependsOn: ["Event"],
+        requiredVariables: ["pt", "eta", "phi", "m"],
+        aliases: {
+          pt: "AnalysisLargeRJetsAuxDyn.pt",
+          eta: "AnalysisLargeRJetsAuxDyn.eta",
+          phi: "AnalysisLargeRJetsAuxDyn.phi",
+          m: "AnalysisLargeRJetsAuxDyn.m",
+          truth: "AnalysisLargeRJetsAuxDyn.R10TruthLabel_R22v1"
+        }
+      },
+      Electron: {
+        title: "Electrons",
+        folder: "Electron",
+        indexName: "electronIndex",
+        description: "Original electron kinematics, electric charge, and truth type.",
+        recommended: true,
+        dependsOn: ["Event"],
+        requiredVariables: ["pt", "eta", "phi"],
+        aliases: {
+          pt: "AnalysisElectronsAuxDyn.pt",
+          eta: "AnalysisElectronsAuxDyn.eta",
+          phi: "AnalysisElectronsAuxDyn.phi",
+          charge: "AnalysisElectronsAuxDyn.charge",
+          truth: "AnalysisElectronsAuxDyn.truthType"
+        }
+      },
+      Muon: {
+        title: "Muons",
+        folder: "Muon",
+        indexName: "muonIndex",
+        description: "Original muon kinematics, electric charge, and truth type.",
+        recommended: true,
+        dependsOn: ["Event"],
+        requiredVariables: ["pt", "eta", "phi"],
+        aliases: {
+          pt: "AnalysisMuonsAuxDyn.pt",
+          eta: "AnalysisMuonsAuxDyn.eta",
+          phi: "AnalysisMuonsAuxDyn.phi",
+          charge: "AnalysisMuonsAuxDyn.charge",
+          truth: "AnalysisMuonsAuxDyn.truthType"
+        }
+      },
+      Photon: {
+        title: "Photons",
+        folder: "Photon",
+        indexName: "photonIndex",
+        description: "Original photon kinematics and truth type; charge is intentionally omitted because photons have no charge branch.",
+        recommended: true,
+        dependsOn: ["Event"],
+        requiredVariables: ["pt", "eta", "phi"],
+        aliases: {
+          pt: "AnalysisPhotonsAuxDyn.pt",
+          eta: "AnalysisPhotonsAuxDyn.eta",
+          phi: "AnalysisPhotonsAuxDyn.phi",
+          truth: "AnalysisPhotonsAuxDyn.truthType"
+        }
+      },
+      MET: {
+        title: "Missing ET",
+        folder: "MET",
+        description: "Original missing transverse momentum x/y components.",
+        recommended: true,
+        dependsOn: ["Event"],
+        requiredVariables: ["px", "py"],
+        aliases: {
+          px: "MET_Core_AnalysisMETAuxDyn.mpx",
+          py: "MET_Core_AnalysisMETAuxDyn.mpy"
+        }
+      }
+    };
+
+    const state = {
+      step: 0,
+      inputFormat: "TREASURE",
+      selectedObjects: new Set(Object.keys(OBJECTS).filter((key) => OBJECTS[key].recommended)),
+      selectedVariables: Object.fromEntries(Object.entries(OBJECTS).map(([key, object]) => [key, new Set(Object.keys(object.aliases))])),
+      slurm: {
+        enabled: true,
+        account: "<NERSC_PROJECT>",
+        qos: "regular",
+        nodes: 4,
+        jobsPerNode: 8,
+        time: "02:00:00",
+        pythonPath: "ntuple-maker.py",
+        inputManifest: "$SCRATCH/pcdf-inputs.txt",
+        outputBase: "$SCRATCH/pcdf-output"
+      }
+    };
+
+    const objectList = document.getElementById("objectList");
+    const variableAccordion = document.getElementById("variableAccordion");
+    const scriptOutput = document.getElementById("scriptOutput");
+    const scriptHighlight = document.getElementById("scriptHighlight").querySelector("code");
+    const slurmScriptOutput = document.getElementById("slurmScriptOutput");
+    const slurmScriptHighlight = document.getElementById("slurmScriptHighlight").querySelector("code");
+    const summary = document.getElementById("summary");
+
+    function fieldValue(id) {
+      return document.getElementById(id).value.trim();
+    }
+
+    function numericFieldValue(id, fallback) {
+      const value = Number.parseInt(fieldValue(id), 10);
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    }
+
+    function syncSlurmSettings() {
+      state.slurm.enabled = document.getElementById("enableSlurm").checked;
+      state.slurm.account = fieldValue("slurmAccount") || "<NERSC_PROJECT>";
+      state.slurm.qos = fieldValue("slurmQos") || "regular";
+      state.slurm.nodes = numericFieldValue("slurmNodes", 4);
+      state.slurm.jobsPerNode = Math.min(numericFieldValue("slurmJobsPerNode", 8), 128);
+      document.getElementById("slurmJobsPerNode").value = state.slurm.jobsPerNode;
+      state.slurm.time = fieldValue("slurmTime") || "02:00:00";
+      state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
+      state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
+      state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
+    }
+
+    function selectedInputFormat() {
+      return document.querySelector("input[name='inputFormat']:checked").value;
+    }
+
+    function isObjectAvailable(key) {
+      return !(OBJECTS[key].requiresTreasure && state.inputFormat === "PHYSLITE");
+    }
+
+    function dependenciesFor(key) {
+      return OBJECTS[key].dependsOn || [];
+    }
+
+    function addDependencies(key) {
+      dependenciesFor(key).forEach((dependency) => {
+        if (isObjectAvailable(dependency)) {
+          state.selectedObjects.add(dependency);
+          addDependencies(dependency);
+        }
+      });
+    }
+
+    function dependentObjectsFor(key) {
+      return Object.keys(OBJECTS).filter((candidate) => dependenciesFor(candidate).includes(key));
+    }
+
+    function removeDependents(key) {
+      dependentObjectsFor(key).forEach((dependent) => {
+        if (state.selectedObjects.delete(dependent)) {
+          removeDependents(dependent);
+        }
+      });
+    }
+
+    function requiredVariablesFor(key) {
+      return new Set(OBJECTS[key].requiredVariables || []);
+    }
+
+    function variableIsRequired(key, name) {
+      return requiredVariablesFor(key).has(name);
+    }
+
+    function dependencyBadges(key) {
+      const dependents = dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
+      const dependencies = dependenciesFor(key).filter((dependency) => state.selectedObjects.has(dependency));
+      const badges = [];
+      if (dependencies.length) {
+        const dependencyNames = dependencies.map((dependency) => OBJECTS[dependency].title).join(", ");
+        badges.push(`<span class="badge text-bg-info" title="Uses ${dependencyNames}">Requires ${dependencies.length === 1 ? OBJECTS[dependencies[0]].title : `${dependencies.length} objects`}</span>`);
+      }
+      if (dependents.length) {
+        const dependentNames = dependents.map((dependent) => OBJECTS[dependent].title).join(", ");
+        badges.push(`<span class="badge text-bg-warning" title="Deselecting this also removes ${dependentNames}">${dependents.length} dependent${dependents.length === 1 ? "" : "s"}</span>`);
+      }
+      return badges.join("");
+    }
+
+    function renderObjects() {
+      objectList.innerHTML = Object.entries(OBJECTS).map(([key, object]) => {
+        const disabled = !isObjectAvailable(key);
+        const checked = state.selectedObjects.has(key) && !disabled;
+        const dependents = dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
+        const deselectHint = checked && dependents.length
+          ? `Turning this off also removes ${dependents.map((dependent) => OBJECTS[dependent].title).join(", ")}.`
+          : object.requiredReason || "";
+        return `
+          <div class="col-md-6 col-xl-4">
+            <label class="card object-card h-100 border-secondary-subtle ${disabled ? "opacity-50" : ""}">
+              <div class="card-body">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input object-toggle" type="checkbox" value="${key}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}>
+                  <span class="form-check-label fw-semibold">${object.title}</span>
+                </div>
+                <p class="small text-secondary mb-2">${object.description}</p>
+                <div class="object-meta">
+                  <span class="badge text-bg-secondary">${Object.keys(object.aliases).length} variables</span>
+                  ${dependencyBadges(key)}
+                  ${disabled ? '<span class="badge text-bg-warning">Unavailable in PHYSLITE</span>' : ""}
+                </div>
+                ${deselectHint ? `<span class="d-block small dependency-note mt-2">${deselectHint}</span>` : ""}
+              </div>
+            </label>
+          </div>`;
+      }).join("");
+
+      objectList.querySelectorAll(".object-toggle").forEach((input) => {
+        input.addEventListener("change", () => {
+          if (input.checked) {
+            state.selectedObjects.add(input.value);
+            addDependencies(input.value);
+          } else if (input.value === "Event") {
+            state.selectedObjects = new Set(["Event"]);
+          } else {
+            state.selectedObjects.delete(input.value);
+            removeDependents(input.value);
+          }
+          ensureDependencies();
+          renderObjects();
+          renderVariables();
+          updateGeneratedScript();
+        });
+      });
+    }
+
+    function renderVariables() {
+      const selected = Object.keys(OBJECTS).filter((key) => state.selectedObjects.has(key) && isObjectAvailable(key));
+      variableAccordion.innerHTML = selected.length ? selected.map((key, index) => {
+        const object = OBJECTS[key];
+        const variables = Object.entries(object.aliases).map(([name, branch]) => {
+          const branchText = Array.isArray(branch) ? branch.join(" / ") : branch;
+          const required = variableIsRequired(key, name);
+          if (required) state.selectedVariables[key].add(name);
+          return `
+            <div class="form-check mb-2">
+              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${key}" id="var-${key}-${name}" ${state.selectedVariables[key].has(name) ? "checked" : ""} ${required ? "disabled" : ""}>
+              <label class="form-check-label" for="var-${key}-${name}">
+                <span class="fw-semibold">${name}</span>
+                ${required ? '<span class="badge text-bg-warning ms-1">required vector component</span>' : ""}
+                <span class="d-block small text-secondary">${branchText}</span>
+              </label>
+            </div>`;
+        }).join("");
+        return `
+          <div class="accordion-item">
+            <h3 class="accordion-header">
+              <button class="accordion-button ${index ? "collapsed" : ""}" type="button" data-bs-toggle="collapse" data-bs-target="#panel-${key}">
+                ${object.title}
+              </button>
+            </h3>
+            <div id="panel-${key}" class="accordion-collapse collapse ${index ? "" : "show"}" data-bs-parent="#variableAccordion">
+              <div class="accordion-body variable-grid">${variables}</div>
+            </div>
+          </div>`;
+      }).join("") : '<div class="alert alert-warning">Select at least one output object before choosing variables.</div>';
+
+      variableAccordion.querySelectorAll(".variable-toggle").forEach((input) => {
+        input.addEventListener("change", () => {
+          const variables = state.selectedVariables[input.dataset.object];
+          if (variableIsRequired(input.dataset.object, input.value)) {
+            variables.add(input.value);
+            input.checked = true;
+          } else {
+            input.checked ? variables.add(input.value) : variables.delete(input.value);
+            if (variables.size === 0) {
+              variables.add(input.value);
+              input.checked = true;
+            }
+          }
+          updateGeneratedScript();
+        });
+      });
+    }
+
+    function ensureDependencies() {
+      if (state.inputFormat === "PHYSLITE") {
+        state.selectedObjects.delete("Const");
+      }
+      Array.from(state.selectedObjects).forEach((key) => {
+        if (!isObjectAvailable(key)) {
+          state.selectedObjects.delete(key);
+          removeDependents(key);
+        } else {
+          addDependencies(key);
+        }
+      });
+      state.selectedObjects.add("Event");
+      Object.keys(OBJECTS).forEach((key) => {
+        requiredVariablesFor(key).forEach((name) => state.selectedVariables[key].add(name));
+      });
+    }
+
+    function setStep(step) {
+      state.step = Math.max(0, Math.min(3, step));
+      document.querySelectorAll(".wizard-step").forEach((section) => {
+        section.classList.toggle("d-none", Number(section.dataset.step) !== state.step);
+      });
+      document.querySelectorAll("[data-step-target]").forEach((button) => {
+        button.classList.toggle("active", Number(button.dataset.stepTarget) === state.step);
+      });
+      document.getElementById("prevStep").disabled = state.step === 0;
+      document.getElementById("nextStep").textContent = state.step === 3 ? "Regenerate" : "Next";
+      if (state.step === 3) updateGeneratedScript();
+    }
+
+    function selectedVariables(key) {
+      return Array.from(state.selectedVariables[key] || []).filter((name) => Object.hasOwn(OBJECTS[key].aliases, name));
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function highlightPython(code) {
+      const tokenPattern = /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#[^\n]*|\b(?:False|None|True|and|as|class|continue|def|elif|else|except|finally|for|from|if|import|in|is|not|or|pass|raise|return|try|while|with)\b|\b(?:ak|click|dict|exit|int|len|list|print|range|str|zip)\b|\b\d+(?:\.\d+)?\b)/g;
+      let highlighted = "";
+      let cursor = 0;
+      for (const match of code.matchAll(tokenPattern)) {
+        highlighted += escapeHtml(code.slice(cursor, match.index));
+        const token = match[0];
+        let className = "syntax-number";
+        if (token.startsWith("#")) className = "syntax-comment";
+        else if (token.startsWith('"') || token.startsWith("'")) className = "syntax-string";
+        else if (/^(ak|click|dict|exit|int|len|list|print|range|str|zip)$/.test(token)) className = "syntax-builtin";
+        else if (/^[A-Za-z_]+$/.test(token)) className = "syntax-keyword";
+        highlighted += `<span class="${className}">${escapeHtml(token)}</span>`;
+        cursor = match.index + token.length;
+      }
+      highlighted += escapeHtml(code.slice(cursor));
+      return highlighted;
+    }
+
+    function selectedConfig() {
+      const objects = Object.fromEntries(Object.entries(OBJECTS)
+        .filter(([key]) => state.selectedObjects.has(key) && isObjectAvailable(key))
+        .map(([key, object]) => [key, {
+          folder: object.folder,
+          index_name: object.indexName || null,
+          aliases: Object.fromEntries(selectedVariables(key).map((name) => [name, object.aliases[name]]))
+        }]));
+      return { inputFormat: state.inputFormat, objects };
+    }
+
+
+    function splitPythonString(value, indent) {
+      const prefix = " ".repeat(indent + 4);
+      const chunks = [];
+      let remaining = value;
+      while (remaining.length > 38) {
+        let splitAt = remaining.lastIndexOf(".", 38);
+        if (splitAt < 12) splitAt = 38;
+        chunks.push(remaining.slice(0, splitAt + (remaining[splitAt] === "." ? 1 : 0)));
+        remaining = remaining.slice(chunks.at(-1).length);
+      }
+      if (remaining) chunks.push(remaining);
+      return `(\n${chunks.map((chunk) => `${prefix}${JSON.stringify(chunk)}`).join("\n")}\n${" ".repeat(indent)})`;
+    }
+
+    function formatPythonLiteral(value, indent = 0) {
+      const pad = " ".repeat(indent);
+      if (value === null) return "None";
+      if (typeof value === "string") {
+        const quoted = JSON.stringify(value);
+        return quoted.length > 28 ? splitPythonString(value, indent) : quoted;
+      }
+      if (Array.isArray(value)) {
+        if (!value.length) return "[]";
+        return `[\n${value.map((item) => `${" ".repeat(indent + 4)}${formatPythonLiteral(item, indent + 4)}`).join(",\n")}\n${pad}]`;
+      }
+      if (typeof value === "object") {
+        const entries = Object.entries(value);
+        if (!entries.length) return "{}";
+        const lines = entries.map(([key, item]) => {
+          return `${" ".repeat(indent + 4)}${JSON.stringify(key)}: ${formatPythonLiteral(item, indent + 4)}`;
+        });
+        return `{\n${lines.join(",\n")}\n${pad}}`;
+      }
+      return String(value);
+    }
+
+    function buildScript() {
+      const config = selectedConfig();
+      const objectConfig = formatPythonLiteral(config.objects);
+      const phyLiteNote = config.inputFormat === "PHYSLITE"
+        ? "PHYSLITE selected: jet constituents are disabled."
+        : "TREASURE selected: jet constituents can be read.";
+      return `#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = [
+# "rich", "uproot", "numpy", "awkward",
+# "numba", "pyarrow", "click"
+# ]
+# ///
+
+"""Convert an ATLAS ${config.inputFormat} DAOD to Parquet folders.
+
+Generated by ATLAS/ntuple-wizard.html.
+${phyLiteNote}
+"""
+
+from pathlib import Path
+
+import awkward as ak
+import click
+import numba as nb
+import numpy as np
+import uproot as up
+from rich import print
+
+POINT = "[green][b]‣[/b][/green]"
+INPUT_FORMAT = "${config.inputFormat}"
+OBJECTS = ${objectConfig}
+
+JET_LINK_ALIASES = {
+    "constLinks": (
+        "AntiKt4EMPFlowJetsAuxDyn."
+        "constituentLinks"
+    ),
+    "trackLinks": "AnalysisJetsAuxDyn.GhostTrack",
+}
+
+
+def selected_aliases(name):
+    return dict(OBJECTS[name]["aliases"])
+
+
+def make_idx(arr):
+    ndim = arr.ndim
+    counts = []
+    for i in range(0, ndim):
+        try:
+            sizes = ak.num(arr, axis=-1 - i)
+            counts.append(ak.flatten(sizes, axis=None))
+        except Exception:
+            # The outermost dimension is never read.
+            pass
+    idx = ak.local_index(ak.flatten(arr, axis=None))
+    for _ in range(1, ndim):
+        idx = ak.unflatten(idx, counts.pop(0))
+    return idx
+
+
+def rec_flatten(arr):
+    flat = arr
+    for _ in range(1, arr.ndim):
+        flat = ak.flatten(flat, axis=-1)
+    return flat
+
+
+def first_field(record):
+    fields = ak.fields(record)
+    if not fields:
+        raise ValueError("No variables selected")
+    return record[fields[0]]
+
+
+def select_per_jet(base, indexer):
+    @nb.jit
+    def process(
+        builder: ak.ArrayBuilder,
+        values: ak.Array,
+        links: ak.Array,
+    ):
+        for values_evt, links_evt in zip(values, links):
+            builder.begin_list()
+            for links_jet in links_evt:
+                builder.begin_list()
+                for link in links_jet:
+                    builder.append(values_evt[link])
+                builder.end_list()
+            builder.end_list()
+        return builder
+
+    selected = {}
+    for name, values in ak.unzip(base, how=dict).items():
+        builder = ak.ArrayBuilder()
+        result = process(builder, values, indexer)
+        selected[name] = result.snapshot()
+    return ak.zip(selected)
+
+
+def split_constituent_aliases():
+    charged = {}
+    neutral = {}
+    for name, branches in selected_aliases("Const").items():
+        charged[name] = branches[0]
+        neutral[name] = branches[1]
+    return charged, neutral
+
+
+def write_object(output, folder, payload, flatten=True):
+    path = output / folder
+    path.mkdir(parents=True, exist_ok=False)
+    data = rec_flatten(payload) if flatten else payload
+    ak.to_parquet(data, path / "data.parquet")
+
+
+@click.command()
+@click.argument(
+    "input",
+    type=click.Path(
+        exists=True,
+        dir_okay=False,
+        resolve_path=True,
+        path_type=Path,
+    ),
+    required=True,
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(
+        exists=False,
+        dir_okay=True,
+        file_okay=False,
+        path_type=Path,
+    ),
+    required=True,
+)
+def ntuple_maker(input, output):
+    if output.exists():
+        message = f"Output exists: {output}"
+        raise click.ClickException(message)
+
+    with up.open(input) as file:
+        tree = file["CollectionTree"]
+        aliases = {
+            name: selected_aliases(name)
+            for name in OBJECTS
+        }
+
+        if "Const" in OBJECTS:
+            const_aliases = split_constituent_aliases()
+            aliases["c_const"] = const_aliases[0]
+            aliases["n_const"] = const_aliases[1]
+            aliases["Jet"] = {
+                **aliases.get("Jet", {}),
+                "__jetIndexSource": "AnalysisJetsAuxDyn.pt",
+                "constLinks": JET_LINK_ALIASES["constLinks"],
+            }
+        if "Track" in OBJECTS:
+            aliases["Jet"] = {
+                **aliases.get("Jet", {}),
+                "__jetIndexSource": "AnalysisJetsAuxDyn.pt",
+                "trackLinks": JET_LINK_ALIASES["trackLinks"],
+            }
+
+        arrays = {
+            name: tree.arrays(
+                expressions=object_aliases.keys(),
+                aliases=object_aliases,
+            )
+            for name, object_aliases in aliases.items()
+            if object_aliases
+        }
+
+        event = arrays["Event"]
+        if len(event) == 0:
+            raise click.ClickException("No events found")
+
+        print(f"{POINT} Read {len(event)} events")
+        event_index = make_idx(first_field(event))
+        output.mkdir(parents=True)
+
+        if "Event" in OBJECTS:
+            print(f"  {POINT} Events")
+            event_payload = {"eventIndex": event_index}
+            event_payload.update(ak.unzip(event, how=dict))
+            write_object(
+                output,
+                OBJECTS["Event"]["folder"],
+                ak.zip(event_payload),
+            )
+
+        jet_index = None
+        jet = arrays.get("Jet")
+        if jet is not None:
+            jet_index_source = (
+                jet["__jetIndexSource"]
+                if "__jetIndexSource" in ak.fields(jet)
+                else first_field(jet)
+            )
+            jet_index = make_idx(jet_index_source)
+            if "Jet" in OBJECTS:
+                print(f"  {POINT} Jets")
+                jet_payload = {
+                    "jetIndex": jet_index,
+                    "eventIndex": event_index,
+                }
+                jet_payload.update(
+                    {
+                        name: jet[name]
+                        for name in selected_aliases("Jet")
+                    }
+                )
+                write_object(
+                    output,
+                    OBJECTS["Jet"]["folder"],
+                    ak.zip(jet_payload),
+                )
+
+        if "Const" in OBJECTS:
+            print(f"  {POINT} Following constituent links")
+            hashes, counts = np.unique(
+                ak.flatten(
+                    jet.constLinks.m_persKey[0],
+                    axis=None,
+                ),
+                return_counts=True,
+            )
+            charged_fields = ak.fields(arrays["c_const"])
+            neutral_fields = ak.fields(arrays["n_const"])
+            charged_count = len(
+                arrays["c_const"][0][charged_fields[0]]
+            )
+            neutral_count = len(
+                arrays["n_const"][0][neutral_fields[0]]
+            )
+            if len(hashes) < 2:
+                raise click.ClickException(
+                    "Cannot identify charged/neutral hashes"
+                )
+            charged_first = charged_count == counts[0]
+            neutral_second = neutral_count == counts[1]
+            charged_second = charged_count == counts[1]
+            neutral_first = neutral_count == counts[0]
+            if charged_first and neutral_second:
+                charged_hash = hashes[0]
+                neutral_hash = hashes[1]
+            elif charged_second and neutral_first:
+                charged_hash = hashes[1]
+                neutral_hash = hashes[0]
+            else:
+                raise click.ClickException(
+                    "Constituent counts do not match hashes"
+                )
+            charged = select_per_jet(
+                arrays["c_const"],
+                jet.constLinks.m_persIndex[
+                    jet.constLinks.m_persKey == charged_hash
+                ],
+            )
+            neutral = select_per_jet(
+                arrays["n_const"],
+                jet.constLinks.m_persIndex[
+                    jet.constLinks.m_persKey == neutral_hash
+                ],
+            )
+            constituents = ak.concatenate(
+                [charged, neutral],
+                axis=2,
+            )
+            const_index = make_idx(first_field(constituents))
+            const_payload = {
+                "constIndex": const_index,
+                "jetIndex": jet_index,
+                "eventIndex": event_index,
+            }
+            const_fields = ak.unzip(constituents, how=dict)
+            const_payload.update(const_fields)
+            print(f"  {POINT} Constituents")
+            write_object(
+                output,
+                OBJECTS["Const"]["folder"],
+                ak.zip(const_payload),
+            )
+
+        if "Track" in OBJECTS:
+            print(f"  {POINT} Following track ElementLinks")
+            tracks = select_per_jet(
+                arrays["Track"],
+                jet.trackLinks.m_persIndex[
+                    jet.trackLinks.m_persKey != 0
+                ],
+            )
+            track_index = make_idx(first_field(tracks))
+            track_payload = {
+                "trackIndex": track_index,
+                "jetIndex": jet_index,
+                "eventIndex": event_index,
+            }
+            track_payload.update(ak.unzip(tracks, how=dict))
+            print(f"  {POINT} Tracks")
+            write_object(
+                output,
+                OBJECTS["Track"]["folder"],
+                ak.zip(track_payload),
+            )
+
+        simple_objects = (
+            "LargeRJet",
+            "Electron",
+            "Muon",
+            "Photon",
+        )
+        for name in simple_objects:
+            if name not in OBJECTS:
+                continue
+            record = arrays[name]
+            object_index = make_idx(first_field(record))
+            payload = {
+                OBJECTS[name]["index_name"]: object_index,
+                "eventIndex": event_index,
+            }
+            payload.update(ak.unzip(record, how=dict))
+            print(f"  {POINT} {OBJECTS[name]['folder']}")
+            write_object(
+                output,
+                OBJECTS[name]["folder"],
+                ak.zip(payload),
+            )
+
+        if "MET" in OBJECTS:
+            print(f"  {POINT} MET")
+            met_payload = {"eventIndex": event_index}
+            met_fields = ak.unzip(arrays["MET"], how=dict)
+            met_payload.update(met_fields)
+            write_object(
+                output,
+                OBJECTS["MET"]["folder"],
+                ak.zip(met_payload),
+                flatten=False,
+            )
+
+        print(f"{POINT} DONE")
+
+
+if __name__ == "__main__":
+    ntuple_maker()
+`;
+    }
+
+    function buildSlurmScript() {
+      const slurm = state.slurm;
+      const accountLine = slurm.account
+        ? `#SBATCH --account=${slurm.account}`
+        : "#SBATCH --account=<NERSC_PROJECT>";
+      const perlmutterCpuCores = 128;
+      return `#!/bin/bash
+#SBATCH --job-name=pcdf-ntuple
+${accountLine}
+#SBATCH --qos=${slurm.qos}
+#SBATCH --constraint=cpu
+#SBATCH --nodes=${slurm.nodes}
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=${perlmutterCpuCores}
+#SBATCH --time=${slurm.time}
+#SBATCH --output=pcdf-ntuple-%j.out
+#SBATCH --error=pcdf-ntuple-%j.err
+
+# NERSC Perlmutter wrapper from ATLAS/ntuple-wizard.html.
+# CPU-only: the generated converter does not use GPUs.
+# Packs conversions into one wide Slurm allocation.
+# Uses GNU parallel instead of a large Slurm job array.
+#
+# Usage from a Perlmutter login node:
+#   1. Put one input DAOD path per line in INPUT_MANIFEST.
+#   2. Run: sbatch submit-pcdf-ntuple.slurm
+
+set -euo pipefail
+
+module load python
+
+PYTHON_SCRIPT=${JSON.stringify(slurm.pythonPath)}
+INPUT_MANIFEST=${JSON.stringify(slurm.inputManifest)}
+OUTPUT_BASE=${JSON.stringify(slurm.outputBase)}
+JOBS_PER_NODE=${slurm.jobsPerNode}
+PERLMUTTER_CPU_CORES=${perlmutterCpuCores}
+
+needs_edit=0
+[[ "$PYTHON_SCRIPT" == *"<"* ]] && needs_edit=1
+[[ "$INPUT_MANIFEST" == *"<"* ]] && needs_edit=1
+[[ "$OUTPUT_BASE" == *"<"* ]] && needs_edit=1
+if (( needs_edit )); then
+    echo "ERROR: edit account, paths, and output base." >&2
+    exit 2
+fi
+
+if [[ ! -f "$INPUT_MANIFEST" ]]; then
+    echo "ERROR: missing manifest: $INPUT_MANIFEST" >&2
+    echo "Create it with one DAOD path per line, e.g.:" >&2
+    echo "  find \$SCRATCH/daod -name '*.root' > inputs.txt"
+    exit 2
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "ERROR: uv is not on PATH; load it first." >&2
+    exit 2
+fi
+
+if ! command -v parallel >/dev/null 2>&1; then
+    echo "ERROR: GNU parallel is not on PATH." >&2
+    exit 2
+fi
+
+if (( JOBS_PER_NODE < 1 )); then
+    echo "ERROR: JOBS_PER_NODE must be at least 1" >&2
+    exit 2
+fi
+if (( JOBS_PER_NODE > SLURM_CPUS_PER_TASK )); then
+    echo "ERROR: JOBS_PER_NODE exceeds available CPUs" >&2
+    exit 2
+fi
+
+CPUS_PER_CONVERSION=$((SLURM_CPUS_PER_TASK / JOBS_PER_NODE))
+if (( CPUS_PER_CONVERSION < 1 )); then
+    echo "ERROR: conversions per node leaves zero CPUs" >&2
+    exit 2
+fi
+
+USED_CPUS=$((JOBS_PER_NODE * CPUS_PER_CONVERSION))
+UNUSED_CPUS=$((SLURM_CPUS_PER_TASK - USED_CPUS))
+if (( UNUSED_CPUS > 0 )); then
+    echo "$UNUSED_CPUS CPU(s) idle per node."
+fi
+
+mkdir -p "$OUTPUT_BASE"
+PAYLOAD_SCRIPT="$OUTPUT_BASE/convert-\${SLURM_JOB_ID}.sh"
+cat > "$PAYLOAD_SCRIPT" <<'PCDF_PAYLOAD'
+#!/bin/bash
+set -euo pipefail
+
+TASK_ID="$1"
+INPUT_FILE="$2"
+
+input_name=$(basename "$INPUT_FILE")
+output_name="\${input_name%.*}"
+OUTPUT_DIR="$OUTPUT_BASE/\${TASK_ID}_\${output_name}"
+
+if [[ -e "$OUTPUT_DIR" ]]; then
+    echo "ERROR: output exists: $OUTPUT_DIR" >&2
+    exit 2
+fi
+
+export OMP_NUM_THREADS="$CPUS_PER_CONVERSION"
+echo "Task \${TASK_ID}: $INPUT_FILE -> $OUTPUT_DIR"
+uv run "$PYTHON_SCRIPT" "$INPUT_FILE" -o "$OUTPUT_DIR"
+PCDF_PAYLOAD
+chmod +x "$PAYLOAD_SCRIPT"
+
+DRIVER_SCRIPT="$OUTPUT_BASE/driver-\${SLURM_JOB_ID}.sh"
+cat > "$DRIVER_SCRIPT" <<'PCDF_DRIVER'
+#!/bin/bash
+set -euo pipefail
+
+JOBLOG="$OUTPUT_BASE/p-\${SLURM_JOB_ID}-\${SLURM_NODEID}.log"
+
+awk \\
+    -v N="$SLURM_NODEID" \\
+    -v T="$SLURM_NNODES" \\
+    'NF && ((NR - 1) % T == N) {print NR "\t" $0}' \\
+    "$INPUT_MANIFEST" |
+parallel \\
+    --colsep "\t" \\
+    --jobs "$JOBS_PER_NODE" \\
+    --line-buffer \\
+    --joblog "$JOBLOG" \\
+    "$PAYLOAD_SCRIPT" {1} {2}
+PCDF_DRIVER
+chmod +x "$DRIVER_SCRIPT"
+
+export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE
+export PAYLOAD_SCRIPT JOBS_PER_NODE CPUS_PER_CONVERSION
+export UV_CACHE_DIR="\${SCRATCH:-$HOME}/.cache/uv"
+
+echo "Running on \${SLURM_NNODES} node(s)"
+echo "Node list:      \${SLURM_JOB_NODELIST:-unknown}"
+echo "Input manifest: $INPUT_MANIFEST"
+echo "Output base:    $OUTPUT_BASE"
+echo "Parallelism:    $JOBS_PER_NODE job(s)/node," \\
+     "$CPUS_PER_CONVERSION CPU(s) each"
+
+srun \\
+    --no-kill \\
+    --ntasks="\${SLURM_NNODES}" \\
+    --ntasks-per-node=1 \\
+    --cpus-per-task="\${SLURM_CPUS_PER_TASK}" \\
+    --wait=0 \\
+    "$DRIVER_SCRIPT"
+`;
+    }
+
+    function updateGeneratedScript() {
+      syncSlurmSettings();
+      ensureDependencies();
+      const config = selectedConfig();
+      const generatedScript = buildScript();
+      const slurmScript = buildSlurmScript();
+      scriptOutput.value = generatedScript;
+      scriptHighlight.innerHTML = highlightPython(generatedScript);
+      slurmScriptOutput.value = slurmScript;
+      slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM wrapper disabled.";
+      document.getElementById("downloadSlurmScript").disabled = !state.slurm.enabled;
+      summary.innerHTML = `
+        <div class="card border-secondary-subtle"><div class="card-body">
+          <h3 class="h6 text-uppercase text-secondary">Input</h3>
+          <p class="mb-0 fw-semibold">${config.inputFormat}</p>
+        </div></div>
+        <div class="card border-secondary-subtle"><div class="card-body">
+          <h3 class="h6 text-uppercase text-secondary">Objects</h3>
+          <ul class="mb-0">${Object.keys(config.objects).map((key) => `<li>${OBJECTS[key].title}: ${Object.keys(config.objects[key].aliases).length} variables</li>`).join("")}</ul>
+        </div></div>
+        <div class="card border-secondary-subtle"><div class="card-body">
+          <h3 class="h6 text-uppercase text-secondary">SLURM</h3>
+          <p class="mb-0">${state.slurm.enabled ? `Perlmutter CPU job, ${state.slurm.nodes} node(s), ${state.slurm.jobsPerNode} conversion(s)/node, ${Math.floor(128 / state.slurm.jobsPerNode)} CPU(s)/conversion` : "Disabled"}</p>
+        </div></div>`;
+    }
+
+    document.querySelectorAll("input[name='inputFormat']").forEach((input) => {
+      input.addEventListener("change", () => {
+        state.inputFormat = selectedInputFormat();
+        ensureDependencies();
+        renderObjects();
+        renderVariables();
+        updateGeneratedScript();
+      });
+    });
+
+    document.getElementById("selectRecommended").addEventListener("click", () => {
+      state.selectedObjects = new Set(Object.keys(OBJECTS).filter((key) => OBJECTS[key].recommended && isObjectAvailable(key)));
+      ensureDependencies();
+      renderObjects();
+      renderVariables();
+      updateGeneratedScript();
+    });
+
+    document.getElementById("selectAll").addEventListener("click", () => {
+      state.selectedObjects = new Set(Object.keys(OBJECTS).filter(isObjectAvailable));
+      ensureDependencies();
+      renderObjects();
+      renderVariables();
+      updateGeneratedScript();
+    });
+
+    document.getElementById("selectNone").addEventListener("click", () => {
+      state.selectedObjects = new Set(["Event"]);
+      renderObjects();
+      renderVariables();
+      updateGeneratedScript();
+    });
+
+    document.getElementById("restoreDefaults").addEventListener("click", () => {
+      Object.entries(OBJECTS).forEach(([key, object]) => {
+        if (state.selectedObjects.has(key)) state.selectedVariables[key] = new Set(Object.keys(object.aliases));
+      });
+      renderVariables();
+      updateGeneratedScript();
+    });
+
+    document.querySelectorAll(".slurm-input, #enableSlurm").forEach((input) => {
+      input.addEventListener("input", updateGeneratedScript);
+      input.addEventListener("change", updateGeneratedScript);
+    });
+
+    document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
+    document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 3 ? 3 : state.step + 1));
+    document.querySelectorAll("[data-step-target]").forEach((button) => {
+      button.addEventListener("click", () => setStep(Number(button.dataset.stepTarget)));
+    });
+
+    function tarString(value, length) {
+      const bytes = new TextEncoder().encode(String(value));
+      const output = new Uint8Array(length);
+      output.set(bytes.slice(0, length));
+      return output;
+    }
+
+    function tarOctal(value, length) {
+      const text = value.toString(8).padStart(length - 1, "0") + "\0";
+      return tarString(text, length);
+    }
+
+    function createTarArchive(files) {
+      const encoder = new TextEncoder();
+      const chunks = [];
+      files.forEach((file) => {
+        const data = encoder.encode(file.content);
+        const header = new Uint8Array(512);
+        const mode = file.mode ?? 0o644;
+        header.set(tarString(file.name, 100), 0);
+        header.set(tarOctal(mode, 8), 100);
+        header.set(tarOctal(0, 8), 108);
+        header.set(tarOctal(0, 8), 116);
+        header.set(tarOctal(data.length, 12), 124);
+        header.set(tarOctal(Math.floor(Date.now() / 1000), 12), 136);
+        header.fill(32, 148, 156);
+        header[156] = "0".charCodeAt(0);
+        header.set(tarString("ustar", 6), 257);
+        header.set(tarString("00", 2), 263);
+        let checksum = 0;
+        header.forEach((byte) => { checksum += byte; });
+        header.set(tarOctal(checksum, 8), 148);
+        chunks.push(header, data);
+        const padding = (512 - (data.length % 512)) % 512;
+        if (padding) chunks.push(new Uint8Array(padding));
+      });
+      chunks.push(new Uint8Array(1024));
+      return new Blob(chunks, { type: "application/x-tar" });
+    }
+
+    function bundleReadme() {
+      const pythonName = `ntuple-maker-${state.inputFormat.toLowerCase()}.py`;
+      const slurmSection = state.slurm.enabled ? `
+Perlmutter run
+--------------
+1. Copy this bundle to Perlmutter and extract it:
+   tar -xf pcdf-ntuple-bundle.tar
+   The bundled Python and SLURM scripts are marked executable.
+2. Create a manifest with one DAOD path per non-empty line, for example:
+   find $SCRATCH/daod -name '*.root' > $SCRATCH/pcdf-inputs.txt
+3. Edit submit-pcdf-ntuple.slurm if needed: account, manifest path, output base, nodes, and conversions per node. The CPUs per conversion are derived from the fixed 128 CPU cores available on each Perlmutter CPU node.
+4. Submit:
+   sbatch submit-pcdf-ntuple.slurm
+5. Monitor:
+   squeue -u $USER
+` : `
+Perlmutter run
+--------------
+SLURM generation was disabled in the wizard, so this bundle contains only the
+Python converter and this README. Re-enable SLURM in the wizard if you want a
+Perlmutter submission wrapper.
+`;
+      return `PCDF ntuple bundle
+===================
+
+Files
+-----
+- ${pythonName}: executable generated converter.
+${state.slurm.enabled ? "- submit-pcdf-ntuple.slurm: executable NERSC Perlmutter CPU/SLURM wrapper.\n" : ""}- README_SUBMIT.md: these instructions.
+
+Local run
+---------
+./${pythonName} input.pool.root -o parquet-output
+${slurmSection}`;
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("downloadScript").addEventListener("click", () => {
+      const blob = new Blob([scriptOutput.value], { type: "text/x-python" });
+      downloadBlob(blob, `ntuple-maker-${state.inputFormat.toLowerCase()}.py`);
+    });
+
+    document.getElementById("downloadSlurmScript").addEventListener("click", () => {
+      const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
+      downloadBlob(blob, "submit-pcdf-ntuple.slurm");
+    });
+
+    document.getElementById("downloadBundle").addEventListener("click", () => {
+      const pythonName = `ntuple-maker-${state.inputFormat.toLowerCase()}.py`;
+      const files = [
+        { name: pythonName, content: scriptOutput.value, mode: 0o755 },
+      ];
+      if (state.slurm.enabled) {
+        files.push({
+          name: "submit-pcdf-ntuple.slurm",
+          content: slurmScriptOutput.value,
+          mode: 0o755,
+        });
+      }
+      files.push({ name: "README_SUBMIT.md", content: bundleReadme() });
+      downloadBlob(createTarArchive(files), "pcdf-ntuple-bundle.tar");
+    });
+
+
+    ensureDependencies();
+    renderObjects();
+    renderVariables();
+    updateGeneratedScript();
+    setStep(0);
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
