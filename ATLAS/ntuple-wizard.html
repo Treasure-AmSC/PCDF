@@ -608,7 +608,7 @@
                         </div>
                         <div class="col-md-6">
                           <label class="form-label" for="slurmNodes">CPU nodes</label>
-                          <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="4">
+                          <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1">
                         </div>
                         <div class="col-md-6">
                           <label class="form-label" for="slurmJobsPerNode">Conversions per node</label>
@@ -626,7 +626,16 @@
                         <div class="col-12">
                           <label class="form-label" for="slurmInputManifest">Input manifest path</label>
                           <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
-                          <div class="form-text text-secondary">One DAOD path per non-empty line. The wrapper distributes this list across nodes with GNU parallel inside one wide job.</div>
+                          <div class="form-text text-secondary">One DAOD path per non-empty line. If this file is missing, the wrapper can build it from the Rucio storage search path below.</div>
+                        </div>
+                        <div class="col-md-8">
+                          <label class="form-label" for="slurmRucioPath">Rucio storage search path</label>
+                          <input class="form-control slurm-input" id="slurmRucioPath" value="$CFS/atlas/rucio">
+                          <div class="form-text text-secondary">Use the directory populated by your Rucio rule, preferably narrowed to the dataset or campaign you want to convert.</div>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="slurmRucioPattern">Rucio file pattern</label>
+                          <input class="form-control slurm-input" id="slurmRucioPattern" value="*.root">
                         </div>
                         <div class="col-12">
                           <label class="form-label" for="slurmOutputBase">Output base directory</label>
@@ -644,9 +653,9 @@
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">Local run: <code>uv run ntuple-maker.py input.pool.root -o parquet-output</code>.</p>
                     <ol class="submission-steps mb-0 ps-3">
-                      <li>Create an input manifest on Perlmutter: <code>find $SCRATCH/daod -name '*.root' &gt; $SCRATCH/pcdf-inputs.txt</code>.</li>
+                      <li>Either create an input manifest on Perlmutter or set the Rucio search path to the directory populated by your Rucio rule.</li>
                       <li>Download the tar bundle or both individual scripts, then copy them to Perlmutter, for example with <code>scp</code>. Extract a bundle with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>Edit the SLURM account, manifest path, and output base directory, or set them in the wizard before downloading.</li>
+                      <li>Edit the SLURM account, manifest path/Rucio path, and output base directory, or set them in the wizard before downloading.</li>
                       <li>On Perlmutter, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
                       <li>Monitor with <code>squeue -u $USER</code>; inspect <code>pcdf-ntuple-&lt;jobid&gt;.out</code>, <code>.err</code>, and per-node GNU parallel logs in the output base directory.</li>
                     </ol>
@@ -825,11 +834,13 @@
         enabled: true,
         account: "<NERSC_PROJECT>",
         qos: "regular",
-        nodes: 4,
+        nodes: 1,
         jobsPerNode: 8,
         time: "02:00:00",
         pythonPath: "ntuple-maker.py",
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
+        rucioPath: "$CFS/atlas/rucio",
+        rucioPattern: "*.root",
         outputBase: "$SCRATCH/pcdf-output"
       }
     };
@@ -855,12 +866,14 @@
       state.slurm.enabled = document.getElementById("enableSlurm").checked;
       state.slurm.account = fieldValue("slurmAccount") || "<NERSC_PROJECT>";
       state.slurm.qos = fieldValue("slurmQos") || "regular";
-      state.slurm.nodes = numericFieldValue("slurmNodes", 4);
+      state.slurm.nodes = numericFieldValue("slurmNodes", 1);
       state.slurm.jobsPerNode = Math.min(numericFieldValue("slurmJobsPerNode", 8), 128);
       document.getElementById("slurmJobsPerNode").value = state.slurm.jobsPerNode;
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
+      state.slurm.rucioPath = fieldValue("slurmRucioPath") || "$CFS/atlas/rucio";
+      state.slurm.rucioPattern = fieldValue("slurmRucioPattern") || "*.root";
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
     }
 
@@ -1510,6 +1523,8 @@ module load python
 
 PYTHON_SCRIPT=${JSON.stringify(slurm.pythonPath)}
 INPUT_MANIFEST=${JSON.stringify(slurm.inputManifest)}
+RUCIO_SEARCH_PATH=${JSON.stringify(slurm.rucioPath)}
+RUCIO_FILE_PATTERN=${JSON.stringify(slurm.rucioPattern)}
 OUTPUT_BASE=${JSON.stringify(slurm.outputBase)}
 JOBS_PER_NODE=${slurm.jobsPerNode}
 PERLMUTTER_CPU_CORES=${perlmutterCpuCores}
@@ -1518,15 +1533,32 @@ needs_edit=0
 [[ "$PYTHON_SCRIPT" == *"<"* ]] && needs_edit=1
 [[ "$INPUT_MANIFEST" == *"<"* ]] && needs_edit=1
 [[ "$OUTPUT_BASE" == *"<"* ]] && needs_edit=1
+[[ "$RUCIO_SEARCH_PATH" == *"<"* ]] && needs_edit=1
 if (( needs_edit )); then
-    echo "ERROR: edit account, paths, and output base." >&2
+    echo "ERROR: edit account, output, and Rucio paths." >&2
     exit 2
 fi
 
+mkdir -p "$OUTPUT_BASE"
+mkdir -p "$(dirname "$INPUT_MANIFEST")"
+
 if [[ ! -f "$INPUT_MANIFEST" ]]; then
-    echo "ERROR: missing manifest: $INPUT_MANIFEST" >&2
-    echo "Create it with one DAOD path per line, e.g.:" >&2
-    echo "  find \$SCRATCH/daod -name '*.root' > inputs.txt"
+    if [[ ! -d "$RUCIO_SEARCH_PATH" ]]; then
+        echo "ERROR: missing manifest: $INPUT_MANIFEST" >&2
+        echo "ERROR: bad Rucio path: $RUCIO_SEARCH_PATH" >&2
+        exit 2
+    fi
+    echo "Input manifest not found; scanning Rucio storage."
+    echo "Rucio path:      $RUCIO_SEARCH_PATH"
+    echo "Rucio pattern:   $RUCIO_FILE_PATTERN"
+    find "$RUCIO_SEARCH_PATH" \\
+        -type f \\
+        -name "$RUCIO_FILE_PATTERN" \\
+        | sort > "$INPUT_MANIFEST"
+fi
+
+if [[ ! -s "$INPUT_MANIFEST" ]]; then
+    echo "ERROR: no inputs in $INPUT_MANIFEST" >&2
     exit 2
 fi
 
@@ -1561,7 +1593,10 @@ if (( UNUSED_CPUS > 0 )); then
     echo "$UNUSED_CPUS CPU(s) idle per node."
 fi
 
-mkdir -p "$OUTPUT_BASE"
+export UV_CACHE_DIR="\${SCRATCH:-$HOME}/.cache/uv"
+echo "Preparing uv environment once."
+uv run "$PYTHON_SCRIPT" --help >/dev/null
+
 PAYLOAD_SCRIPT="$OUTPUT_BASE/convert-\${SLURM_JOB_ID}.sh"
 cat > "$PAYLOAD_SCRIPT" <<'PCDF_PAYLOAD'
 #!/bin/bash
@@ -1581,7 +1616,10 @@ fi
 
 export OMP_NUM_THREADS="$CPUS_PER_CONVERSION"
 echo "Task \${TASK_ID}: $INPUT_FILE -> $OUTPUT_DIR"
-uv run "$PYTHON_SCRIPT" "$INPUT_FILE" -o "$OUTPUT_DIR"
+uv run --no-sync \\
+    "$PYTHON_SCRIPT" \\
+    "$INPUT_FILE" \\
+    -o "$OUTPUT_DIR"
 PCDF_PAYLOAD
 chmod +x "$PAYLOAD_SCRIPT"
 
@@ -1607,12 +1645,13 @@ PCDF_DRIVER
 chmod +x "$DRIVER_SCRIPT"
 
 export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE
+export RUCIO_SEARCH_PATH
 export PAYLOAD_SCRIPT JOBS_PER_NODE CPUS_PER_CONVERSION
-export UV_CACHE_DIR="\${SCRATCH:-$HOME}/.cache/uv"
 
 echo "Running on \${SLURM_NNODES} node(s)"
 echo "Node list:      \${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
+echo "Rucio path:      $RUCIO_SEARCH_PATH"
 echo "Output base:    $OUTPUT_BASE"
 echo "Parallelism:    $JOBS_PER_NODE job(s)/node," \\
      "$CPUS_PER_CONVERSION CPU(s) each"
@@ -1753,9 +1792,10 @@ Perlmutter run
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
    The bundled Python and SLURM scripts are marked executable.
-2. Create a manifest with one DAOD path per non-empty line, for example:
-   find $SCRATCH/daod -name '*.root' > $SCRATCH/pcdf-inputs.txt
-3. Edit submit-pcdf-ntuple.slurm if needed: account, manifest path, output base, nodes, and conversions per node. The CPUs per conversion are derived from the fixed 128 CPU cores available on each Perlmutter CPU node.
+2. Either create a manifest with one DAOD path per line or set RUCIO_SEARCH_PATH
+   to the directory populated by your Rucio rule. If INPUT_MANIFEST is missing,
+   the wrapper scans RUCIO_SEARCH_PATH for RUCIO_FILE_PATTERN and creates it.
+3. Edit submit-pcdf-ntuple.slurm if needed: account, manifest/Rucio path, output base, nodes, and conversions per node. The CPUs per conversion are derived from the fixed 128 CPU cores available on each Perlmutter CPU node.
 4. Submit:
    sbatch submit-pcdf-ntuple.slurm
 5. Monitor:
