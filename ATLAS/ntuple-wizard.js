@@ -1,142 +1,4 @@
-    const OBJECTS = {
-      Event: {
-        title: "Events",
-        folder: "Event",
-        indexName: "eventIndex",
-        description: "Run/event identifiers and beam spot coordinates from the original ntuple maker.",
-        recommended: true,
-        requiredReason: "Event is always included to provide eventIndex links for every output folder.",
-        aliases: {
-          runNumber: "EventInfoAuxDyn.runNumber",
-          eventNumber: "EventInfoAuxDyn.eventNumber",
-          beamX: "EventInfoAuxDyn.beamPosX",
-          beamY: "EventInfoAuxDyn.beamPosY",
-          beamZ: "EventInfoAuxDyn.beamPosZ"
-        }
-      },
-      Jet: {
-        title: "Small-R jets",
-        folder: "Jet",
-        indexName: "jetIndex",
-        description: "Small-radius jet four-vectors and original parton flavor label.",
-        recommended: true,
-        dependsOn: ["Event"],
-        requiredVariables: ["pt", "eta", "phi", "m"],
-        aliases: {
-          pt: "AnalysisJetsAuxDyn.pt",
-          eta: "AnalysisJetsAuxDyn.eta",
-          phi: "AnalysisJetsAuxDyn.phi",
-          m: "AnalysisJetsAuxDyn.m",
-          flavor: "AnalysisJetsAuxDyn.PartonTruthLabelID"
-        }
-      },
-      Const: {
-        title: "Jet constituents",
-        folder: "Const",
-        indexName: "constIndex",
-        description: "Charged and neutral PFO constituent four-vectors from the original ntuple maker; TREASURE only.",
-        recommended: true,
-        requiresTreasure: true,
-        dependsOn: ["Jet"],
-        requiredVariables: ["pt", "eta", "phi", "m"],
-        aliases: {
-          pt: ["CHSGChargedParticleFlowObjectsAuxDyn.pt", "CHSGNeutralParticleFlowObjectsAuxDyn.pt"],
-          eta: ["CHSGChargedParticleFlowObjectsAuxDyn.eta", "CHSGNeutralParticleFlowObjectsAuxDyn.eta"],
-          phi: ["CHSGChargedParticleFlowObjectsAuxDyn.phi", "CHSGNeutralParticleFlowObjectsAuxDyn.phi"],
-          m: ["CHSGChargedParticleFlowObjectsAuxDyn.m", "CHSGNeutralParticleFlowObjectsAuxDyn.m"]
-        }
-      },
-      Track: {
-        title: "Jet ghost tracks",
-        folder: "Track",
-        indexName: "trackIndex",
-        description: "Original per-jet track trajectory parameters reached through jet GhostTrack links.",
-        recommended: true,
-        dependsOn: ["Jet"],
-        aliases: {
-          q_p: "InDetTrackParticlesAuxDyn.qOverP",
-          theta: "InDetTrackParticlesAuxDyn.theta",
-          phi: "InDetTrackParticlesAuxDyn.phi",
-          d0: "InDetTrackParticlesAuxDyn.d0",
-          z0: "InDetTrackParticlesAuxDyn.z0"
-        }
-      },
-      LargeRJet: {
-        title: "Large-R jets",
-        folder: "LargeRJet",
-        indexName: "largeRJetIndex",
-        description: "Large-radius jet four-vectors and original truth label.",
-        recommended: true,
-        dependsOn: ["Event"],
-        requiredVariables: ["pt", "eta", "phi", "m"],
-        aliases: {
-          pt: "AnalysisLargeRJetsAuxDyn.pt",
-          eta: "AnalysisLargeRJetsAuxDyn.eta",
-          phi: "AnalysisLargeRJetsAuxDyn.phi",
-          m: "AnalysisLargeRJetsAuxDyn.m",
-          truth: "AnalysisLargeRJetsAuxDyn.R10TruthLabel_R22v1"
-        }
-      },
-      Electron: {
-        title: "Electrons",
-        folder: "Electron",
-        indexName: "electronIndex",
-        description: "Original electron kinematics, electric charge, and truth type.",
-        recommended: true,
-        dependsOn: ["Event"],
-        requiredVariables: ["pt", "eta", "phi"],
-        aliases: {
-          pt: "AnalysisElectronsAuxDyn.pt",
-          eta: "AnalysisElectronsAuxDyn.eta",
-          phi: "AnalysisElectronsAuxDyn.phi",
-          charge: "AnalysisElectronsAuxDyn.charge",
-          truth: "AnalysisElectronsAuxDyn.truthType"
-        }
-      },
-      Muon: {
-        title: "Muons",
-        folder: "Muon",
-        indexName: "muonIndex",
-        description: "Original muon kinematics, electric charge, and truth type.",
-        recommended: true,
-        dependsOn: ["Event"],
-        requiredVariables: ["pt", "eta", "phi"],
-        aliases: {
-          pt: "AnalysisMuonsAuxDyn.pt",
-          eta: "AnalysisMuonsAuxDyn.eta",
-          phi: "AnalysisMuonsAuxDyn.phi",
-          charge: "AnalysisMuonsAuxDyn.charge",
-          truth: "AnalysisMuonsAuxDyn.truthType"
-        }
-      },
-      Photon: {
-        title: "Photons",
-        folder: "Photon",
-        indexName: "photonIndex",
-        description: "Original photon kinematics and truth type; charge is intentionally omitted because photons have no charge branch.",
-        recommended: true,
-        dependsOn: ["Event"],
-        requiredVariables: ["pt", "eta", "phi"],
-        aliases: {
-          pt: "AnalysisPhotonsAuxDyn.pt",
-          eta: "AnalysisPhotonsAuxDyn.eta",
-          phi: "AnalysisPhotonsAuxDyn.phi",
-          truth: "AnalysisPhotonsAuxDyn.truthType"
-        }
-      },
-      MET: {
-        title: "Missing ET",
-        folder: "MET",
-        description: "Original missing transverse momentum x/y components.",
-        recommended: true,
-        dependsOn: ["Event"],
-        requiredVariables: ["px", "py"],
-        aliases: {
-          px: "MET_Core_AnalysisMETAuxDyn.mpx",
-          py: "MET_Core_AnalysisMETAuxDyn.mpy"
-        }
-      }
-    };
+    const OBJECTS = JSON.parse(document.getElementById("object-config").textContent);
 
     const state = {
       step: 0,
@@ -166,24 +28,21 @@
     const slurmScriptHighlight = document.getElementById("slurmScriptHighlight").querySelector("code");
     const summary = document.getElementById("summary");
 
-    const TEMPLATE_PATHS = {
-      python: "ntuple-maker.template.py",
-      slurm: "submit-pcdf-ntuple.template.slurm",
-      readme: "README_SUBMIT.template.md",
+    const TEMPLATE_IDS = {
+      python: "template-python",
+      slurm: "template-slurm",
+      readme: "template-readme",
     };
 
     const templates = {};
 
 
-    async function loadTemplates() {
-      const entries = await Promise.all(Object.entries(TEMPLATE_PATHS).map(async ([name, path]) => {
-        const response = await fetch(path);
-        if (!response.ok) {
-          throw new Error(`Could not load ${path}: ${response.status}`);
-        }
-        return [name, await response.text()];
-      }));
-      Object.assign(templates, Object.fromEntries(entries));
+    function loadTemplates() {
+      Object.entries(TEMPLATE_IDS).forEach(([name, id]) => {
+        const element = document.getElementById(id);
+        if (!element) throw new Error(`Missing embedded template: ${id}`);
+        templates[name] = element.textContent.trimStart();
+      });
     }
 
     function applyTemplate(template, values) {
@@ -708,9 +567,9 @@ Perlmutter submission wrapper.
     });
 
 
-    async function initWizard() {
+    function initWizard() {
       try {
-        await loadTemplates();
+        loadTemplates();
         ensureDependencies();
         renderObjects();
         renderVariables();
