@@ -626,16 +626,17 @@
                         <div class="col-12">
                           <label class="form-label" for="slurmInputManifest">Input manifest path</label>
                           <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
-                          <div class="form-text text-secondary">One DAOD path per non-empty line. If this file is missing, the wrapper can build it from the Rucio storage search path below.</div>
+                          <div class="form-text text-secondary">One DAOD path or PFN per non-empty line. If this file is missing, the wrapper can build it from the Rucio DID and local RSE below.</div>
                         </div>
                         <div class="col-md-8">
-                          <label class="form-label" for="slurmRucioPath">Rucio storage search path</label>
-                          <input class="form-control slurm-input" id="slurmRucioPath" value="$CFS/atlas/rucio">
-                          <div class="form-text text-secondary">Use the directory populated by your Rucio rule, preferably narrowed to the dataset or campaign you want to convert.</div>
+                          <label class="form-label" for="slurmRucioDid">Rucio DID / dataset</label>
+                          <input class="form-control slurm-input" id="slurmRucioDid" value="&lt;scope:name&gt;">
+                          <div class="form-text text-secondary">Enter the dataset DID used in your Rucio rule, such as <code>scope:name</code>. If the manifest is missing, the wrapper asks Rucio for local file replicas.</div>
                         </div>
                         <div class="col-md-4">
-                          <label class="form-label" for="slurmRucioPattern">Rucio file pattern</label>
-                          <input class="form-control slurm-input" id="slurmRucioPattern" value="*.root">
+                          <label class="form-label" for="slurmRucioRse">Local Rucio RSE</label>
+                          <input class="form-control slurm-input" id="slurmRucioRse" value="&lt;LOCAL_RSE&gt;">
+                          <div class="form-text text-secondary">Use the Perlmutter/NERSC RSE where your rule placed the dataset.</div>
                         </div>
                         <div class="col-12">
                           <label class="form-label" for="slurmOutputBase">Output base directory</label>
@@ -653,9 +654,9 @@
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">Local run: <code>uv run ntuple-maker.py input.pool.root -o parquet-output</code>.</p>
                     <ol class="submission-steps mb-0 ps-3">
-                      <li>Either create an input manifest on Perlmutter or set the Rucio search path to the directory populated by your Rucio rule.</li>
+                      <li>Either create an input manifest on Perlmutter or provide the Rucio DID plus local RSE from your Rucio rule.</li>
                       <li>Download the tar bundle or both individual scripts, then copy them to Perlmutter, for example with <code>scp</code>. Extract a bundle with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>Edit the SLURM account, manifest path/Rucio path, and output base directory, or set them in the wizard before downloading.</li>
+                      <li>Edit the SLURM account, manifest path/Rucio DID/RSE, and output base directory, or set them in the wizard before downloading.</li>
                       <li>On Perlmutter, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
                       <li>Monitor with <code>squeue -u $USER</code>; inspect <code>pcdf-ntuple-&lt;jobid&gt;.out</code>, <code>.err</code>, and per-node GNU parallel logs in the output base directory.</li>
                     </ol>
@@ -839,8 +840,8 @@
         time: "02:00:00",
         pythonPath: "ntuple-maker.py",
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
-        rucioPath: "$CFS/atlas/rucio",
-        rucioPattern: "*.root",
+        rucioDid: "<scope:name>",
+        rucioRse: "<LOCAL_RSE>",
         outputBase: "$SCRATCH/pcdf-output"
       }
     };
@@ -872,8 +873,8 @@
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
-      state.slurm.rucioPath = fieldValue("slurmRucioPath") || "$CFS/atlas/rucio";
-      state.slurm.rucioPattern = fieldValue("slurmRucioPattern") || "*.root";
+      state.slurm.rucioDid = fieldValue("slurmRucioDid") || "<scope:name>";
+      state.slurm.rucioRse = fieldValue("slurmRucioRse") || "<LOCAL_RSE>";
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
     }
 
@@ -1523,8 +1524,8 @@ module load python
 
 PYTHON_SCRIPT=${JSON.stringify(slurm.pythonPath)}
 INPUT_MANIFEST=${JSON.stringify(slurm.inputManifest)}
-RUCIO_SEARCH_PATH=${JSON.stringify(slurm.rucioPath)}
-RUCIO_FILE_PATTERN=${JSON.stringify(slurm.rucioPattern)}
+RUCIO_DID=${JSON.stringify(slurm.rucioDid)}
+RUCIO_RSE=${JSON.stringify(slurm.rucioRse)}
 OUTPUT_BASE=${JSON.stringify(slurm.outputBase)}
 JOBS_PER_NODE=${slurm.jobsPerNode}
 PERLMUTTER_CPU_CORES=${perlmutterCpuCores}
@@ -1533,9 +1534,12 @@ needs_edit=0
 [[ "$PYTHON_SCRIPT" == *"<"* ]] && needs_edit=1
 [[ "$INPUT_MANIFEST" == *"<"* ]] && needs_edit=1
 [[ "$OUTPUT_BASE" == *"<"* ]] && needs_edit=1
-[[ "$RUCIO_SEARCH_PATH" == *"<"* ]] && needs_edit=1
+if [[ ! -f "$INPUT_MANIFEST" ]]; then
+    [[ "$RUCIO_DID" == *"<"* ]] && needs_edit=1
+    [[ "$RUCIO_RSE" == *"<"* ]] && needs_edit=1
+fi
 if (( needs_edit )); then
-    echo "ERROR: edit account, output, and Rucio paths." >&2
+    echo "ERROR: edit account/output/input settings." >&2
     exit 2
 fi
 
@@ -1543,18 +1547,72 @@ mkdir -p "$OUTPUT_BASE"
 mkdir -p "$(dirname "$INPUT_MANIFEST")"
 
 if [[ ! -f "$INPUT_MANIFEST" ]]; then
-    if [[ ! -d "$RUCIO_SEARCH_PATH" ]]; then
-        echo "ERROR: missing manifest: $INPUT_MANIFEST" >&2
-        echo "ERROR: bad Rucio path: $RUCIO_SEARCH_PATH" >&2
+    if ! command -v rucio >/dev/null 2>&1; then
+        echo "ERROR: rucio is needed for the manifest." >&2
         exit 2
     fi
-    echo "Input manifest not found; scanning Rucio storage."
-    echo "Rucio path:      $RUCIO_SEARCH_PATH"
-    echo "Rucio pattern:   $RUCIO_FILE_PATTERN"
-    find "$RUCIO_SEARCH_PATH" \\
-        -type f \\
-        -name "$RUCIO_FILE_PATTERN" \\
-        | sort > "$INPUT_MANIFEST"
+
+    echo "Input manifest not found; querying Rucio."
+    echo "Rucio DID:       $RUCIO_DID"
+    echo "Local RSE:       $RUCIO_RSE"
+    REPLICA_REPORT="$OUTPUT_BASE/repl-\${SLURM_JOB_ID}.txt"
+    PFN_LIST="$OUTPUT_BASE/pfns-\${SLURM_JOB_ID}.txt"
+
+    rucio list-dataset-replicas "$RUCIO_DID" \\
+        | tee "$REPLICA_REPORT"
+    availability=$(awk -v rse="$RUCIO_RSE" -F'|' '
+        $2 ~ rse {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+            if ($2 == rse) {
+                found = $3 + 0
+                total = $4 + 0
+                print found "/" total
+            }
+        }
+    ' "$REPLICA_REPORT" | head -n 1)
+
+    if [[ -n "$availability" ]]; then
+        [[ "$availability" == */0 ]] && availability=""
+    fi
+    if [[ -n "$availability" ]]; then
+        found=\${availability%%/*}
+        total=\${availability##*/}
+        if [[ "$found" != "$total" ]]; then
+            echo "ERROR: only $availability at $RUCIO_RSE" >&2
+            exit 2
+        fi
+    fi
+
+    rucio list-file-replicas \\
+        --rse "$RUCIO_RSE" \\
+        --pfns \\
+        "$RUCIO_DID" > "$PFN_LIST"
+
+    python - "$PFN_LIST" "$INPUT_MANIFEST" <<'PCDF_PFNS'
+from pathlib import Path
+from sys import argv
+from urllib.parse import unquote, urlparse
+
+pfns = Path(argv[1]).read_text().splitlines()
+paths = []
+for raw in pfns:
+    line = raw.strip()
+    if not line or line.startswith(("#", "-", "|")):
+        continue
+    if "://" not in line:
+        paths.append(line)
+        continue
+    parsed = urlparse(line)
+    if parsed.scheme == "file":
+        paths.append(unquote(parsed.path))
+    else:
+        paths.append(line)
+
+content = "\\n".join(paths)
+if paths:
+    content += "\\n"
+Path(argv[2]).write_text(content)
+PCDF_PFNS
 fi
 
 if [[ ! -s "$INPUT_MANIFEST" ]]; then
@@ -1581,9 +1639,11 @@ if (( JOBS_PER_NODE > SLURM_CPUS_PER_TASK )); then
     exit 2
 fi
 
-CPUS_PER_CONVERSION=$((SLURM_CPUS_PER_TASK / JOBS_PER_NODE))
+CPUS_PER_CONVERSION=$((
+    SLURM_CPUS_PER_TASK / JOBS_PER_NODE
+))
 if (( CPUS_PER_CONVERSION < 1 )); then
-    echo "ERROR: conversions per node leaves zero CPUs" >&2
+    echo "ERROR: zero CPUs per conversion" >&2
     exit 2
 fi
 
@@ -1628,7 +1688,7 @@ cat > "$DRIVER_SCRIPT" <<'PCDF_DRIVER'
 #!/bin/bash
 set -euo pipefail
 
-JOBLOG="$OUTPUT_BASE/p-\${SLURM_JOB_ID}-\${SLURM_NODEID}.log"
+JOBLOG="$OUTPUT_BASE/p-\${SLURM_JOB_ID}.\${SLURM_NODEID}.log"
 
 awk \\
     -v N="$SLURM_NODEID" \\
@@ -1645,13 +1705,14 @@ PCDF_DRIVER
 chmod +x "$DRIVER_SCRIPT"
 
 export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE
-export RUCIO_SEARCH_PATH
+export RUCIO_DID RUCIO_RSE
 export PAYLOAD_SCRIPT JOBS_PER_NODE CPUS_PER_CONVERSION
 
 echo "Running on \${SLURM_NNODES} node(s)"
 echo "Node list:      \${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
-echo "Rucio path:      $RUCIO_SEARCH_PATH"
+echo "Rucio DID:       $RUCIO_DID"
+echo "Local RSE:       $RUCIO_RSE"
 echo "Output base:    $OUTPUT_BASE"
 echo "Parallelism:    $JOBS_PER_NODE job(s)/node," \\
      "$CPUS_PER_CONVERSION CPU(s) each"
@@ -1792,10 +1853,11 @@ Perlmutter run
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
    The bundled Python and SLURM scripts are marked executable.
-2. Either create a manifest with one DAOD path per line or set RUCIO_SEARCH_PATH
-   to the directory populated by your Rucio rule. If INPUT_MANIFEST is missing,
-   the wrapper scans RUCIO_SEARCH_PATH for RUCIO_FILE_PATTERN and creates it.
-3. Edit submit-pcdf-ntuple.slurm if needed: account, manifest/Rucio path, output base, nodes, and conversions per node. The CPUs per conversion are derived from the fixed 128 CPU cores available on each Perlmutter CPU node.
+2. Either create a manifest with one DAOD path/PFN per line, or set RUCIO_DID
+   and RUCIO_RSE for the dataset and local RSE used by your Rucio rule. If
+   INPUT_MANIFEST is missing, the wrapper asks Rucio for local PFNs and creates
+   the manifest from those replicas.
+3. Edit submit-pcdf-ntuple.slurm if needed: account, manifest/Rucio DID/RSE, output base, nodes, and conversions per node. The CPUs per conversion are derived from the fixed 128 CPU cores available on each Perlmutter CPU node.
 4. Submit:
    sbatch submit-pcdf-ntuple.slurm
 5. Monitor:
