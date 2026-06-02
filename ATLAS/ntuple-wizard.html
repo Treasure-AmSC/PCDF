@@ -139,17 +139,56 @@
                         <div class="col-12">
                           <label class="form-label" for="slurmInputManifest">Input manifest path</label>
                           <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
-                          <div class="form-text text-secondary">One DAOD path or PFN per non-empty line. If this file is missing, the wrapper can build it from the Rucio DID and local RSE below.</div>
+                          <div class="form-text text-secondary">One local DAOD path per non-empty line. The Open Data transfer script writes this manifest before the compute job starts.</div>
+                        </div>
+                        <div class="col-12">
+                          <h3 class="h6 text-uppercase text-secondary mt-2">ATLAS Open Data lookup and DTN transfer</h3>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="openDataApiBase">Open Data API base URL</label>
+                          <input class="form-control slurm-input" id="openDataApiBase" value="https://atlasopenmagic-api.app.cern.ch">
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="openDataRelease">Open Data release</label>
+                          <select class="form-select slurm-input" id="openDataRelease">
+                            <option value="2024r-pp" selected>2024r-pp research pp</option>
+                            <option value="2025e-13tev-beta">2025e-13tev-beta education</option>
+                            <option value="2024r-hi">2024r-hi research heavy-ion</option>
+                            <option value="2025r-evgen-13tev">2025r-evgen-13tev</option>
+                            <option value="2025r-evgen-13p6tev">2025r-evgen-13p6tev</option>
+                            <option value="2020e-13tev">2020e-13tev education</option>
+                            <option value="2016e-8tev">2016e-8tev education</option>
+                          </select>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="openDataDataset">Dataset ID or physics short name</label>
+                          <input class="form-control slurm-input" id="openDataDataset" value="301204">
+                          <div class="form-text text-secondary">The API lookup uses the atlasopenmagic <code>/metadata/&lt;release&gt;/&lt;dataset&gt;</code> endpoint and HTTPS file URLs.</div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="openDataSkim">Skim</label>
+                          <input class="form-control slurm-input" id="openDataSkim" value="noskim">
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="openDataMbps">Expected DTN throughput</label>
+                          <div class="input-group">
+                            <input class="form-control slurm-input" id="openDataMbps" type="number" min="1" value="250">
+                            <span class="input-group-text">MB/s</span>
+                          </div>
                         </div>
                         <div class="col-md-8">
-                          <label class="form-label" for="slurmRucioDid">Rucio DID / dataset</label>
-                          <input class="form-control slurm-input" id="slurmRucioDid" value="&lt;scope:name&gt;">
-                          <div class="form-text text-secondary">Enter the dataset DID used in your Rucio rule, such as <code>scope:name</code>. If the manifest is missing, the wrapper asks Rucio for local file replicas.</div>
+                          <label class="form-label" for="openDataDownloadDir">Scratch download directory</label>
+                          <input class="form-control slurm-input" id="openDataDownloadDir" value="$SCRATCH/pcdf-opendata">
                         </div>
                         <div class="col-md-4">
-                          <label class="form-label" for="slurmRucioRse">Local Rucio RSE</label>
-                          <input class="form-control slurm-input" id="slurmRucioRse" value="&lt;LOCAL_RSE&gt;">
-                          <div class="form-text text-secondary">Use the Perlmutter/NERSC RSE where your rule placed the dataset.</div>
+                          <label class="form-label" for="openDataDtnPattern">Required DTN hostname text</label>
+                          <input class="form-control slurm-input" id="openDataDtnPattern" value="dtn">
+                        </div>
+                        <div class="col-12">
+                          <button class="btn btn-outline-light" type="button" id="previewOpenData">Preview Open Data download</button>
+                          <div id="openDataPreview" class="alert alert-secondary open-data-preview mt-3 mb-0" role="status">
+                            Enter a dataset and click preview to estimate file count, bytes, and transfer time.
+                          </div>
                         </div>
                         <div class="col-12">
                           <label class="form-label" for="slurmOutputBase">Output base directory</label>
@@ -161,16 +200,17 @@
 
                   <div class="action-bar">
                     <button class="btn btn-outline-light" type="button" id="downloadScript">Download Python</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadTransferScript">Download DTN transfer</button>
                     <button class="btn btn-outline-light" type="button" id="downloadSlurmScript">Download SLURM</button>
                     <button class="btn btn-outline-light" type="button" id="downloadBundle">Download bundle (.tar)</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">Local run: <code>uv run ntuple-maker.py input.pool.root -o parquet-output</code>.</p>
                     <ol class="submission-steps mb-0 ps-3">
-                      <li>Either create an input manifest on Perlmutter or provide the Rucio DID plus local RSE from your Rucio rule.</li>
-                      <li>Download the tar bundle or both individual scripts, then copy them to Perlmutter, for example with <code>scp</code>. Extract a bundle with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>Edit the SLURM account, manifest path/Rucio DID/RSE, and output base directory, or set them in the wizard before downloading.</li>
-                      <li>On Perlmutter, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
+                      <li>Preview the Open Data dataset so you know how many files and approximate bytes will be copied.</li>
+                      <li>Download the tar bundle, copy it to Perlmutter, and extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
+                      <li>Log in to a Perlmutter data transfer node and run <code>./download-atlas-opendata.sh</code>; it downloads to scratch and writes the manifest.</li>
+                      <li>Return to a login node, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
                       <li>Monitor with <code>squeue -u $USER</code>; inspect <code>pcdf-ntuple-&lt;jobid&gt;.out</code>, <code>.err</code>, and per-node GNU parallel logs in the output base directory.</li>
                     </ol>
                   </div>
@@ -184,6 +224,7 @@
                   <label for="slurmScriptHighlight" class="form-label fw-semibold">Generated SLURM submission script</label>
                   <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" aria-live="polite"><code></code></pre>
                   <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+                  <textarea id="transferScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
                 </div>
               </div>
             </section>
@@ -757,12 +798,8 @@ if __name__ == "__main__":
 
 # NERSC Perlmutter wrapper from ATLAS/ntuple-wizard.html.
 # CPU-only: the generated converter does not use GPUs.
-# Packs conversions into one wide Slurm allocation.
-# Uses GNU parallel instead of a large Slurm job array.
-#
-# Usage from a Perlmutter login node:
-#   1. Put one input DAOD path per line in INPUT_MANIFEST.
-#   2. Run: sbatch submit-pcdf-ntuple.slurm
+# Data must already be on scratch; do not download on compute nodes.
+# Run download-atlas-opendata.sh on a DTN before submitting this job.
 
 set -euo pipefail
 
@@ -770,99 +807,31 @@ module load python
 
 PYTHON_SCRIPT={{PYTHON_PATH}}
 INPUT_MANIFEST={{INPUT_MANIFEST}}
-RUCIO_DID={{RUCIO_DID}}
-RUCIO_RSE={{RUCIO_RSE}}
 OUTPUT_BASE={{OUTPUT_BASE}}
 JOBS_PER_NODE={{JOBS_PER_NODE}}
 PERLMUTTER_CPU_CORES={{PERLMUTTER_CPU_CORES}}
+OPEN_DATA_DATASET={{OPEN_DATA_DATASET}}
+OPEN_DATA_RELEASE={{OPEN_DATA_RELEASE}}
 
 needs_edit=0
 [[ "$PYTHON_SCRIPT" == *"<"* ]] && needs_edit=1
 [[ "$INPUT_MANIFEST" == *"<"* ]] && needs_edit=1
 [[ "$OUTPUT_BASE" == *"<"* ]] && needs_edit=1
-if [[ ! -f "$INPUT_MANIFEST" ]]; then
-    [[ "$RUCIO_DID" == *"<"* ]] && needs_edit=1
-    [[ "$RUCIO_RSE" == *"<"* ]] && needs_edit=1
-fi
 if (( needs_edit )); then
     echo "ERROR: edit account/output/input settings." >&2
     exit 2
 fi
 
-mkdir -p "$OUTPUT_BASE"
-mkdir -p "$(dirname "$INPUT_MANIFEST")"
-
-if [[ ! -f "$INPUT_MANIFEST" ]]; then
-    if ! command -v rucio >/dev/null 2>&1; then
-        echo "ERROR: rucio is needed for the manifest." >&2
-        exit 2
-    fi
-
-    echo "Input manifest not found; querying Rucio."
-    echo "Rucio DID:       $RUCIO_DID"
-    echo "Local RSE:       $RUCIO_RSE"
-    REPLICA_REPORT="$OUTPUT_BASE/repl-${SLURM_JOB_ID}.txt"
-    PFN_LIST="$OUTPUT_BASE/pfns-${SLURM_JOB_ID}.txt"
-
-    rucio list-dataset-replicas "$RUCIO_DID" \
-        | tee "$REPLICA_REPORT"
-    availability=$(awk -v rse="$RUCIO_RSE" -F'|' '
-        $2 ~ rse {
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
-            if ($2 == rse) {
-                found = $3 + 0
-                total = $4 + 0
-                print found "/" total
-            }
-        }
-    ' "$REPLICA_REPORT" | head -n 1)
-
-    if [[ -n "$availability" ]]; then
-        [[ "$availability" == */0 ]] && availability=""
-    fi
-    if [[ -n "$availability" ]]; then
-        found=${availability%%/*}
-        total=${availability##*/}
-        if [[ "$found" != "$total" ]]; then
-            echo "ERROR: only $availability at $RUCIO_RSE" >&2
-            exit 2
-        fi
-    fi
-
-    rucio list-file-replicas \
-        --rse "$RUCIO_RSE" \
-        --pfns \
-        "$RUCIO_DID" > "$PFN_LIST"
-
-    python - "$PFN_LIST" "$INPUT_MANIFEST" <<'PCDF_PFNS'
-from pathlib import Path
-from sys import argv
-from urllib.parse import unquote, urlparse
-
-pfns = Path(argv[1]).read_text().splitlines()
-paths = []
-for raw in pfns:
-    line = raw.strip()
-    if not line or line.startswith(("#", "-", "|")):
-        continue
-    if "://" not in line:
-        paths.append(line)
-        continue
-    parsed = urlparse(line)
-    if parsed.scheme == "file":
-        paths.append(unquote(parsed.path))
-    else:
-        paths.append(line)
-
-content = "\n".join(paths)
-if paths:
-    content += "\n"
-Path(argv[2]).write_text(content)
-PCDF_PFNS
+if [[ -n "${PCDF_ALLOW_COMPUTE_DOWNLOAD:-}" ]]; then
+    echo "WARNING: PCDF_ALLOW_COMPUTE_DOWNLOAD is ignored." >&2
 fi
 
+mkdir -p "$OUTPUT_BASE"
+
 if [[ ! -s "$INPUT_MANIFEST" ]]; then
-    echo "ERROR: no inputs in $INPUT_MANIFEST" >&2
+    echo "ERROR: missing or empty input manifest: $INPUT_MANIFEST" >&2
+    echo "Run ./download-atlas-opendata.sh on a Perlmutter DTN first." >&2
+    echo "Dataset: ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}" >&2
     exit 2
 fi
 
@@ -951,14 +920,12 @@ PCDF_DRIVER
 chmod +x "$DRIVER_SCRIPT"
 
 export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE
-export RUCIO_DID RUCIO_RSE
 export PAYLOAD_SCRIPT JOBS_PER_NODE CPUS_PER_CONVERSION
 
 echo "Running on ${SLURM_NNODES} node(s)"
 echo "Node list:      ${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
-echo "Rucio DID:       $RUCIO_DID"
-echo "Local RSE:       $RUCIO_RSE"
+echo "Open Data:      ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}"
 echo "Output base:    $OUTPUT_BASE"
 echo "Parallelism:    $JOBS_PER_NODE job(s)/node," \
      "$CPUS_PER_CONVERSION CPU(s) each"
@@ -971,6 +938,175 @@ srun \
     --wait=0 \
     "$DRIVER_SCRIPT"
 </script>
+  <script type="text/plain" id="template-transfer">
+#!/bin/bash
+# Download ATLAS Open Data files to scratch before submitting the SLURM job.
+# Run this script on a Perlmutter data transfer node, not inside SLURM.
+
+set -euo pipefail
+
+API_BASE={{OPEN_DATA_API_BASE}}
+OPEN_DATA_RELEASE={{OPEN_DATA_RELEASE}}
+OPEN_DATA_DATASET={{OPEN_DATA_DATASET}}
+OPEN_DATA_SKIM={{OPEN_DATA_SKIM}}
+DOWNLOAD_DIR={{OPEN_DATA_DOWNLOAD_DIR}}
+INPUT_MANIFEST={{INPUT_MANIFEST}}
+DTN_HOST_PATTERN={{OPEN_DATA_DTN_PATTERN}}
+EXPECTED_BYTES={{OPEN_DATA_EXPECTED_BYTES}}
+EXPECTED_FILES={{OPEN_DATA_EXPECTED_FILES}}
+EXPECTED_MBPS={{OPEN_DATA_EXPECTED_MBPS}}
+
+if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+    echo "ERROR: do not download data from a compute job." >&2
+    echo "Run this script on a Perlmutter data transfer node first." >&2
+    exit 2
+fi
+
+host_name=$(hostname -f 2>/dev/null || hostname)
+if [[ -n "$DTN_HOST_PATTERN" && "$host_name" != *"$DTN_HOST_PATTERN"* ]]; then
+    echo "ERROR: this host does not look like a DTN: $host_name" >&2
+    echo "Expected hostname text: $DTN_HOST_PATTERN" >&2
+    echo "Log in to a Perlmutter data transfer node and rerun this script." >&2
+    exit 2
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "ERROR: python3 is required on the DTN." >&2
+    exit 2
+fi
+if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required on the DTN." >&2
+    exit 2
+fi
+
+mkdir -p "$DOWNLOAD_DIR"
+mkdir -p "$(dirname "$INPUT_MANIFEST")"
+
+python3 - "$API_BASE" "$OPEN_DATA_RELEASE" "$OPEN_DATA_DATASET" \
+    "$OPEN_DATA_SKIM" "$DOWNLOAD_DIR" "$INPUT_MANIFEST" \
+    "$EXPECTED_BYTES" "$EXPECTED_FILES" "$EXPECTED_MBPS" <<'PCDF_OPENDATA'
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+(
+    api_base,
+    release,
+    dataset_key,
+    skim,
+    download_dir,
+    manifest_path,
+    expected_bytes,
+    expected_files,
+    expected_mbps,
+) = sys.argv[1:]
+
+api_base = api_base.rstrip("/")
+metadata_url = (
+    f"{api_base}/metadata/"
+    f"{urllib.parse.quote(release)}/"
+    f"{urllib.parse.quote(dataset_key)}"
+)
+
+
+def load_json(url):
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "pcdf-atlas-opendata-transfer/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def https_url(root_url):
+    if root_url.startswith("root://eospublic.cern.ch:1094/"):
+        return root_url.replace(
+            "root://eospublic.cern.ch:1094/",
+            "https://opendata.cern.ch",
+            1,
+        )
+    return root_url
+
+
+def select_file_list(metadata):
+    files = metadata.get("file_list") or []
+    available = {"noskim": files}
+    for skim_info in metadata.get("skims", []) or []:
+        available[skim_info.get("skim_type", "")] = skim_info.get("file_list") or []
+    if skim not in available or not available[skim]:
+        choices = ", ".join(sorted(k for k, v in available.items() if v))
+        raise SystemExit(f"Skim '{skim}' has no files. Available: {choices}")
+    return [https_url(url) for url in available[skim]]
+
+
+def safe_name(url):
+    parsed = urllib.parse.urlparse(url)
+    name = os.path.basename(urllib.parse.unquote(parsed.path))
+    if not name:
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "_", url)[-96:]
+    return name
+
+
+def file_size(path):
+    try:
+        return Path(path).stat().st_size
+    except OSError:
+        return 0
+
+
+metadata = load_json(metadata_url)
+urls = select_file_list(metadata)
+if not urls:
+    raise SystemExit(f"No files found for {release}/{dataset_key} skim {skim}")
+
+print(f"Dataset: {release}/{dataset_key} skim={skim}")
+print(f"Files:   {len(urls)}")
+if expected_bytes.isdigit() and int(expected_bytes) > 0:
+    gb = int(expected_bytes) / 1000**3
+    print(f"Expected size from preview: {gb:.2f} GB")
+if expected_mbps.isdigit() and int(expected_mbps) > 0:
+    print(f"Expected throughput setting: {expected_mbps} MB/s")
+
+Path(download_dir).mkdir(parents=True, exist_ok=True)
+local_paths = []
+for index, url in enumerate(urls, start=1):
+    target = Path(download_dir) / safe_name(url)
+    print(f"[{index}/{len(urls)}] {target.name}")
+    subprocess.run(
+        [
+            "curl",
+            "--fail",
+            "--location",
+            "--continue-at",
+            "-",
+            "--retry",
+            "5",
+            "--retry-delay",
+            "10",
+            "--output",
+            str(target),
+            url,
+        ],
+        check=True,
+    )
+    local_paths.append(str(target.resolve()))
+
+manifest = Path(manifest_path)
+manifest.write_text("\n".join(local_paths) + "\n")
+actual_bytes = sum(file_size(path) for path in local_paths)
+print(f"Wrote manifest: {manifest}")
+print(f"Downloaded bytes: {actual_bytes}")
+if expected_bytes.isdigit() and int(expected_bytes) > 0:
+    diff = abs(actual_bytes - int(expected_bytes))
+    if diff > max(1_000_000, int(expected_bytes) * 0.05):
+        print("WARNING: downloaded size differs from browser preview.")
+PCDF_OPENDATA
+</script>
   <script type="text/plain" id="template-readme">
 PCDF ntuple bundle
 ===================
@@ -978,7 +1114,7 @@ PCDF ntuple bundle
 Files
 -----
 - {{PYTHON_NAME}}: executable generated converter.
-{{SLURM_FILE_LINE}}- README_SUBMIT.md: these instructions.
+{{TRANSFER_FILE_LINE}}{{SLURM_FILE_LINE}}- README_SUBMIT.md: these instructions.
 
 Local run
 ---------

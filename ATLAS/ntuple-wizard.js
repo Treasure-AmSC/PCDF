@@ -14,8 +14,14 @@
         time: "02:00:00",
         pythonPath: "ntuple-maker.py",
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
-        rucioDid: "<scope:name>",
-        rucioRse: "<LOCAL_RSE>",
+        openDataApiBase: "https://atlasopenmagic-api.app.cern.ch",
+        openDataRelease: "2024r-pp",
+        openDataDataset: "301204",
+        openDataSkim: "noskim",
+        openDataDownloadDir: "$SCRATCH/pcdf-opendata",
+        openDataDtnPattern: "dtn",
+        openDataMbps: 250,
+        openDataPreview: null,
         outputBase: "$SCRATCH/pcdf-output"
       }
     };
@@ -26,11 +32,14 @@
     const scriptHighlight = document.getElementById("scriptHighlight").querySelector("code");
     const slurmScriptOutput = document.getElementById("slurmScriptOutput");
     const slurmScriptHighlight = document.getElementById("slurmScriptHighlight").querySelector("code");
+    const transferScriptOutput = document.getElementById("transferScriptOutput");
+    const openDataPreview = document.getElementById("openDataPreview");
     const summary = document.getElementById("summary");
 
     const TEMPLATE_IDS = {
       python: "template-python",
       slurm: "template-slurm",
+      transfer: "template-transfer",
       readme: "template-readme",
     };
 
@@ -80,8 +89,13 @@
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
-      state.slurm.rucioDid = fieldValue("slurmRucioDid") || "<scope:name>";
-      state.slurm.rucioRse = fieldValue("slurmRucioRse") || "<LOCAL_RSE>";
+      state.slurm.openDataApiBase = fieldValue("openDataApiBase") || "https://atlasopenmagic-api.app.cern.ch";
+      state.slurm.openDataRelease = fieldValue("openDataRelease") || "2024r-pp";
+      state.slurm.openDataDataset = fieldValue("openDataDataset") || "301204";
+      state.slurm.openDataSkim = fieldValue("openDataSkim") || "noskim";
+      state.slurm.openDataDownloadDir = fieldValue("openDataDownloadDir") || "$SCRATCH/pcdf-opendata";
+      state.slurm.openDataDtnPattern = fieldValue("openDataDtnPattern") || "dtn";
+      state.slurm.openDataMbps = numericFieldValue("openDataMbps", 250);
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
     }
 
@@ -298,6 +312,108 @@
       return highlighted;
     }
 
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes <= 0) return "unknown size";
+      const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+      let value = bytes;
+      let unit = 0;
+      while (value >= 1000 && unit < units.length - 1) {
+        value /= 1000;
+        unit += 1;
+      }
+      return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+    }
+
+    function formatDuration(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) return "unknown";
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = Math.round(seconds % 60);
+      if (hours) return `${hours} h ${minutes} min`;
+      if (minutes) return `${minutes} min ${secs} s`;
+      return `${secs} s`;
+    }
+
+    function applyHttpsProtocol(url) {
+      return String(url).replace(
+        "root://eospublic.cern.ch:1094/",
+        "https://opendata.cern.ch"
+      );
+    }
+
+    function availableFileLists(metadata) {
+      const lists = new Map();
+      if (Array.isArray(metadata.file_list) && metadata.file_list.length) {
+        lists.set("noskim", metadata.file_list);
+      }
+      (metadata.skims || []).forEach((skim) => {
+        if (skim.skim_type && Array.isArray(skim.file_list) && skim.file_list.length) {
+          lists.set(skim.skim_type, skim.file_list);
+        }
+      });
+      return lists;
+    }
+
+    async function headContentLength(url) {
+      try {
+        const response = await fetch(url, { method: "HEAD" });
+        if (!response.ok) return 0;
+        return Number.parseInt(response.headers.get("content-length") || "0", 10) || 0;
+      } catch (error) {
+        return 0;
+      }
+    }
+
+    async function lookupOpenDataPreview() {
+      syncSlurmSettings();
+      const slurm = state.slurm;
+      openDataPreview.className = "alert alert-info open-data-preview mt-3 mb-0";
+      openDataPreview.textContent = "Querying ATLAS Open Data metadata and probing file sizes…";
+      const metadataUrl = `${slurm.openDataApiBase.replace(/\/$/, "")}/metadata/` +
+        `${encodeURIComponent(slurm.openDataRelease)}/${encodeURIComponent(slurm.openDataDataset)}`;
+      try {
+        const response = await fetch(metadataUrl, { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error(`API returned HTTP ${response.status}`);
+        const metadata = await response.json();
+        const lists = availableFileLists(metadata);
+        const files = lists.get(slurm.openDataSkim);
+        if (!files || !files.length) {
+          const choices = Array.from(lists.keys()).sort().join(", ") || "none";
+          throw new Error(`Skim '${slurm.openDataSkim}' has no files. Available: ${choices}.`);
+        }
+        const urls = files.map(applyHttpsProtocol);
+        const headSample = urls.slice(0, Math.min(urls.length, 8));
+        const sizes = await Promise.all(headSample.map(headContentLength));
+        const sizedFiles = sizes.filter(Boolean).length;
+        const knownBytes = sizes.reduce((sum, value) => sum + value, 0);
+        const avgBytes = sizedFiles ? knownBytes / sizedFiles : 0;
+        const estimatedBytes = avgBytes ? Math.round(avgBytes * urls.length) : 0;
+        const seconds = estimatedBytes / (Math.max(slurm.openDataMbps, 1) * 1000 * 1000);
+        state.slurm.openDataPreview = {
+          files: urls.length,
+          bytes: estimatedBytes,
+          sizedFiles,
+          seconds,
+        };
+        openDataPreview.className = "alert alert-success open-data-preview mt-3 mb-0";
+        openDataPreview.innerHTML = `
+          <strong>${escapeHtml(slurm.openDataRelease)}/${escapeHtml(slurm.openDataDataset)}</strong>
+          (${escapeHtml(slurm.openDataSkim)}) has ${urls.length} file(s).<br>
+          Estimated download: ${formatBytes(estimatedBytes)} from ${sizedFiles}
+          sampled HEAD response(s).<br>
+          At ${slurm.openDataMbps} MB/s, transfer time is about ${formatDuration(seconds)}.
+          Actual DTN throughput and scratch I/O can differ.
+        `;
+        updateGeneratedScript();
+      } catch (error) {
+        state.slurm.openDataPreview = null;
+        openDataPreview.className = "alert alert-warning open-data-preview mt-3 mb-0";
+        openDataPreview.textContent = `Preview unavailable: ${error.message}. ` +
+          "The DTN transfer script will perform the same API lookup before downloading.";
+        updateGeneratedScript();
+      }
+    }
+
     function selectedConfig() {
       const objects = Object.fromEntries(Object.entries(OBJECTS)
         .filter(([key]) => state.selectedObjects.has(key) && isObjectAvailable(key))
@@ -359,6 +475,32 @@
       });
     }
 
+    function openDataExpectedBytes() {
+      return state.slurm.openDataPreview?.bytes || 0;
+    }
+
+    function openDataExpectedFiles() {
+      return state.slurm.openDataPreview?.files || 0;
+    }
+
+    function commonBatchValues() {
+      const slurm = state.slurm;
+      return {
+        PYTHON_PATH: JSON.stringify(slurm.pythonPath),
+        INPUT_MANIFEST: JSON.stringify(slurm.inputManifest),
+        OUTPUT_BASE: JSON.stringify(slurm.outputBase),
+        OPEN_DATA_API_BASE: JSON.stringify(slurm.openDataApiBase),
+        OPEN_DATA_RELEASE: JSON.stringify(slurm.openDataRelease),
+        OPEN_DATA_DATASET: JSON.stringify(slurm.openDataDataset),
+        OPEN_DATA_SKIM: JSON.stringify(slurm.openDataSkim),
+        OPEN_DATA_DOWNLOAD_DIR: JSON.stringify(slurm.openDataDownloadDir),
+        OPEN_DATA_DTN_PATTERN: JSON.stringify(slurm.openDataDtnPattern),
+        OPEN_DATA_EXPECTED_BYTES: openDataExpectedBytes(),
+        OPEN_DATA_EXPECTED_FILES: openDataExpectedFiles(),
+        OPEN_DATA_EXPECTED_MBPS: slurm.openDataMbps,
+      };
+    }
+
     function buildSlurmScript() {
       const slurm = state.slurm;
       const accountLine = slurm.account
@@ -366,18 +508,18 @@
         : "#SBATCH --account=<NERSC_PROJECT>";
       const perlmutterCpuCores = 128;
       return applyTemplate(requireTemplate("slurm"), {
+        ...commonBatchValues(),
         ACCOUNT_LINE: accountLine,
         QOS: slurm.qos,
         NODES: slurm.nodes,
         PERLMUTTER_CPU_CORES: perlmutterCpuCores,
         TIME: slurm.time,
-        PYTHON_PATH: JSON.stringify(slurm.pythonPath),
-        INPUT_MANIFEST: JSON.stringify(slurm.inputManifest),
-        RUCIO_DID: JSON.stringify(slurm.rucioDid),
-        RUCIO_RSE: JSON.stringify(slurm.rucioRse),
-        OUTPUT_BASE: JSON.stringify(slurm.outputBase),
         JOBS_PER_NODE: slurm.jobsPerNode,
       });
+    }
+
+    function buildTransferScript() {
+      return applyTemplate(requireTemplate("transfer"), commonBatchValues());
     }
 
     function updateGeneratedScript() {
@@ -386,9 +528,11 @@
       const config = selectedConfig();
       const generatedScript = buildScript();
       const slurmScript = buildSlurmScript();
+      const transferScript = buildTransferScript();
       scriptOutput.value = generatedScript;
       scriptHighlight.innerHTML = highlightPython(generatedScript);
       slurmScriptOutput.value = slurmScript;
+      transferScriptOutput.value = transferScript;
       slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM wrapper disabled.";
       document.getElementById("downloadSlurmScript").disabled = !state.slurm.enabled;
       summary.innerHTML = `
@@ -403,6 +547,10 @@
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">SLURM</h3>
           <p class="mb-0">${state.slurm.enabled ? `Perlmutter CPU job, ${state.slurm.nodes} node(s), ${state.slurm.jobsPerNode} conversion(s)/node, ${Math.floor(128 / state.slurm.jobsPerNode)} CPU(s)/conversion` : "Disabled"}</p>
+        </div></div>
+        <div class="card border-secondary-subtle"><div class="card-body">
+          <h3 class="h6 text-uppercase text-secondary">Open Data transfer</h3>
+          <p class="mb-0">${state.slurm.openDataRelease}/${state.slurm.openDataDataset} (${state.slurm.openDataSkim}) to ${state.slurm.openDataDownloadDir}. ${state.slurm.openDataPreview ? `${formatBytes(state.slurm.openDataPreview.bytes)} estimated.` : "Preview not run."}</p>
         </div></div>`;
     }
 
@@ -451,6 +599,8 @@
       input.addEventListener("input", updateGeneratedScript);
       input.addEventListener("change", updateGeneratedScript);
     });
+
+    document.getElementById("previewOpenData").addEventListener("click", lookupOpenDataPreview);
 
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
     document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 3 ? 3 : state.step + 1));
@@ -505,12 +655,14 @@ Perlmutter run
 --------------
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
-   The bundled Python and SLURM scripts are marked executable.
-2. Either create a manifest with one DAOD path/PFN per line, or set RUCIO_DID
-   and RUCIO_RSE for the dataset and local RSE used by your Rucio rule. If
-   INPUT_MANIFEST is missing, the wrapper asks Rucio for local PFNs and creates
-   the manifest from those replicas.
-3. Edit submit-pcdf-ntuple.slurm if needed: account, manifest/Rucio DID/RSE, output base, nodes, and conversions per node. The CPUs per conversion are derived from the fixed 128 CPU cores available on each Perlmutter CPU node.
+   The Python, DTN transfer, and SLURM scripts are marked executable.
+2. From a Perlmutter data transfer node, download the Open Data files to
+   scratch and write the input manifest:
+   ./download-atlas-opendata.sh
+3. Return to a login node and edit submit-pcdf-ntuple.slurm if needed:
+   account, manifest, output base, nodes, and conversions per node. The CPUs
+   per conversion are derived from the fixed 128 CPU cores available on each
+   Perlmutter CPU node.
 4. Submit:
    sbatch submit-pcdf-ntuple.slurm
 5. Monitor:
@@ -518,12 +670,13 @@ Perlmutter run
 ` : `
 Perlmutter run
 --------------
-SLURM generation was disabled in the wizard, so this bundle contains only the
-Python converter and this README. Re-enable SLURM in the wizard if you want a
-Perlmutter submission wrapper.
+SLURM generation was disabled in the wizard, so this bundle contains the
+Python converter, DTN transfer helper, and this README. Re-enable SLURM in the
+wizard if you want a Perlmutter submission wrapper.
 `;
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
+        TRANSFER_FILE_LINE: "- download-atlas-opendata.sh: executable DTN-only Open Data download helper.\n",
         SLURM_FILE_LINE: state.slurm.enabled
           ? "- submit-pcdf-ntuple.slurm: executable NERSC Perlmutter CPU/SLURM wrapper.\n"
           : "",
@@ -545,6 +698,11 @@ Perlmutter submission wrapper.
       downloadBlob(blob, `ntuple-maker-${state.inputFormat.toLowerCase()}.py`);
     });
 
+    document.getElementById("downloadTransferScript").addEventListener("click", () => {
+      const blob = new Blob([transferScriptOutput.value], { type: "text/x-shellscript" });
+      downloadBlob(blob, "download-atlas-opendata.sh");
+    });
+
     document.getElementById("downloadSlurmScript").addEventListener("click", () => {
       const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
       downloadBlob(blob, "submit-pcdf-ntuple.slurm");
@@ -554,6 +712,7 @@ Perlmutter submission wrapper.
       const pythonName = `ntuple-maker-${state.inputFormat.toLowerCase()}.py`;
       const files = [
         { name: pythonName, content: scriptOutput.value, mode: 0o755 },
+        { name: "download-atlas-opendata.sh", content: transferScriptOutput.value, mode: 0o755 },
       ];
       if (state.slurm.enabled) {
         files.push({
