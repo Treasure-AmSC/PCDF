@@ -40,6 +40,7 @@
     const slurmScriptHighlight = document.getElementById("slurmScriptHighlight").querySelector("code");
     const transferScriptOutput = document.getElementById("transferScriptOutput");
     const openDataPreview = document.getElementById("openDataPreview");
+    const openDataResults = document.getElementById("openDataResults");
     const openDataDatasetOptions = document.getElementById("openDataDatasetOptions");
     const summary = document.getElementById("summary");
 
@@ -277,7 +278,7 @@
     }
 
     function setStep(step) {
-      state.step = Math.max(0, Math.min(3, step));
+      state.step = Math.max(0, Math.min(5, step));
       document.querySelectorAll(".wizard-step").forEach((section) => {
         section.classList.toggle("d-none", Number(section.dataset.step) !== state.step);
       });
@@ -285,8 +286,8 @@
         button.classList.toggle("active", Number(button.dataset.stepTarget) === state.step);
       });
       document.getElementById("prevStep").disabled = state.step === 0;
-      document.getElementById("nextStep").textContent = state.step === 3 ? "Regenerate" : "Next";
-      if (state.step === 3) updateGeneratedScript();
+      document.getElementById("nextStep").textContent = state.step === 5 ? "Regenerate" : "Next";
+      if (state.step === 5) updateGeneratedScript();
     }
 
     function selectedVariables(key) {
@@ -455,14 +456,28 @@
         const label = [dataset.dataset_number, dataset.physics_short].filter(Boolean).join(" — ");
         return `<option value="${escapeHtml(String(dataset.dataset_number || dataset.physics_short))}">${escapeHtml(label)}</option>`;
       }).join("");
-      if (!matches.length) return "No matching 2024r-pp PHYSLITE research datasets found.";
-      const rows = matches.slice(0, 8).map((dataset) => {
+      if (!matches.length) {
+        return '<div class="col-12"><div class="alert alert-warning mb-0">No matching 2024r-pp PHYSLITE research datasets found.</div></div>';
+      }
+      return matches.slice(0, 12).map((dataset) => {
         const key = String(dataset.dataset_number || dataset.physics_short);
         const title = escapeHtml(dataset.physics_short || dataset.process || key);
         const desc = escapeHtml(dataset.process || dataset.description || "research PHYSLITE dataset");
-        return `<li><button class="btn btn-sm btn-outline-light open-data-choice" type="button" data-dataset="${escapeHtml(key)}">Use ${escapeHtml(key)}</button> <strong>${title}</strong><span class="d-block small text-secondary">${desc}</span></li>`;
+        const fileCount = availableFileLists(dataset).get(OPEN_DATA_SKIM)?.length || 0;
+        return `
+          <div class="col-md-6">
+            <article class="card h-100 border-secondary-subtle">
+              <div class="card-body">
+                <div class="d-flex justify-content-between gap-2 mb-2">
+                  <strong>${title}</strong>
+                  <span class="badge text-bg-info">${fileCount} file${fileCount === 1 ? "" : "s"}</span>
+                </div>
+                <p class="small text-secondary mb-3">${desc}</p>
+                <button class="btn btn-sm btn-outline-light open-data-choice" type="button" data-dataset="${escapeHtml(key)}">Use ${escapeHtml(key)}</button>
+              </div>
+            </article>
+          </div>`;
       }).join("");
-      return `<p class="mb-2">Found ${matches.length} matching 2024r-pp research PHYSLITE dataset(s). Showing the first ${Math.min(matches.length, 8)}:</p><ol class="mb-0 ps-3">${rows}</ol>`;
     }
 
     async function previewSelectedOpenDataDataset(dataset) {
@@ -493,8 +508,9 @@
     async function lookupOpenDataPreview() {
       syncSlurmSettings();
       const slurm = state.slurm;
-      openDataPreview.className = "alert alert-info open-data-preview mt-3 mb-0";
+      openDataPreview.className = "alert alert-info open-data-preview mb-3";
       openDataPreview.textContent = "Searching 2024r-pp research PHYSLITE datasets…";
+      openDataResults.innerHTML = '<div class="col-12"><div class="card border-secondary-subtle"><div class="card-body">Loading release metadata with AJAX…</div></div></div>';
       try {
         const query = slurm.openDataQuery;
         const datasets = await fetchResearchDatasets();
@@ -505,17 +521,16 @@
         state.slurm.openDataDataset = String(selected.dataset_number || selected.physics_short);
         document.getElementById("openDataDataset").value = state.slurm.openDataDataset;
         const preview = await previewSelectedOpenDataDataset(selected);
-        openDataPreview.className = "alert alert-success open-data-preview mt-3 mb-0";
+        openDataPreview.className = "alert alert-success open-data-preview mb-3";
         openDataPreview.innerHTML = `
           <strong>${escapeHtml(slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)}</strong>
           (${escapeHtml(slurm.openDataSkim)}) has ${preview.files} file(s).<br>
           Estimated download: ${formatBytes(preview.estimatedBytes)} from ${preview.sizedFiles}
-          sampled HEAD response(s).<br>
-          At ${slurm.openDataMbps} MB/s, transfer time is about ${formatDuration(preview.seconds)}.
-          Actual DTN throughput and scratch I/O can differ.
-          <hr class="my-2">${renderDatasetMatches(matches)}
+          sampled HEAD response(s). At ${slurm.openDataMbps} MB/s, transfer time is about
+          ${formatDuration(preview.seconds)}. Actual DTN throughput and scratch I/O can differ.
         `;
-        openDataPreview.querySelectorAll(".open-data-choice").forEach((button) => {
+        openDataResults.innerHTML = renderDatasetMatches(matches);
+        openDataResults.querySelectorAll(".open-data-choice").forEach((button) => {
           button.addEventListener("click", () => {
             document.getElementById("openDataDataset").value = button.dataset.dataset;
             state.slurm.openDataDataset = button.dataset.dataset;
@@ -525,9 +540,10 @@
         updateGeneratedScript();
       } catch (error) {
         state.slurm.openDataPreview = null;
-        openDataPreview.className = "alert alert-warning open-data-preview mt-3 mb-0";
+        openDataPreview.className = "alert alert-warning open-data-preview mb-3";
         openDataPreview.textContent = `Preview unavailable: ${error.message}. ` +
           "The DTN transfer script will perform the same API lookup before downloading.";
+        openDataResults.innerHTML = "";
         updateGeneratedScript();
       }
     }
@@ -722,7 +738,7 @@
     document.getElementById("previewOpenData").addEventListener("click", lookupOpenDataPreview);
 
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
-    document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 3 ? 3 : state.step + 1));
+    document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 5 ? 5 : state.step + 1));
     document.querySelectorAll("[data-step-target]").forEach((button) => {
       button.addEventListener("click", () => setStep(Number(button.dataset.stepTarget)));
     });

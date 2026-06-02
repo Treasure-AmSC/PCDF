@@ -24,7 +24,9 @@
             <button class="btn step-pill active flex-fill" type="button" data-step-target="0">1. Input format</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="1">2. Objects</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="2">3. Variables</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="3">4. Generate</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="3">4. Open Data</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="4">5. SLURM</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="5">6. Generate</button>
           </div>
 
           <form id="wizardForm">
@@ -93,98 +95,115 @@
             </section>
 
             <section class="wizard-step d-none" data-step="3">
-              <div class="row g-4 generate-grid">
-                <div class="col-xl-5 summary-column">
-                  <h2 class="h4 generate-heading">Review configuration</h2>
-                  <div id="summary" class="vstack gap-3 mb-4"></div>
-
-                  <div class="card border-secondary-subtle mb-4 slurm-settings">
+              <div class="row g-4 align-items-stretch">
+                <div class="col-lg-5">
+                  <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
-                      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
-                        <div>
-                          <h3 class="h5 mb-1">SLURM / NERSC Perlmutter</h3>
-                          <p class="text-secondary mb-0">Generate an <code>sbatch</code> wrapper for the Python converter.</p>
-                        </div>
-                        <div class="form-check form-switch">
-                          <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
-                          <label class="form-check-label" for="enableSlurm">On</label>
-                        </div>
-                      </div>
+                      <h2 class="h4 card-title">Open Data lookup</h2>
+                      <p class="text-secondary">Search ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release. The lookup uses AJAX against the public atlasopenmagic release metadata and estimates transfer size before any Perlmutter job is submitted.</p>
+                      <div class="alert alert-secondary py-2 mb-4">Only the dataset choice, transfer-speed estimate, and scratch staging directory are user configurable; API details are fixed for public deployment.</div>
                       <div class="row g-3">
-                        <div class="col-md-6">
-                          <label class="form-label" for="slurmAccount">NERSC project account</label>
-                          <input class="form-control slurm-input" id="slurmAccount" value="&lt;NERSC_PROJECT&gt;">
-                        </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="slurmQos">QOS</label>
-                          <input class="form-control slurm-input" id="slurmQos" value="regular">
-                        </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="slurmNodes">CPU nodes</label>
-                          <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1">
-                        </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="slurmJobsPerNode">Conversions per node</label>
-                          <input class="form-control slurm-input" id="slurmJobsPerNode" type="number" min="1" max="128" value="8">
-                          <div class="form-text text-secondary">CPUs per conversion are computed from Perlmutter's 128 CPU cores per CPU node.</div>
-                        </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="slurmTime">Wall time</label>
-                          <input class="form-control slurm-input" id="slurmTime" value="02:00:00">
-                        </div>
                         <div class="col-12">
-                          <label class="form-label" for="slurmPythonPath">Python script path on Perlmutter</label>
-                          <input class="form-control slurm-input" id="slurmPythonPath" value="ntuple-maker.py">
-                        </div>
-                        <div class="col-12">
-                          <label class="form-label" for="slurmInputManifest">Input manifest path</label>
-                          <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
-                          <div class="form-text text-secondary">One local DAOD path per non-empty line. The Open Data transfer script writes this manifest before the compute job starts.</div>
-                        </div>
-                        <div class="col-12">
-                          <h3 class="h6 text-uppercase text-secondary mt-2">ATLAS Open Data lookup and DTN transfer</h3>
-                        </div>
-                        <div class="col-12">
-                          <div class="alert alert-secondary mb-0 py-2">
-                            Searches ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release using the public atlasopenmagic release API.
-                          </div>
-                        </div>
-                        <div class="col-md-6">
                           <label class="form-label" for="openDataQuery">Dataset search</label>
                           <input class="form-control slurm-input" id="openDataQuery" placeholder="Search all, or enter e.g. data, ttbar, Higgs, 601" list="openDataDatasetOptions">
                           <datalist id="openDataDatasetOptions"></datalist>
-                          <div class="form-text text-secondary">Search DSID, physics short name, process, description, or keywords from the atlasopenmagic <code>/releases/2024r-pp</code> metadata.</div>
+                          <div class="form-text text-secondary">Search DSID, physics short name, process, description, or keywords.</div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-12">
                           <label class="form-label" for="openDataDataset">Selected dataset ID or physics short name</label>
                           <input class="form-control slurm-input" id="openDataDataset" value="data">
-                          <div class="form-text text-secondary">The selected dataset is previewed from release metadata and downloaded as HTTPS files.</div>
+                          <div class="form-text text-secondary">Click a search result to update this value, or enter a known dataset manually.</div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-5">
                           <label class="form-label" for="openDataMbps">Expected DTN throughput</label>
                           <div class="input-group">
                             <input class="form-control slurm-input" id="openDataMbps" type="number" min="1" value="250">
                             <span class="input-group-text">MB/s</span>
                           </div>
                         </div>
-                        <div class="col-md-9">
+                        <div class="col-md-7">
                           <label class="form-label" for="openDataDownloadDir">Scratch download directory</label>
                           <input class="form-control slurm-input" id="openDataDownloadDir" value="$SCRATCH/pcdf-opendata">
                         </div>
                         <div class="col-12">
-                          <button class="btn btn-outline-light" type="button" id="previewOpenData">Search and preview Open Data</button>
-                          <div id="openDataPreview" class="alert alert-secondary open-data-preview mt-3 mb-0" role="status">
-                            Search research PHYSLITE datasets, pick a match, and preview file count, bytes, and transfer time.
-                          </div>
-                        </div>
-                        <div class="col-12">
-                          <label class="form-label" for="slurmOutputBase">Output base directory</label>
-                          <input class="form-control slurm-input" id="slurmOutputBase" value="$SCRATCH/pcdf-output">
+                          <button class="btn btn-primary" type="button" id="previewOpenData">Search and preview Open Data</button>
                         </div>
                       </div>
                     </div>
                   </div>
+                </div>
+                <div class="col-lg-7">
+                  <div class="card h-100 border-secondary-subtle">
+                    <div class="card-body">
+                      <h2 class="h4 card-title">Search results and download estimate</h2>
+                      <div id="openDataPreview" class="alert alert-secondary open-data-preview mb-3" role="status">
+                        Search research PHYSLITE datasets, pick a match, and preview file count, bytes, and transfer time.
+                      </div>
+                      <div id="openDataResults" class="row g-3"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
 
+            <section class="wizard-step d-none" data-step="4">
+              <div class="card border-secondary-subtle slurm-settings">
+                <div class="card-body">
+                  <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                    <div>
+                      <h2 class="h4 mb-1">SLURM / NERSC Perlmutter</h2>
+                      <p class="text-secondary mb-0">Generate a CPU-only <code>sbatch</code> wrapper for the Python converter. Input files must already be staged by the DTN transfer helper.</p>
+                    </div>
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
+                      <label class="form-check-label" for="enableSlurm">On</label>
+                    </div>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label class="form-label" for="slurmAccount">NERSC project account</label>
+                      <input class="form-control slurm-input" id="slurmAccount" value="&lt;NERSC_PROJECT&gt;">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="slurmQos">QOS</label>
+                      <input class="form-control slurm-input" id="slurmQos" value="regular">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="slurmNodes">CPU nodes</label>
+                      <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="slurmJobsPerNode">Conversions per node</label>
+                      <input class="form-control slurm-input" id="slurmJobsPerNode" type="number" min="1" max="128" value="8">
+                      <div class="form-text text-secondary">CPUs per conversion are computed from Perlmutter's 128 CPU cores per CPU node.</div>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="slurmTime">Wall time</label>
+                      <input class="form-control slurm-input" id="slurmTime" value="02:00:00">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="slurmOutputBase">Output base directory</label>
+                      <input class="form-control slurm-input" id="slurmOutputBase" value="$SCRATCH/pcdf-output">
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="slurmPythonPath">Python script path on Perlmutter</label>
+                      <input class="form-control slurm-input" id="slurmPythonPath" value="ntuple-maker.py">
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="slurmInputManifest">Input manifest path</label>
+                      <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
+                      <div class="form-text text-secondary">One local DAOD path per non-empty line. The Open Data transfer script writes this manifest before the compute job starts.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="wizard-step d-none" data-step="5">
+              <div class="row g-4 generate-grid">
+                <div class="col-xl-5 summary-column">
+                  <h2 class="h4 generate-heading">Review configuration</h2>
+                  <div id="summary" class="vstack gap-3 mb-4"></div>
                   <div class="action-bar">
                     <button class="btn btn-outline-light" type="button" id="downloadScript">Download Python</button>
                     <button class="btn btn-outline-light" type="button" id="downloadTransferScript">Download DTN transfer</button>
@@ -194,7 +213,7 @@
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">Local run: <code>uv run ntuple-maker.py input.pool.root -o parquet-output</code>.</p>
                     <ol class="submission-steps mb-0 ps-3">
-                      <li>Preview the Open Data dataset so you know how many files and approximate bytes will be copied.</li>
+                      <li>Use the Open Data page to preview how many files and approximate bytes will be copied.</li>
                       <li>Download the tar bundle, copy it to Perlmutter, and extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
                       <li>Log in to a Perlmutter data transfer node and run <code>./download-atlas-opendata.sh</code>; it downloads to scratch and writes the manifest.</li>
                       <li>Return to a login node, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
