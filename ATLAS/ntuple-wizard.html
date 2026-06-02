@@ -144,19 +144,10 @@
                         <div class="col-12">
                           <h3 class="h6 text-uppercase text-secondary mt-2">ATLAS Open Data lookup and DTN transfer</h3>
                         </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="openDataApiBase">Open Data API base URL</label>
-                          <input class="form-control slurm-input" id="openDataApiBase" value="https://atlasopenmagic-api.app.cern.ch">
-                        </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="openDataProxyBase">Browser preview CORS proxy</label>
-                          <input class="form-control slurm-input" id="openDataProxyBase" value="https://api.allorigins.win/raw?url=">
-                          <div class="form-text text-secondary">Used only if the browser blocks direct API preview requests; generated DTN downloads do not use this proxy.</div>
-                        </div>
-                        <div class="col-md-6">
-                          <label class="form-label" for="openDataRelease">Open Data release</label>
-                          <input class="form-control slurm-input" id="openDataRelease" value="2024r-pp" readonly>
-                          <div class="form-text text-secondary">This wizard searches research PHYSLITE datasets from the 2024 proton-proton release only.</div>
+                        <div class="col-12">
+                          <div class="alert alert-secondary mb-0 py-2">
+                            Searches ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release using the public atlasopenmagic API.
+                          </div>
                         </div>
                         <div class="col-md-6">
                           <label class="form-label" for="openDataQuery">Dataset search</label>
@@ -170,23 +161,15 @@
                           <div class="form-text text-secondary">The selected dataset is previewed with <code>/metadata/&lt;release&gt;/&lt;dataset&gt;</code> and downloaded as HTTPS files.</div>
                         </div>
                         <div class="col-md-3">
-                          <label class="form-label" for="openDataSkim">Skim</label>
-                          <input class="form-control slurm-input" id="openDataSkim" value="noskim">
-                        </div>
-                        <div class="col-md-3">
                           <label class="form-label" for="openDataMbps">Expected DTN throughput</label>
                           <div class="input-group">
                             <input class="form-control slurm-input" id="openDataMbps" type="number" min="1" value="250">
                             <span class="input-group-text">MB/s</span>
                           </div>
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-md-9">
                           <label class="form-label" for="openDataDownloadDir">Scratch download directory</label>
                           <input class="form-control slurm-input" id="openDataDownloadDir" value="$SCRATCH/pcdf-opendata">
-                        </div>
-                        <div class="col-md-4">
-                          <label class="form-label" for="openDataDtnPattern">Required DTN hostname text</label>
-                          <input class="form-control slurm-input" id="openDataDtnPattern" value="dtn">
                         </div>
                         <div class="col-12">
                           <button class="btn btn-outline-light" type="button" id="previewOpenData">Search and preview Open Data</button>

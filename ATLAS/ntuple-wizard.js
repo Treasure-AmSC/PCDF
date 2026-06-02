@@ -1,5 +1,11 @@
     const OBJECTS = JSON.parse(document.getElementById("object-config").textContent);
 
+    const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
+    const OPEN_DATA_PREVIEW_PROXY = "https://api.allorigins.win/raw?url=";
+    const OPEN_DATA_RELEASE = "2024r-pp";
+    const OPEN_DATA_SKIM = "noskim";
+    const OPEN_DATA_DTN_PATTERN = "dtn";
+
     const state = {
       step: 0,
       inputFormat: "TREASURE",
@@ -14,14 +20,12 @@
         time: "02:00:00",
         pythonPath: "ntuple-maker.py",
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
-        openDataApiBase: "https://atlasopenmagic-api.app.cern.ch",
-        openDataProxyBase: "https://api.allorigins.win/raw?url=",
-        openDataRelease: "2024r-pp",
+        openDataRelease: OPEN_DATA_RELEASE,
         openDataQuery: "",
         openDataDataset: "data",
-        openDataSkim: "noskim",
+        openDataSkim: OPEN_DATA_SKIM,
         openDataDownloadDir: "$SCRATCH/pcdf-opendata",
-        openDataDtnPattern: "dtn",
+        openDataDtnPattern: OPEN_DATA_DTN_PATTERN,
         openDataMbps: 250,
         openDataPreview: null,
         outputBase: "$SCRATCH/pcdf-output"
@@ -92,14 +96,12 @@
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
-      state.slurm.openDataApiBase = fieldValue("openDataApiBase") || "https://atlasopenmagic-api.app.cern.ch";
-      state.slurm.openDataProxyBase = fieldValue("openDataProxyBase");
-      state.slurm.openDataRelease = fieldValue("openDataRelease") || "2024r-pp";
+      state.slurm.openDataRelease = OPEN_DATA_RELEASE;
       state.slurm.openDataQuery = fieldValue("openDataQuery");
       state.slurm.openDataDataset = fieldValue("openDataDataset") || "data";
-      state.slurm.openDataSkim = fieldValue("openDataSkim") || "noskim";
+      state.slurm.openDataSkim = OPEN_DATA_SKIM;
       state.slurm.openDataDownloadDir = fieldValue("openDataDownloadDir") || "$SCRATCH/pcdf-opendata";
-      state.slurm.openDataDtnPattern = fieldValue("openDataDtnPattern") || "dtn";
+      state.slurm.openDataDtnPattern = OPEN_DATA_DTN_PATTERN;
       state.slurm.openDataMbps = numericFieldValue("openDataMbps", 250);
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
     }
@@ -370,7 +372,7 @@
     }
 
     function apiBaseUrl() {
-      return state.slurm.openDataApiBase.replace(/\/$/, "");
+      return OPEN_DATA_API_BASE.replace(/\/$/, "");
     }
 
     function datasetSearchText(dataset) {
@@ -418,7 +420,7 @@
     }
 
     function previewProxyUrl(url) {
-      const proxy = state.slurm.openDataProxyBase;
+      const proxy = OPEN_DATA_PREVIEW_PROXY;
       if (!proxy) return null;
       return `${proxy}${encodeURIComponent(url.toString())}`;
     }
@@ -621,11 +623,11 @@
         PYTHON_PATH: JSON.stringify(slurm.pythonPath),
         INPUT_MANIFEST: JSON.stringify(slurm.inputManifest),
         OUTPUT_BASE: JSON.stringify(slurm.outputBase),
-        OPEN_DATA_API_BASE: JSON.stringify(slurm.openDataApiBase),
+        OPEN_DATA_API_BASE: JSON.stringify(OPEN_DATA_API_BASE),
         OPEN_DATA_RELEASE: JSON.stringify(slurm.openDataRelease),
         OPEN_DATA_QUERY: JSON.stringify(slurm.openDataQuery),
         OPEN_DATA_DATASET: JSON.stringify(slurm.openDataDataset),
-        OPEN_DATA_SKIM: JSON.stringify(slurm.openDataSkim),
+        OPEN_DATA_SKIM: JSON.stringify(OPEN_DATA_SKIM),
         OPEN_DATA_DOWNLOAD_DIR: JSON.stringify(slurm.openDataDownloadDir),
         OPEN_DATA_DTN_PATTERN: JSON.stringify(slurm.openDataDtnPattern),
         OPEN_DATA_EXPECTED_BYTES: openDataExpectedBytes(),
