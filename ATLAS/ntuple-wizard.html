@@ -149,13 +149,18 @@
                           <input class="form-control slurm-input" id="openDataApiBase" value="https://atlasopenmagic-api.app.cern.ch">
                         </div>
                         <div class="col-md-6">
+                          <label class="form-label" for="openDataProxyBase">Browser preview CORS proxy</label>
+                          <input class="form-control slurm-input" id="openDataProxyBase" value="https://api.allorigins.win/raw?url=">
+                          <div class="form-text text-secondary">Used only if the browser blocks direct API preview requests; generated DTN downloads do not use this proxy.</div>
+                        </div>
+                        <div class="col-md-6">
                           <label class="form-label" for="openDataRelease">Open Data release</label>
                           <input class="form-control slurm-input" id="openDataRelease" value="2024r-pp" readonly>
                           <div class="form-text text-secondary">This wizard searches research PHYSLITE datasets from the 2024 proton-proton release only.</div>
                         </div>
                         <div class="col-md-6">
                           <label class="form-label" for="openDataQuery">Dataset search</label>
-                          <input class="form-control slurm-input" id="openDataQuery" value="PHYSLITE" list="openDataDatasetOptions">
+                          <input class="form-control slurm-input" id="openDataQuery" placeholder="Search all, or enter e.g. data, ttbar, Higgs, 601" list="openDataDatasetOptions">
                           <datalist id="openDataDatasetOptions"></datalist>
                           <div class="form-text text-secondary">Search DSID, physics short name, process, description, or keywords using the atlasopenmagic <code>/datasets</code> API.</div>
                         </div>
@@ -1057,6 +1062,22 @@ def is_research_physlite(dataset):
     return release == "2024r-pp" and bool(dataset.get("file_list") or [])
 
 
+def query_matches(dataset, query):
+    normalized = query.strip().lower()
+    if not normalized or normalized == "physlite":
+        return True
+    return normalized in search_blob(dataset)
+
+
+def key_matches(dataset, key):
+    selected = str(key).strip().lower()
+    if not selected:
+        return False
+    dataset_number = str(dataset.get("dataset_number") or "").lower()
+    physics_short = str(dataset.get("physics_short") or "").lower()
+    return selected in {dataset_number, physics_short}
+
+
 def find_dataset_key():
     try:
         count_data = load_json(api_url("/datasets/count", release_name=release))
@@ -1078,10 +1099,9 @@ def find_dataset_key():
             if not is_research_physlite(dataset):
                 continue
             key = str(dataset.get("dataset_number") or dataset.get("physics_short"))
-            short = str(dataset.get("physics_short") or "").lower()
-            if key == selected or short == selected.lower():
+            if key_matches(dataset, selected):
                 return key
-            if query and query in search_blob(dataset) and first_match is None:
+            if query_matches(dataset, query) and first_match is None:
                 first_match = key
     if first_match:
         return first_match

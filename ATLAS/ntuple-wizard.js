@@ -15,8 +15,9 @@
         pythonPath: "ntuple-maker.py",
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
         openDataApiBase: "https://atlasopenmagic-api.app.cern.ch",
+        openDataProxyBase: "https://api.allorigins.win/raw?url=",
         openDataRelease: "2024r-pp",
-        openDataQuery: "PHYSLITE",
+        openDataQuery: "",
         openDataDataset: "data",
         openDataSkim: "noskim",
         openDataDownloadDir: "$SCRATCH/pcdf-opendata",
@@ -92,8 +93,9 @@
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
       state.slurm.openDataApiBase = fieldValue("openDataApiBase") || "https://atlasopenmagic-api.app.cern.ch";
+      state.slurm.openDataProxyBase = fieldValue("openDataProxyBase");
       state.slurm.openDataRelease = fieldValue("openDataRelease") || "2024r-pp";
-      state.slurm.openDataQuery = fieldValue("openDataQuery") || "PHYSLITE";
+      state.slurm.openDataQuery = fieldValue("openDataQuery");
       state.slurm.openDataDataset = fieldValue("openDataDataset") || "data";
       state.slurm.openDataSkim = fieldValue("openDataSkim") || "noskim";
       state.slurm.openDataDownloadDir = fieldValue("openDataDownloadDir") || "$SCRATCH/pcdf-opendata";
@@ -388,19 +390,54 @@
       // atlasopenmagic's 2024r-pp release is the research proton-proton
       // PHYSLITE release. Keep the check explicit so later release choices do
       // not silently mix in education, heavy-ion, or event-generation data.
-      return state.slurm.openDataRelease === "2024r-pp" && Array.isArray(dataset.file_list) && dataset.file_list.length;
+      return state.slurm.openDataRelease === "2024r-pp" &&
+        Array.isArray(dataset.file_list) && dataset.file_list.length;
     }
 
-    async function fetchOpenDataJson(path, params = {}) {
+    function datasetMatchesQuery(dataset, query) {
+      const normalized = query.trim().toLowerCase();
+      if (!normalized || normalized === "physlite") return true;
+      return datasetSearchText(dataset).includes(normalized);
+    }
+
+    function datasetMatchesKey(dataset, key) {
+      const normalized = String(key || "").trim().toLowerCase();
+      if (!normalized) return false;
+      return String(dataset.dataset_number || "").toLowerCase() === normalized ||
+        String(dataset.physics_short || "").toLowerCase() === normalized;
+    }
+
+    function openDataApiUrl(path, params = {}) {
       const url = new URL(`${apiBaseUrl()}${path}`);
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
           url.searchParams.set(key, value);
         }
       });
+      return url;
+    }
+
+    function previewProxyUrl(url) {
+      const proxy = state.slurm.openDataProxyBase;
+      if (!proxy) return null;
+      return `${proxy}${encodeURIComponent(url.toString())}`;
+    }
+
+    async function fetchJsonUrl(url) {
       const response = await fetch(url, { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error(`API returned HTTP ${response.status}`);
       return response.json();
+    }
+
+    async function fetchOpenDataJson(path, params = {}) {
+      const url = openDataApiUrl(path, params);
+      try {
+        return await fetchJsonUrl(url);
+      } catch (error) {
+        const fallback = previewProxyUrl(url);
+        if (!fallback) throw error;
+        return fetchJsonUrl(fallback);
+      }
     }
 
     async function fetchResearchDatasets() {
@@ -473,13 +510,10 @@
       openDataPreview.className = "alert alert-info open-data-preview mt-3 mb-0";
       openDataPreview.textContent = "Searching 2024r-pp research PHYSLITE datasets…";
       try {
-        const query = slurm.openDataQuery.toLowerCase();
+        const query = slurm.openDataQuery;
         const datasets = await fetchResearchDatasets();
-        const matches = datasets.filter((dataset) => datasetSearchText(dataset).includes(query));
-        const exact = matches.find((dataset) => {
-          return String(dataset.dataset_number) === slurm.openDataDataset ||
-            String(dataset.physics_short || "").toLowerCase() === slurm.openDataDataset.toLowerCase();
-        });
+        const matches = datasets.filter((dataset) => datasetMatchesQuery(dataset, query));
+        const exact = datasets.find((dataset) => datasetMatchesKey(dataset, slurm.openDataDataset));
         const selected = exact || matches[0];
         if (!selected) throw new Error("No matching 2024r-pp research PHYSLITE datasets found.");
         state.slurm.openDataDataset = String(selected.dataset_number || selected.physics_short);
