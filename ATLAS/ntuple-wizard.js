@@ -1,6 +1,6 @@
     const OBJECTS = JSON.parse(document.getElementById("object-config").textContent);
 
-    const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
+    const OPEN_DATA_API_BASE = "https://atlasopenmagic-rest-api-atlas-open-data.app.cern.ch";
     const OPEN_DATA_PREVIEW_PROXY = "https://api.allorigins.win/raw?url=";
     const OPEN_DATA_RELEASE = "2024r-pp";
     const OPEN_DATA_SKIM = "noskim";
@@ -444,23 +444,10 @@
 
     async function fetchResearchDatasets() {
       const releaseName = state.slurm.openDataRelease;
-      const limit = 1000;
-      let total = limit;
-      try {
-        const count = await fetchOpenDataJson("/datasets/count", { release_name: releaseName });
-        total = Number.parseInt(count.count || count, 10) || limit;
-      } catch (error) {
-        total = limit;
-      }
-      const pages = [];
-      for (let skip = 0; skip < total; skip += limit) {
-        pages.push(fetchOpenDataJson("/datasets", {
-          release_name: releaseName,
-          skip,
-          limit,
-        }));
-      }
-      return (await Promise.all(pages)).flat().filter(isResearchPhysliteDataset);
+      const releaseData = await fetchOpenDataJson(
+        `/releases/${encodeURIComponent(releaseName)}`
+      );
+      return (releaseData.datasets || []).filter(isResearchPhysliteDataset);
     }
 
     function renderDatasetMatches(matches) {
@@ -478,12 +465,9 @@
       return `<p class="mb-2">Found ${matches.length} matching 2024r-pp research PHYSLITE dataset(s). Showing the first ${Math.min(matches.length, 8)}:</p><ol class="mb-0 ps-3">${rows}</ol>`;
     }
 
-    async function previewSelectedOpenDataDataset() {
+    async function previewSelectedOpenDataDataset(dataset) {
       const slurm = state.slurm;
-      const metadata = await fetchOpenDataJson(
-        `/metadata/${encodeURIComponent(slurm.openDataRelease)}/${encodeURIComponent(slurm.openDataDataset)}`
-      );
-      const lists = availableFileLists(metadata);
+      const lists = availableFileLists(dataset);
       const files = lists.get(slurm.openDataSkim);
       if (!files || !files.length) {
         const choices = Array.from(lists.keys()).sort().join(", ") || "none";
@@ -520,7 +504,7 @@
         if (!selected) throw new Error("No matching 2024r-pp research PHYSLITE datasets found.");
         state.slurm.openDataDataset = String(selected.dataset_number || selected.physics_short);
         document.getElementById("openDataDataset").value = state.slurm.openDataDataset;
-        const preview = await previewSelectedOpenDataDataset();
+        const preview = await previewSelectedOpenDataDataset(selected);
         openDataPreview.className = "alert alert-success open-data-preview mt-3 mb-0";
         openDataPreview.innerHTML = `
           <strong>${escapeHtml(slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)}</strong>
