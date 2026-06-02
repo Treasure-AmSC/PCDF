@@ -150,20 +150,19 @@
                         </div>
                         <div class="col-md-6">
                           <label class="form-label" for="openDataRelease">Open Data release</label>
-                          <select class="form-select slurm-input" id="openDataRelease">
-                            <option value="2024r-pp" selected>2024r-pp research pp</option>
-                            <option value="2025e-13tev-beta">2025e-13tev-beta education</option>
-                            <option value="2024r-hi">2024r-hi research heavy-ion</option>
-                            <option value="2025r-evgen-13tev">2025r-evgen-13tev</option>
-                            <option value="2025r-evgen-13p6tev">2025r-evgen-13p6tev</option>
-                            <option value="2020e-13tev">2020e-13tev education</option>
-                            <option value="2016e-8tev">2016e-8tev education</option>
-                          </select>
+                          <input class="form-control slurm-input" id="openDataRelease" value="2024r-pp" readonly>
+                          <div class="form-text text-secondary">This wizard searches research PHYSLITE datasets from the 2024 proton-proton release only.</div>
                         </div>
                         <div class="col-md-6">
-                          <label class="form-label" for="openDataDataset">Dataset ID or physics short name</label>
-                          <input class="form-control slurm-input" id="openDataDataset" value="301204">
-                          <div class="form-text text-secondary">The API lookup uses the atlasopenmagic <code>/metadata/&lt;release&gt;/&lt;dataset&gt;</code> endpoint and HTTPS file URLs.</div>
+                          <label class="form-label" for="openDataQuery">Dataset search</label>
+                          <input class="form-control slurm-input" id="openDataQuery" value="PHYSLITE" list="openDataDatasetOptions">
+                          <datalist id="openDataDatasetOptions"></datalist>
+                          <div class="form-text text-secondary">Search DSID, physics short name, process, description, or keywords using the atlasopenmagic <code>/datasets</code> API.</div>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label" for="openDataDataset">Selected dataset ID or physics short name</label>
+                          <input class="form-control slurm-input" id="openDataDataset" value="data">
+                          <div class="form-text text-secondary">The selected dataset is previewed with <code>/metadata/&lt;release&gt;/&lt;dataset&gt;</code> and downloaded as HTTPS files.</div>
                         </div>
                         <div class="col-md-3">
                           <label class="form-label" for="openDataSkim">Skim</label>
@@ -185,9 +184,9 @@
                           <input class="form-control slurm-input" id="openDataDtnPattern" value="dtn">
                         </div>
                         <div class="col-12">
-                          <button class="btn btn-outline-light" type="button" id="previewOpenData">Preview Open Data download</button>
+                          <button class="btn btn-outline-light" type="button" id="previewOpenData">Search and preview Open Data</button>
                           <div id="openDataPreview" class="alert alert-secondary open-data-preview mt-3 mb-0" role="status">
-                            Enter a dataset and click preview to estimate file count, bytes, and transfer time.
+                            Search research PHYSLITE datasets, pick a match, and preview file count, bytes, and transfer time.
                           </div>
                         </div>
                         <div class="col-12">
@@ -948,6 +947,7 @@ set -euo pipefail
 API_BASE={{OPEN_DATA_API_BASE}}
 OPEN_DATA_RELEASE={{OPEN_DATA_RELEASE}}
 OPEN_DATA_DATASET={{OPEN_DATA_DATASET}}
+OPEN_DATA_SEARCH={{OPEN_DATA_QUERY}}
 OPEN_DATA_SKIM={{OPEN_DATA_SKIM}}
 DOWNLOAD_DIR={{OPEN_DATA_DOWNLOAD_DIR}}
 INPUT_MANIFEST={{INPUT_MANIFEST}}
@@ -983,8 +983,9 @@ mkdir -p "$DOWNLOAD_DIR"
 mkdir -p "$(dirname "$INPUT_MANIFEST")"
 
 python3 - "$API_BASE" "$OPEN_DATA_RELEASE" "$OPEN_DATA_DATASET" \
-    "$OPEN_DATA_SKIM" "$DOWNLOAD_DIR" "$INPUT_MANIFEST" \
-    "$EXPECTED_BYTES" "$EXPECTED_FILES" "$EXPECTED_MBPS" <<'PCDF_OPENDATA'
+    "$OPEN_DATA_SEARCH" "$OPEN_DATA_SKIM" "$DOWNLOAD_DIR" \
+    "$INPUT_MANIFEST" "$EXPECTED_BYTES" "$EXPECTED_FILES" \
+    "$EXPECTED_MBPS" <<'PCDF_OPENDATA'
 import json
 import os
 import re
@@ -998,6 +999,7 @@ from pathlib import Path
     api_base,
     release,
     dataset_key,
+    search_text,
     skim,
     download_dir,
     manifest_path,
@@ -1007,11 +1009,6 @@ from pathlib import Path
 ) = sys.argv[1:]
 
 api_base = api_base.rstrip("/")
-metadata_url = (
-    f"{api_base}/metadata/"
-    f"{urllib.parse.quote(release)}/"
-    f"{urllib.parse.quote(dataset_key)}"
-)
 
 
 def load_json(url):
@@ -1031,6 +1028,64 @@ def https_url(root_url):
             1,
         )
     return root_url
+
+
+def api_url(path, **params):
+    query = urllib.parse.urlencode({k: v for k, v in params.items() if v})
+    return f"{api_base}{path}" + (f"?{query}" if query else "")
+
+
+def metadata_url(key):
+    return f"{api_base}/metadata/{urllib.parse.quote(release)}/{urllib.parse.quote(key)}"
+
+
+def search_blob(dataset):
+    values = [
+        dataset.get("dataset_number"),
+        dataset.get("physics_short"),
+        dataset.get("process"),
+        dataset.get("description"),
+        dataset.get("job_path"),
+        dataset.get("Release"),
+        dataset.get("release.name"),
+        *(dataset.get("keywords") or []),
+    ]
+    return " ".join(str(value) for value in values if value).lower()
+
+
+def is_research_physlite(dataset):
+    return release == "2024r-pp" and bool(dataset.get("file_list") or [])
+
+
+def find_dataset_key():
+    try:
+        count_data = load_json(api_url("/datasets/count", release_name=release))
+        total = int(count_data.get("count", 1000))
+    except Exception:
+        total = 1000
+    limit = 1000
+    query = search_text.lower()
+    selected = str(dataset_key)
+    first_match = None
+    for skip in range(0, total, limit):
+        page = load_json(api_url(
+            "/datasets",
+            release_name=release,
+            skip=skip,
+            limit=limit,
+        ))
+        for dataset in page:
+            if not is_research_physlite(dataset):
+                continue
+            key = str(dataset.get("dataset_number") or dataset.get("physics_short"))
+            short = str(dataset.get("physics_short") or "").lower()
+            if key == selected or short == selected.lower():
+                return key
+            if query and query in search_blob(dataset) and first_match is None:
+                first_match = key
+    if first_match:
+        return first_match
+    return selected
 
 
 def select_file_list(metadata):
@@ -1059,7 +1114,8 @@ def file_size(path):
         return 0
 
 
-metadata = load_json(metadata_url)
+dataset_key = find_dataset_key()
+metadata = load_json(metadata_url(dataset_key))
 urls = select_file_list(metadata)
 if not urls:
     raise SystemExit(f"No files found for {release}/{dataset_key} skim {skim}")
