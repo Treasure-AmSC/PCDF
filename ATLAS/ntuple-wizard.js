@@ -1,8 +1,7 @@
     const OBJECTS = JSON.parse(document.getElementById("object-config").textContent);
 
     const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
-    const OPEN_DATA_PREVIEW_PROXY = "https://api.allorigins.win/raw?url=";
-    const OPEN_DATA_FALLBACK_INDEX = "opendata-2024r-pp-fallback.json";
+    const OPEN_DATA_BROWSER_PROXY = "https://corsproxy.io/?";
     const OPEN_DATA_RELEASE = "2024r-pp";
     const OPEN_DATA_SKIM = "noskim";
     const OPEN_DATA_DTN_PATTERN = "dtn";
@@ -434,67 +433,47 @@
       return url;
     }
 
-    function previewProxyUrl(url) {
-      const proxy = OPEN_DATA_PREVIEW_PROXY;
-      if (!proxy) return null;
-      return `${proxy}${encodeURIComponent(url.toString())}`;
+    function browserProxyUrl(url) {
+      const uncached = new URL(url.toString());
+      uncached.searchParams.set("_pcdf_preview", String(Date.now()));
+      return `${OPEN_DATA_BROWSER_PROXY}${encodeURIComponent(uncached.toString())}`;
     }
 
     async function fetchJsonUrl(url) {
-      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
       if (!response.ok) throw new Error(`API returned HTTP ${response.status}`);
       return response.json();
     }
 
     async function fetchOpenDataJson(path, params = {}) {
       const url = openDataApiUrl(path, params);
-      try {
-        return await fetchJsonUrl(url);
-      } catch (error) {
-        const fallback = previewProxyUrl(url);
-        if (!fallback) throw error;
-        return fetchJsonUrl(fallback);
-      }
-    }
-
-    async function fetchBundledOpenDataFallback() {
-      const response = await fetch(OPEN_DATA_FALLBACK_INDEX, {
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) {
-        throw new Error(`Bundled fallback returned HTTP ${response.status}`);
-      }
-      const fallback = await response.json();
-      return (fallback.datasets || []).map((dataset) => ({
-        ...dataset,
-        _previewSource: "bundled fallback",
-      }));
+      return fetchJsonUrl(browserProxyUrl(url));
     }
 
     async function fetchResearchDatasets() {
       const releaseName = state.slurm.openDataRelease;
-      try {
-        const countData = await fetchOpenDataJson("/datasets/count", {
+      const countData = await fetchOpenDataJson("/datasets/count", {
+        release_name: releaseName,
+      });
+      const total = Number.parseInt(countData.count || "0", 10) || 0;
+      const pageSize = 1000;
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      const datasets = [];
+      for (let page = 0; page < pages; page += 1) {
+        const chunk = await fetchOpenDataJson("/datasets", {
           release_name: releaseName,
+          skip: page * pageSize,
+          limit: pageSize,
         });
-        const total = Number.parseInt(countData.count || "0", 10) || 0;
-        const pageSize = 1000;
-        const pages = Math.max(1, Math.ceil(total / pageSize));
-        const datasets = [];
-        for (let page = 0; page < pages; page += 1) {
-          const chunk = await fetchOpenDataJson("/datasets", {
-            release_name: releaseName,
-            skip: page * pageSize,
-            limit: pageSize,
-          });
-          datasets.push(...(Array.isArray(chunk) ? chunk : chunk.datasets || []));
-        }
-        return datasets.filter(isResearchPhysliteDataset);
-      } catch (error) {
-        const fallbackDatasets = await fetchBundledOpenDataFallback();
-        fallbackDatasets._fallbackReason = error.message;
-        return fallbackDatasets.filter(isResearchPhysliteDataset);
+        datasets.push(...(Array.isArray(chunk) ? chunk : chunk.datasets || []));
       }
+      return datasets.filter(isResearchPhysliteDataset).map((dataset) => ({
+        ...dataset,
+        _previewSource: "live atlasopenmagic API",
+      }));
     }
 
     function renderDatasetMatches(matches) {

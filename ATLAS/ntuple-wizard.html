@@ -100,8 +100,8 @@
                   <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
                       <h2 class="h4 card-title">Open Data lookup</h2>
-                      <p class="text-secondary">Search ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release. The lookup uses AJAX against the public atlasopenmagic dataset API, then falls back to a small bundled index if browser CORS or local network policy blocks the live preview.</p>
-                      <div class="alert alert-secondary py-2 mb-4">Only the dataset choice, transfer-speed estimate, and scratch staging directory are user configurable; API details are fixed for public deployment. The DTN download helper performs the authoritative live lookup before transferring data.</div>
+                      <p class="text-secondary">Search ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release. The lookup uses AJAX against the public atlasopenmagic dataset API through a CORS relay, avoiding a cached dataset preview while still working from a public static deployment.</p>
+                      <div class="alert alert-secondary py-2 mb-4">Only the dataset choice, transfer-speed estimate, and scratch staging directory are user configurable; API details are fixed for public deployment. The browser preview uses a CORS relay because the atlasopenmagic API does not expose browser CORS headers; the DTN download helper performs the authoritative direct live lookup before transferring data.</div>
                       <div class="row g-3">
                         <div class="col-12">
                           <label class="form-label" for="openDataQuery">Dataset search</label>
