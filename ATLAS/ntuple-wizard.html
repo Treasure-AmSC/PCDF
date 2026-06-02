@@ -100,8 +100,8 @@
                   <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
                       <h2 class="h4 card-title">Open Data lookup</h2>
-                      <p class="text-secondary">Search ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release. The lookup uses AJAX against the public atlasopenmagic release metadata and estimates transfer size before any Perlmutter job is submitted.</p>
-                      <div class="alert alert-secondary py-2 mb-4">Only the dataset choice, transfer-speed estimate, and scratch staging directory are user configurable; API details are fixed for public deployment.</div>
+                      <p class="text-secondary">Search ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release. The lookup uses AJAX against the public atlasopenmagic dataset API, then falls back to a small bundled index if browser CORS or local network policy blocks the live preview.</p>
+                      <div class="alert alert-secondary py-2 mb-4">Only the dataset choice, transfer-speed estimate, and scratch staging directory are user configurable; API details are fixed for public deployment. The DTN download helper performs the authoritative live lookup before transferring data.</div>
                       <div class="row g-3">
                         <div class="col-12">
                           <label class="form-label" for="openDataQuery">Dataset search</label>
@@ -1037,8 +1037,34 @@ def https_url(root_url):
     return root_url
 
 
-def release_url():
-    return f"{api_base}/releases/{urllib.parse.quote(release)}"
+def api_url(path, **params):
+    query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+    return f"{api_base}{path}" + (f"?{query}" if query else "")
+
+
+def fetch_datasets():
+    try:
+        count_data = load_json(api_url("/datasets/count", release_name=release))
+        total = int(count_data.get("count") or 0)
+        page_size = 1000
+        datasets = []
+        for skip in range(0, max(total, 1), page_size):
+            page = load_json(
+                api_url(
+                    "/datasets",
+                    release_name=release,
+                    skip=skip,
+                    limit=page_size,
+                )
+            )
+            datasets.extend(page if isinstance(page, list) else page.get("datasets", []))
+        return datasets
+    except Exception as exc:
+        print(f"Paginated dataset API failed: {exc}; trying release endpoint")
+        release_data = load_json(
+            api_url(f"/releases/{urllib.parse.quote(release)}")
+        )
+        return release_data.get("datasets", [])
 
 
 def search_blob(dataset):
@@ -1076,11 +1102,10 @@ def key_matches(dataset, key):
 
 
 def find_dataset():
-    release_data = load_json(release_url())
     query = search_text.lower()
     selected = str(dataset_key)
     first_match = None
-    for dataset in release_data.get("datasets", []):
+    for dataset in fetch_datasets():
         if not is_research_physlite(dataset):
             continue
         if key_matches(dataset, selected):

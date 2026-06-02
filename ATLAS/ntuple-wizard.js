@@ -1,7 +1,8 @@
     const OBJECTS = JSON.parse(document.getElementById("object-config").textContent);
 
-    const OPEN_DATA_API_BASE = "https://atlasopenmagic-rest-api-atlas-open-data.app.cern.ch";
+    const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
     const OPEN_DATA_PREVIEW_PROXY = "https://api.allorigins.win/raw?url=";
+    const OPEN_DATA_FALLBACK_INDEX = "opendata-2024r-pp-fallback.json";
     const OPEN_DATA_RELEASE = "2024r-pp";
     const OPEN_DATA_SKIM = "noskim";
     const OPEN_DATA_DTN_PATTERN = "dtn";
@@ -362,6 +363,18 @@
       return lists;
     }
 
+    function declaredFileCount(metadata, skim = OPEN_DATA_SKIM) {
+      const files = availableFileLists(metadata).get(skim);
+      if (files?.length) return files.length;
+      return Number.parseInt(metadata.file_count || metadata.n_files || "0", 10) || 0;
+    }
+
+    function declaredBytes(metadata, skim = OPEN_DATA_SKIM) {
+      const skimInfo = (metadata.skims || []).find((entry) => entry.skim_type === skim);
+      const value = skimInfo?.bytes || metadata.bytes || metadata.total_bytes || 0;
+      return Number.parseInt(value, 10) || 0;
+    }
+
     async function headContentLength(url) {
       try {
         const response = await fetch(url, { method: "HEAD" });
@@ -394,7 +407,8 @@
       // PHYSLITE release. Keep the check explicit so later release choices do
       // not silently mix in education, heavy-ion, or event-generation data.
       return state.slurm.openDataRelease === "2024r-pp" &&
-        Array.isArray(dataset.file_list) && dataset.file_list.length;
+        (Array.isArray(dataset.file_list) && dataset.file_list.length ||
+          declaredFileCount(dataset) > 0 || declaredBytes(dataset) > 0);
     }
 
     function datasetMatchesQuery(dataset, query) {
@@ -443,12 +457,44 @@
       }
     }
 
+    async function fetchBundledOpenDataFallback() {
+      const response = await fetch(OPEN_DATA_FALLBACK_INDEX, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        throw new Error(`Bundled fallback returned HTTP ${response.status}`);
+      }
+      const fallback = await response.json();
+      return (fallback.datasets || []).map((dataset) => ({
+        ...dataset,
+        _previewSource: "bundled fallback",
+      }));
+    }
+
     async function fetchResearchDatasets() {
       const releaseName = state.slurm.openDataRelease;
-      const releaseData = await fetchOpenDataJson(
-        `/releases/${encodeURIComponent(releaseName)}`
-      );
-      return (releaseData.datasets || []).filter(isResearchPhysliteDataset);
+      try {
+        const countData = await fetchOpenDataJson("/datasets/count", {
+          release_name: releaseName,
+        });
+        const total = Number.parseInt(countData.count || "0", 10) || 0;
+        const pageSize = 1000;
+        const pages = Math.max(1, Math.ceil(total / pageSize));
+        const datasets = [];
+        for (let page = 0; page < pages; page += 1) {
+          const chunk = await fetchOpenDataJson("/datasets", {
+            release_name: releaseName,
+            skip: page * pageSize,
+            limit: pageSize,
+          });
+          datasets.push(...(Array.isArray(chunk) ? chunk : chunk.datasets || []));
+        }
+        return datasets.filter(isResearchPhysliteDataset);
+      } catch (error) {
+        const fallbackDatasets = await fetchBundledOpenDataFallback();
+        fallbackDatasets._fallbackReason = error.message;
+        return fallbackDatasets.filter(isResearchPhysliteDataset);
+      }
     }
 
     function renderDatasetMatches(matches) {
@@ -463,7 +509,7 @@
         const key = String(dataset.dataset_number || dataset.physics_short);
         const title = escapeHtml(dataset.physics_short || dataset.process || key);
         const desc = escapeHtml(dataset.process || dataset.description || "research PHYSLITE dataset");
-        const fileCount = availableFileLists(dataset).get(OPEN_DATA_SKIM)?.length || 0;
+        const fileCount = declaredFileCount(dataset, OPEN_DATA_SKIM);
         return `
           <div class="col-md-6">
             <article class="card h-100 border-secondary-subtle">
@@ -485,24 +531,54 @@
       const lists = availableFileLists(dataset);
       const files = lists.get(slurm.openDataSkim);
       if (!files || !files.length) {
+        const fileCount = declaredFileCount(dataset, slurm.openDataSkim);
+        const estimatedBytes = declaredBytes(dataset, slurm.openDataSkim);
+        if (fileCount || estimatedBytes) {
+          const seconds = estimatedBytes /
+            (Math.max(slurm.openDataMbps, 1) * 1000 * 1000);
+          state.slurm.openDataPreview = {
+            files: fileCount,
+            bytes: estimatedBytes,
+            sizedFiles: 0,
+            seconds,
+          };
+          return {
+            files: fileCount,
+            estimatedBytes,
+            sizedFiles: 0,
+            seconds,
+            source: dataset._previewSource || "metadata estimate",
+          };
+        }
         const choices = Array.from(lists.keys()).sort().join(", ") || "none";
         throw new Error(`Skim '${slurm.openDataSkim}' has no files. Available: ${choices}.`);
       }
       const urls = files.map(applyHttpsProtocol);
-      const headSample = urls.slice(0, Math.min(urls.length, 8));
-      const sizes = await Promise.all(headSample.map(headContentLength));
-      const sizedFiles = sizes.filter(Boolean).length;
-      const knownBytes = sizes.reduce((sum, value) => sum + value, 0);
-      const avgBytes = sizedFiles ? knownBytes / sizedFiles : 0;
-      const estimatedBytes = avgBytes ? Math.round(avgBytes * urls.length) : 0;
+      let estimatedBytes = declaredBytes(dataset, slurm.openDataSkim);
+      let sizedFiles = estimatedBytes ? declaredFileCount(dataset, slurm.openDataSkim) : 0;
+      if (!estimatedBytes && urls.length) {
+        const headSample = urls.slice(0, Math.min(urls.length, 8));
+        const sizes = await Promise.all(headSample.map(headContentLength));
+        sizedFiles = sizes.filter(Boolean).length;
+        const knownBytes = sizes.reduce((sum, value) => sum + value, 0);
+        const avgBytes = sizedFiles ? knownBytes / sizedFiles : 0;
+        estimatedBytes = avgBytes ? Math.round(avgBytes * urls.length) : 0;
+      }
+      const fileTotal = urls.length || declaredFileCount(dataset, slurm.openDataSkim);
       const seconds = estimatedBytes / (Math.max(slurm.openDataMbps, 1) * 1000 * 1000);
       state.slurm.openDataPreview = {
-        files: urls.length,
+        files: fileTotal,
         bytes: estimatedBytes,
         sizedFiles,
         seconds,
       };
-      return { files: urls.length, estimatedBytes, sizedFiles, seconds };
+      return {
+        files: fileTotal,
+        estimatedBytes,
+        sizedFiles,
+        seconds,
+        source: dataset._previewSource || "live API",
+      };
     }
 
     async function lookupOpenDataPreview() {
@@ -522,12 +598,16 @@
         document.getElementById("openDataDataset").value = state.slurm.openDataDataset;
         const preview = await previewSelectedOpenDataDataset(selected);
         openDataPreview.className = "alert alert-success open-data-preview mb-3";
+        const sizingText = preview.sizedFiles
+          ? `from ${preview.sizedFiles} sampled HEAD response(s)`
+          : "from metadata in the selected dataset index";
         openDataPreview.innerHTML = `
           <strong>${escapeHtml(slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)}</strong>
           (${escapeHtml(slurm.openDataSkim)}) has ${preview.files} file(s).<br>
-          Estimated download: ${formatBytes(preview.estimatedBytes)} from ${preview.sizedFiles}
-          sampled HEAD response(s). At ${slurm.openDataMbps} MB/s, transfer time is about
-          ${formatDuration(preview.seconds)}. Actual DTN throughput and scratch I/O can differ.
+          Estimated download: ${formatBytes(preview.estimatedBytes)} ${sizingText}.
+          At ${slurm.openDataMbps} MB/s, transfer time is about
+          ${formatDuration(preview.seconds)}. Source: ${escapeHtml(preview.source)}.
+          Actual DTN throughput and scratch I/O can differ.
         `;
         openDataResults.innerHTML = renderDatasetMatches(matches);
         openDataResults.querySelectorAll(".open-data-choice").forEach((button) => {
