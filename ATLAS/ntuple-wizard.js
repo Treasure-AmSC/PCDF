@@ -2,6 +2,8 @@
 
     const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
     const OPEN_DATA_BROWSER_PROXY = "https://corsproxy.io/?";
+    const OPEN_DATA_BROWSER_PAGE_SIZE = 100;
+    const OPEN_DATA_BROWSER_MAX_MATCHES = 50;
     const OPEN_DATA_RELEASE = "2024r-pp";
     const OPEN_DATA_SKIM = "noskim";
     const OPEN_DATA_DTN_PATTERN = "dtn";
@@ -453,27 +455,51 @@
       return fetchJsonUrl(browserProxyUrl(url));
     }
 
-    async function fetchResearchDatasets() {
+    function shouldKeepSearchingForExact(selectedKey) {
+      const normalized = String(selectedKey || "").trim().toLowerCase();
+      return Boolean(normalized && normalized !== "data");
+    }
+
+    async function fetchResearchDatasetMatches(query, selectedKey) {
       const releaseName = state.slurm.openDataRelease;
       const countData = await fetchOpenDataJson("/datasets/count", {
         release_name: releaseName,
       });
       const total = Number.parseInt(countData.count || "0", 10) || 0;
-      const pageSize = 1000;
+      const pageSize = OPEN_DATA_BROWSER_PAGE_SIZE;
       const pages = Math.max(1, Math.ceil(total / pageSize));
-      const datasets = [];
+      const matches = [];
+      let exact = null;
+      let searched = 0;
       for (let page = 0; page < pages; page += 1) {
         const chunk = await fetchOpenDataJson("/datasets", {
           release_name: releaseName,
           skip: page * pageSize,
           limit: pageSize,
         });
-        datasets.push(...(Array.isArray(chunk) ? chunk : chunk.datasets || []));
+        const datasets = Array.isArray(chunk) ? chunk : chunk.datasets || [];
+        searched += datasets.length;
+        datasets
+          .filter(isResearchPhysliteDataset)
+          .map((dataset) => ({
+            ...dataset,
+            _previewSource: "live atlasopenmagic API",
+          }))
+          .forEach((dataset) => {
+            if (!exact && datasetMatchesKey(dataset, selectedKey)) {
+              exact = dataset;
+            }
+            if (matches.length < OPEN_DATA_BROWSER_MAX_MATCHES &&
+                datasetMatchesQuery(dataset, query)) {
+              matches.push(dataset);
+            }
+          });
+        if (matches.length >= OPEN_DATA_BROWSER_MAX_MATCHES &&
+            (exact || !shouldKeepSearchingForExact(selectedKey))) {
+          break;
+        }
       }
-      return datasets.filter(isResearchPhysliteDataset).map((dataset) => ({
-        ...dataset,
-        _previewSource: "live atlasopenmagic API",
-      }));
+      return { matches, exact, searched, total };
     }
 
     function renderDatasetMatches(matches) {
@@ -565,12 +591,14 @@
       const slurm = state.slurm;
       openDataPreview.className = "alert alert-info open-data-preview mb-3";
       openDataPreview.textContent = "Searching 2024r-pp research PHYSLITE datasets…";
-      openDataResults.innerHTML = '<div class="col-12"><div class="card border-secondary-subtle"><div class="card-body">Loading release metadata with AJAX…</div></div></div>';
+      openDataResults.innerHTML = '<div class="col-12"><div class="card border-secondary-subtle"><div class="card-body">Loading Open Data dataset pages with AJAX…</div></div></div>';
       try {
         const query = slurm.openDataQuery;
-        const datasets = await fetchResearchDatasets();
-        const matches = datasets.filter((dataset) => datasetMatchesQuery(dataset, query));
-        const exact = datasets.find((dataset) => datasetMatchesKey(dataset, slurm.openDataDataset));
+        const { matches, exact, searched, total } = await fetchResearchDatasetMatches(
+          query,
+          slurm.openDataDataset,
+        );
+        const resultMatches = matches.length ? matches : exact ? [exact] : matches;
         const selected = exact || matches[0];
         if (!selected) throw new Error("No matching 2024r-pp research PHYSLITE datasets found.");
         state.slurm.openDataDataset = String(selected.dataset_number || selected.physics_short);
@@ -586,9 +614,11 @@
           Estimated download: ${formatBytes(preview.estimatedBytes)} ${sizingText}.
           At ${slurm.openDataMbps} MB/s, transfer time is about
           ${formatDuration(preview.seconds)}. Source: ${escapeHtml(preview.source)}.
-          Actual DTN throughput and scratch I/O can differ.
+          Actual DTN throughput and scratch I/O can differ.<br>
+          Searched ${searched.toLocaleString()} of ${total.toLocaleString()} dataset record(s)
+          using ${OPEN_DATA_BROWSER_PAGE_SIZE}-record pages to avoid relay payload limits.
         `;
-        openDataResults.innerHTML = renderDatasetMatches(matches);
+        openDataResults.innerHTML = renderDatasetMatches(resultMatches);
         openDataResults.querySelectorAll(".open-data-choice").forEach((button) => {
           button.addEventListener("click", () => {
             document.getElementById("openDataDataset").value = button.dataset.dataset;
