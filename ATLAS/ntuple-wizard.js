@@ -598,8 +598,9 @@
           query,
           slurm.openDataDataset,
         );
+        const preferExact = exact && shouldKeepSearchingForExact(slurm.openDataDataset);
         const resultMatches = matches.length ? matches : exact ? [exact] : matches;
-        const selected = exact || matches[0];
+        const selected = preferExact ? exact : matches[0] || exact;
         if (!selected) throw new Error("No matching 2024r-pp research PHYSLITE datasets found.");
         state.slurm.openDataDataset = String(selected.dataset_number || selected.physics_short);
         document.getElementById("openDataDataset").value = state.slurm.openDataDataset;
