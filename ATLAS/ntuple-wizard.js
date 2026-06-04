@@ -11,7 +11,7 @@
       selectedVariables: {},
       slurm: {
         enabled: true,
-        account: "<NERSC_PROJECT>",
+        account: "",
         qos: "regular",
         nodes: 1,
         time: "00:30:00",
@@ -109,7 +109,7 @@
 
     function syncSlurmSettings() {
       state.slurm.enabled = document.getElementById("enableSlurm").checked;
-      state.slurm.account = fieldValue("slurmAccount") || "<NERSC_PROJECT>";
+      state.slurm.account = fieldValue("slurmAccount");
       state.slurm.qos = fieldValue("slurmQos") || "regular";
       state.slurm.nodes = numericFieldValue("slurmNodes", 1);
       state.slurm.time = fieldValue("slurmTime") || "00:30:00";
@@ -426,9 +426,7 @@
 
     function buildSlurmScript() {
       const slurm = state.slurm;
-      const accountLine = slurm.account
-        ? `#SBATCH --account=${slurm.account}`
-        : "#SBATCH --account=<NERSC_PROJECT>";
+      const accountLine = `#SBATCH --account=${slurm.account}`;
       const perlmutterPhysicalCores = 128;
       const perlmutterLogicalCpus = 256;
       const converterCpusPerConversion = 1;
@@ -553,11 +551,18 @@
 
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
     document.getElementById("nextStep").addEventListener("click", () => {
-      if (!formIsValid()) return;
+      if (state.step === 3 && !formIsValid()) return;
       setStep(state.step === 4 ? 4 : state.step + 1);
     });
     document.querySelectorAll("[data-step-target]").forEach((button) => {
-      button.addEventListener("click", () => setStep(Number(button.dataset.stepTarget)));
+      button.addEventListener("click", () => {
+        const target = Number(button.dataset.stepTarget);
+        if (target >= 4 && !formIsValid()) {
+          setStep(3);
+          return;
+        }
+        setStep(target);
+      });
     });
 
     function tarString(value, length) {
