@@ -732,11 +732,18 @@
         ? `#SBATCH --account=${slurm.account}`
         : "#SBATCH --account=<NERSC_PROJECT>";
       const perlmutterCpuCores = 128;
+      const converterCpusPerConversion = 1;
+      const cpusPerTask = Math.min(
+        perlmutterCpuCores,
+        Math.max(1, slurm.jobsPerNode * converterCpusPerConversion),
+      );
       return applyTemplate(requireTemplate("slurm"), {
         ...commonBatchValues(),
         ACCOUNT_LINE: accountLine,
         QOS: slurm.qos,
         NODES: slurm.nodes,
+        CPUS_PER_TASK: cpusPerTask,
+        CONVERTER_CPUS_PER_CONVERSION: converterCpusPerConversion,
         PERLMUTTER_CPU_CORES: perlmutterCpuCores,
         TIME: slurm.time,
         JOBS_PER_NODE: slurm.jobsPerNode,
@@ -885,9 +892,9 @@ Perlmutter run
    scratch and write the input manifest:
    ./download-atlas-opendata.sh
 3. Return to a login node and edit submit-pcdf-ntuple.slurm if needed:
-   account, manifest, output base, nodes, and conversions per node. The CPUs
-   per conversion are derived from the fixed 128 CPU cores available on each
-   Perlmutter CPU node.
+   account, manifest, output base, nodes, and conversions per node. The
+   generated wrapper requests one CPU per concurrent conversion because the
+   converter is effectively single-core per input file.
 4. Submit:
    sbatch submit-pcdf-ntuple.slurm
 5. Monitor:
