@@ -31,6 +31,7 @@
         openDataDtnPattern: OPEN_DATA_DTN_PATTERN,
         openDataMbps: 250,
         openDataPreview: null,
+        openDataEnabled: false,
         outputBase: "$SCRATCH/pcdf-output"
       }
     };
@@ -137,6 +138,7 @@
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || generatedPythonName();
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
+      state.slurm.openDataEnabled = document.getElementById("enableOpenData").checked;
       state.slurm.openDataRelease = OPEN_DATA_RELEASE;
       state.slurm.openDataQuery = fieldValue("openDataQuery");
       state.slurm.openDataDataset = fieldValue("openDataDataset") || "data";
@@ -761,6 +763,7 @@
         OPEN_DATA_EXPECTED_BYTES: openDataExpectedBytes(),
         OPEN_DATA_EXPECTED_FILES: openDataExpectedFiles(),
         OPEN_DATA_EXPECTED_MBPS: slurm.openDataMbps,
+        OPEN_DATA_ENABLED: slurm.openDataEnabled ? "1" : "0",
       };
     }
 
@@ -790,13 +793,33 @@
 
     function setDownloadButtonsEnabled(enabled) {
       document.getElementById("downloadScript").disabled = !enabled;
-      document.getElementById("downloadTransferScript").disabled = !enabled;
+      document.getElementById("downloadTransferScript").disabled = !enabled || !state.slurm.openDataEnabled;
       document.getElementById("downloadBundle").disabled = !enabled;
       document.getElementById("downloadSlurmScript").disabled = !enabled || !state.slurm.enabled;
     }
 
+
+    function updateOpenDataControls() {
+      const enabled = document.getElementById("enableOpenData").checked;
+      [
+        "openDataQuery",
+        "openDataDataset",
+        "openDataMbps",
+        "openDataDownloadDir",
+        "previewOpenData",
+      ].forEach((id) => {
+        document.getElementById(id).disabled = !enabled;
+      });
+      if (!enabled) {
+        openDataPreview.textContent =
+          "Open Data staging is disabled. Provide your own manifest, or enable this page to search and generate a DTN transfer helper.";
+        openDataResults.innerHTML = "";
+      }
+    }
+
     function updateGeneratedScript() {
       syncSlurmSettings();
+      updateOpenDataControls();
       ensureDependencies();
       const config = selectedConfig();
       const generatedScript = buildScript();
@@ -817,7 +840,9 @@
         const variableCount = Object.keys(config.objects[key].aliases).length;
         return `<li>${title}: ${variableCount} variables</li>`;
       }).join("");
-      const transferSummary = `${escapeHtml(state.slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)} (${escapeHtml(state.slurm.openDataSkim)}) to ${escapeHtml(state.slurm.openDataDownloadDir)}. ${state.slurm.openDataPreview ? `${formatBytes(state.slurm.openDataPreview.bytes)} estimated.` : "Preview not run."}`;
+      const transferSummary = state.slurm.openDataEnabled
+        ? `${escapeHtml(state.slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)} (${escapeHtml(state.slurm.openDataSkim)}) to ${escapeHtml(state.slurm.openDataDownloadDir)}. ${state.slurm.openDataPreview ? `${formatBytes(state.slurm.openDataPreview.bytes)} estimated.` : "Preview not run."}`
+        : "Disabled; provide your own input manifest before submitting SLURM.";
       summary.innerHTML = `
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Input</h3>
@@ -883,12 +908,15 @@
       updateGeneratedScript();
     });
 
-    document.querySelectorAll(".slurm-input, #enableSlurm").forEach((input) => {
+    document.querySelectorAll(".slurm-input, #enableSlurm, #enableOpenData").forEach((input) => {
       input.addEventListener("input", updateGeneratedScript);
       input.addEventListener("change", updateGeneratedScript);
     });
 
-    document.getElementById("previewOpenData").addEventListener("click", lookupOpenDataPreview);
+    document.getElementById("previewOpenData").addEventListener("click", () => {
+      if (!document.getElementById("enableOpenData").checked) return;
+      lookupOpenDataPreview();
+    });
 
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
     document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 5 ? 5 : state.step + 1));
@@ -943,12 +971,11 @@ Perlmutter run
 --------------
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
-   The Python, DTN transfer, and SLURM scripts are marked executable.
-2. From a Perlmutter data transfer node, download the Open Data files to
-   scratch and write the input manifest:
-   ./download-atlas-opendata.sh
+   The Python${state.slurm.openDataEnabled ? ", DTN transfer," : ""} and SLURM scripts are marked executable.
+2. ${state.slurm.openDataEnabled ? "From a Perlmutter data transfer node, download the Open Data files to\n   scratch and write the input manifest:\n   ./download-atlas-opendata.sh" : "Create the input manifest listed in submit-pcdf-ntuple.slurm. Do not download data on compute nodes."}
 3. Return to a login node and edit submit-pcdf-ntuple.slurm if needed:
-   account, manifest, output base, and nodes. The generated wrapper requests
+   account, manifest, output base, and nodes. The output base is a single
+   Hive-partitioned dataset root. The generated wrapper requests
    exclusive nodes, discovers physical cores at runtime, counts the manifest,
    and fills the available cores with one conversion per core.
 4. Submit:
@@ -959,12 +986,14 @@ Perlmutter run
 Perlmutter run
 --------------
 SLURM generation was disabled in the wizard, so this bundle contains the
-Python converter, DTN transfer helper, and this README. Re-enable SLURM in the
+Python converter${state.slurm.openDataEnabled ? ", DTN transfer helper," : ""} and this README. Re-enable SLURM in the
 wizard if you want a Perlmutter submission wrapper.
 `;
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
-        TRANSFER_FILE_LINE: "- download-atlas-opendata.sh: executable DTN-only Open Data download helper.\n",
+        TRANSFER_FILE_LINE: state.slurm.openDataEnabled
+          ? "- download-atlas-opendata.sh: executable DTN-only Open Data download helper.\n"
+          : "",
         SLURM_FILE_LINE: state.slurm.enabled
           ? "- submit-pcdf-ntuple.slurm: executable NERSC Perlmutter CPU/SLURM wrapper.\n"
           : "",
@@ -988,7 +1017,7 @@ wizard if you want a Perlmutter submission wrapper.
     });
 
     document.getElementById("downloadTransferScript").addEventListener("click", () => {
-      if (!generationReady || !transferScriptOutput.value) return;
+      if (!generationReady || !state.slurm.openDataEnabled || !transferScriptOutput.value) return;
       const blob = new Blob([transferScriptOutput.value], { type: "text/x-shellscript" });
       downloadBlob(blob, "download-atlas-opendata.sh");
     });
@@ -1000,12 +1029,14 @@ wizard if you want a Perlmutter submission wrapper.
     });
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
-      if (!generationReady || !scriptOutput.value || !transferScriptOutput.value) return;
+      if (!generationReady || !scriptOutput.value) return;
       const pythonName = generatedPythonName().replace(/^\.\//, "");
       const files = [
         { name: pythonName, content: scriptOutput.value, mode: 0o755 },
-        { name: "download-atlas-opendata.sh", content: transferScriptOutput.value, mode: 0o755 },
       ];
+      if (state.slurm.openDataEnabled) {
+        files.push({ name: "download-atlas-opendata.sh", content: transferScriptOutput.value, mode: 0o755 });
+      }
       if (state.slurm.enabled) {
         files.push({
           name: "submit-pcdf-ntuple.slurm",

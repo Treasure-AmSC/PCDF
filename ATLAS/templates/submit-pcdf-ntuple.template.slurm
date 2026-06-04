@@ -14,7 +14,7 @@
 # NERSC Perlmutter wrapper from ATLAS/ntuple-wizard.html.
 # CPU-only: the generated converter does not use GPUs.
 # Data must already be on scratch; do not download on compute nodes.
-# Run download-atlas-opendata.sh on a DTN before submitting this job.
+# If using Open Data, run download-atlas-opendata.sh on a DTN first.
 
 set -euo pipefail
 
@@ -26,8 +26,10 @@ OUTPUT_BASE={{OUTPUT_BASE}}
 CONVERTER_CPUS_PER_CONVERSION={{CONVERTER_CPUS_PER_CONVERSION}}
 PERLMUTTER_PHYSICAL_CORES={{PERLMUTTER_PHYSICAL_CORES}}
 PERLMUTTER_LOGICAL_CPUS={{PERLMUTTER_LOGICAL_CPUS_PER_NODE}}
+OPEN_DATA_ENABLED={{OPEN_DATA_ENABLED}}
 OPEN_DATA_DATASET={{OPEN_DATA_DATASET}}
 OPEN_DATA_RELEASE={{OPEN_DATA_RELEASE}}
+RUN_DIR="${SCRATCH:-$HOME}/pcdf-generated/${SLURM_JOB_ID}"
 
 needs_edit=0
 [[ "$PYTHON_SCRIPT" == *"<"* ]] && needs_edit=1
@@ -42,12 +44,24 @@ if [[ -n "${PCDF_ALLOW_COMPUTE_DOWNLOAD:-}" ]]; then
     echo "WARNING: PCDF_ALLOW_COMPUTE_DOWNLOAD is ignored." >&2
 fi
 
-mkdir -p "$OUTPUT_BASE"
+mkdir -p "$OUTPUT_BASE" "$RUN_DIR"
+cleanup_run_dir() {
+    if [[ -z "${PCDF_KEEP_RUN_DIR:-}" && -d "$RUN_DIR" ]]; then
+        rm -rf "$RUN_DIR"
+    else
+        echo "Keeping generated job helpers in $RUN_DIR"
+    fi
+}
+trap cleanup_run_dir EXIT
 
 if [[ ! -s "$INPUT_MANIFEST" ]]; then
     echo "ERROR: missing or empty input manifest: $INPUT_MANIFEST" >&2
-    echo "Run ./download-atlas-opendata.sh on a Perlmutter DTN first." >&2
-    echo "Dataset: ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}" >&2
+    if [[ "$OPEN_DATA_ENABLED" == "1" ]]; then
+        echo "Run ./download-atlas-opendata.sh on a Perlmutter DTN first." >&2
+        echo "Dataset: ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}" >&2
+    else
+        echo "Create the manifest before submitting this compute job." >&2
+    fi
     exit 2
 fi
 
@@ -93,7 +107,7 @@ export UV_CACHE_DIR="${SCRATCH:-$HOME}/.cache/uv"
 echo "Preparing uv environment once."
 uv run "$PYTHON_SCRIPT" --help >/dev/null
 
-PAYLOAD_SCRIPT="$OUTPUT_BASE/convert-${SLURM_JOB_ID}.sh"
+PAYLOAD_SCRIPT="$RUN_DIR/convert-${SLURM_JOB_ID}.sh"
 cat > "$PAYLOAD_SCRIPT" <<'PCDF_PAYLOAD'
 #!/bin/bash
 set -euo pipefail
@@ -101,36 +115,27 @@ set -euo pipefail
 TASK_ID="$1"
 INPUT_FILE="$2"
 
-input_name=$(basename "$INPUT_FILE")
-output_name="${input_name%.*}"
-OUTPUT_DIR="$OUTPUT_BASE/${TASK_ID}_${output_name}"
-
-if [[ -e "$OUTPUT_DIR" ]]; then
-    echo "ERROR: output exists: $OUTPUT_DIR" >&2
-    exit 2
-fi
-
 export OMP_NUM_THREADS="$CPUS_PER_CONVERSION"
 export NUMBA_NUM_THREADS="$CPUS_PER_CONVERSION"
 export OPENBLAS_NUM_THREADS="$CPUS_PER_CONVERSION"
 export MKL_NUM_THREADS="$CPUS_PER_CONVERSION"
 export NUMEXPR_NUM_THREADS="$CPUS_PER_CONVERSION"
 export VECLIB_MAXIMUM_THREADS="$CPUS_PER_CONVERSION"
-echo "Task ${TASK_ID}: $INPUT_FILE -> $OUTPUT_DIR"
+echo "Task ${TASK_ID}: $INPUT_FILE -> $OUTPUT_BASE"
 uv run --no-sync \
     "$PYTHON_SCRIPT" \
     "$INPUT_FILE" \
-    -o "$OUTPUT_DIR"
+    -o "$OUTPUT_BASE"
 PCDF_PAYLOAD
 chmod +x "$PAYLOAD_SCRIPT"
 
-DRIVER_SCRIPT="$OUTPUT_BASE/driver-${SLURM_JOB_ID}.sh"
+DRIVER_SCRIPT="$RUN_DIR/driver-${SLURM_JOB_ID}.sh"
 cat > "$DRIVER_SCRIPT" <<'PCDF_DRIVER'
 #!/bin/bash
 set -euo pipefail
 
-JOBLOG="$OUTPUT_BASE/p-${SLURM_JOB_ID}.${SLURM_NODEID}.log"
-NODE_MANIFEST="$OUTPUT_BASE/node-${SLURM_JOB_ID}.${SLURM_NODEID}.manifest"
+JOBLOG="$RUN_DIR/p-${SLURM_JOB_ID}.${SLURM_NODEID}.log"
+NODE_MANIFEST="$RUN_DIR/node-${SLURM_JOB_ID}.${SLURM_NODEID}.manifest"
 
 awk \
     -v N="$SLURM_NODEID" \
@@ -181,7 +186,7 @@ chmod +x "$DRIVER_SCRIPT"
 
 TOTAL_WORK=$(awk 'NF {count += 1} END {print count + 0}' "$INPUT_MANIFEST")
 CPUS_PER_CONVERSION="$CONVERTER_CPUS_PER_CONVERSION"
-export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE
+export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE RUN_DIR
 export PAYLOAD_SCRIPT CPUS_PER_CONVERSION
 export PERLMUTTER_PHYSICAL_CORES
 export -f physical_cores_on_node
@@ -200,8 +205,11 @@ echo "Running on ${SLURM_NNODES} exclusive CPU node(s)"
 echo "Node list:      ${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
 echo "Work items:     $TOTAL_WORK input file(s)"
-echo "Open Data:      ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}"
+if [[ "$OPEN_DATA_ENABLED" == "1" ]]; then
+    echo "Open Data:      ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}"
+fi
 echo "Output base:    $OUTPUT_BASE"
+echo "Run helpers:    $RUN_DIR"
 echo "CPU model:      ${PERLMUTTER_PHYSICAL_CORES} physical core(s) /" \
      "${PERLMUTTER_LOGICAL_CPUS} logical CPU(s) per Perlmutter CPU node"
 echo "Parallelism:    up to ${MAX_CONCURRENT} concurrent conversion(s)," \

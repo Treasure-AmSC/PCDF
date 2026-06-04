@@ -8,5 +8,9 @@ Files
 
 Local run
 ---------
-./{{PYTHON_NAME}} input.pool.root -o parquet-output
+./{{PYTHON_NAME}} DAOD_PHYSLITE.37620644._000244.pool.root -o parquet-output
+
+The output root is shared across input files. Each table is written below
+`<table>/dsid=<dsid>/fileNumber=<fileNumber>/data.parquet`, with partition
+values derived from the DAOD filename.
 {{SLURM_SECTION}}
