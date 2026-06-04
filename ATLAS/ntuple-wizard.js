@@ -21,7 +21,7 @@
         qos: "regular",
         nodes: 1,
         time: "02:00:00",
-        pythonPath: "ntuple-maker.py",
+        pythonPath: generatedPythonName("TREASURE"),
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
         openDataRelease: OPEN_DATA_RELEASE,
         openDataQuery: "",
@@ -115,6 +115,10 @@
       return templates[name];
     }
 
+    function generatedPythonName(format = state.inputFormat) {
+      return `./ntuple-maker-${format.toLowerCase()}.py`;
+    }
+
     function fieldValue(id) {
       return document.getElementById(id).value.trim();
     }
@@ -130,7 +134,7 @@
       state.slurm.qos = fieldValue("slurmQos") || "regular";
       state.slurm.nodes = numericFieldValue("slurmNodes", 1);
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
-      state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
+      state.slurm.pythonPath = fieldValue("slurmPythonPath") || generatedPythonName();
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
       state.slurm.openDataRelease = OPEN_DATA_RELEASE;
       state.slurm.openDataQuery = fieldValue("openDataQuery");
@@ -817,7 +821,12 @@
 
     document.querySelectorAll("input[name='inputFormat']").forEach((input) => {
       input.addEventListener("change", () => {
+        const previousDefaultPython = generatedPythonName(state.inputFormat);
         state.inputFormat = selectedInputFormat();
+        const pythonPathInput = document.getElementById("slurmPythonPath");
+        if (!pythonPathInput.value.trim() || pythonPathInput.value.trim() === previousDefaultPython) {
+          pythonPathInput.value = generatedPythonName();
+        }
         ensureDependencies();
         renderObjects();
         renderVariables();
@@ -910,7 +919,7 @@
     }
 
     function bundleReadme() {
-      const pythonName = `ntuple-maker-${state.inputFormat.toLowerCase()}.py`;
+      const pythonName = generatedPythonName().replace(/^\.\//, "");
       const slurmSection = state.slurm.enabled ? `
 Perlmutter run
 --------------
@@ -956,7 +965,7 @@ wizard if you want a Perlmutter submission wrapper.
 
     document.getElementById("downloadScript").addEventListener("click", () => {
       const blob = new Blob([scriptOutput.value], { type: "text/x-python" });
-      downloadBlob(blob, `ntuple-maker-${state.inputFormat.toLowerCase()}.py`);
+      downloadBlob(blob, generatedPythonName().replace(/^\.\//, ""));
     });
 
     document.getElementById("downloadTransferScript").addEventListener("click", () => {
@@ -970,7 +979,7 @@ wizard if you want a Perlmutter submission wrapper.
     });
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
-      const pythonName = `ntuple-maker-${state.inputFormat.toLowerCase()}.py`;
+      const pythonName = generatedPythonName().replace(/^\.\//, "");
       const files = [
         { name: pythonName, content: scriptOutput.value, mode: 0o755 },
         { name: "download-atlas-opendata.sh", content: transferScriptOutput.value, mode: 0o755 },

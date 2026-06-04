@@ -187,7 +187,8 @@
                     </div>
                     <div class="col-12">
                       <label class="form-label" for="slurmPythonPath">Python script path on Perlmutter</label>
-                      <input class="form-control slurm-input" id="slurmPythonPath" value="ntuple-maker.py">
+                      <input class="form-control slurm-input" id="slurmPythonPath" value="./ntuple-maker-treasure.py">
+                      <div class="form-text text-secondary">Defaults to the converter filename included in the downloaded bundle.</div>
                     </div>
                     <div class="col-12">
                       <label class="form-label" for="slurmInputManifest">Input manifest path</label>
@@ -211,7 +212,7 @@
                     <button class="btn btn-outline-light" type="button" id="downloadBundle">Download bundle (.tar)</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0">
-                    <p class="mb-2">Local run: <code>uv run ntuple-maker.py input.pool.root -o parquet-output</code>.</p>
+                    <p class="mb-2">Local run: <code>uv run ./ntuple-maker-treasure.py input.pool.root -o parquet-output</code> (or <code>ntuple-maker-physlite.py</code> when PHYSLITE is selected).</p>
                     <ol class="submission-steps mb-0 ps-3">
                       <li>Use the Open Data page to preview how many files and approximate bytes will be copied.</li>
                       <li>Download the tar bundle, copy it to Perlmutter, and extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
