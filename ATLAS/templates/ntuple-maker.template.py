@@ -103,9 +103,15 @@ def split_constituent_aliases():
     return charged, neutral
 
 
+INDEX_FILE_BITS = 16
+INDEX_LOCAL_BITS = 64 - INDEX_FILE_BITS
+MAX_FILE_NUMBER = (1 << INDEX_FILE_BITS) - 1
+MAX_LOCAL_INDEX = (1 << INDEX_LOCAL_BITS) - 1
+
+
 def partition_from_filename(input_path):
     pattern = re.compile(
-        r"^DAOD_[^.]+\.(?P<dsid>\d+)\._(?P<file_number>\d+)"
+        r"^DAOD_[^.]+\.(?P<tid>\d+)\._(?P<file_number>\d+)"
         r"\.pool\.root(?:\.\d+)?$"
     )
     match = pattern.match(input_path.name)
@@ -113,19 +119,40 @@ def partition_from_filename(input_path):
         raise click.ClickException(
             "Input filename must look like "
             "DAOD_PHYSLITE.37620644._000244.pool.root[.N] "
-            "so dsid and fileNumber partitions can be derived"
+            "so tid and fileNumber partitions can be derived"
+        )
+    file_number = int(match.group("file_number"))
+    if file_number > MAX_FILE_NUMBER:
+        raise click.ClickException(
+            f"File number {file_number} exceeds the {MAX_FILE_NUMBER} "
+            "maximum that can be encoded in 16 index bits"
         )
     return {
-        "dsid": match.group("dsid"),
-        "fileNumber": match.group("file_number"),
+        "tid": match.group("tid"),
+        "fileNumber": file_number,
     }
+
+
+def encode_global_index(local_index, file_number, label):
+    flattened = ak.flatten(local_index, axis=None)
+    if len(flattened) > 0 and int(ak.max(flattened)) > MAX_LOCAL_INDEX:
+        raise click.ClickException(
+            f"{label} local index exceeds {MAX_LOCAL_INDEX}; cannot reserve "
+            "the leading 16 bits for the file number"
+        )
+    prefix = np.uint64(file_number << INDEX_LOCAL_BITS)
+    return ak.values_astype(local_index, np.uint64) + prefix
+
+
+def make_global_idx(arr, file_number, label):
+    return encode_global_index(make_idx(arr), file_number, label)
 
 
 def write_object(output, folder, partition, payload, flatten=True):
     path = (
         output
         / folder
-        / f"dsid={partition['dsid']}"
+        / f"tid={partition['tid']}"
         / f"fileNumber={partition['fileNumber']}"
     )
     if path.exists():
@@ -197,7 +224,11 @@ def ntuple_maker(input, output):
             raise click.ClickException("No events found")
 
         print(f"{POINT} Read {len(event)} events")
-        event_index = make_idx(first_field(event))
+        event_index = make_global_idx(
+            first_field(event),
+            partition["fileNumber"],
+            "eventIndex",
+        )
         output.mkdir(parents=True, exist_ok=True)
 
         if "Event" in OBJECTS:
@@ -219,7 +250,11 @@ def ntuple_maker(input, output):
                 if "__jetIndexSource" in ak.fields(jet)
                 else first_field(jet)
             )
-            jet_index = make_idx(jet_index_source)
+            jet_index = make_global_idx(
+                jet_index_source,
+                partition["fileNumber"],
+                "jetIndex",
+            )
             if "Jet" in OBJECTS:
                 print(f"  {POINT} Jets")
                 jet_payload = {
@@ -290,7 +325,11 @@ def ntuple_maker(input, output):
                 [charged, neutral],
                 axis=2,
             )
-            const_index = make_idx(first_field(constituents))
+            const_index = make_global_idx(
+                first_field(constituents),
+                partition["fileNumber"],
+                "constIndex",
+            )
             const_payload = {
                 "constIndex": const_index,
                 "jetIndex": jet_index,
@@ -314,7 +353,11 @@ def ntuple_maker(input, output):
                     jet.trackLinks.m_persKey != 0
                 ],
             )
-            track_index = make_idx(first_field(tracks))
+            track_index = make_global_idx(
+                first_field(tracks),
+                partition["fileNumber"],
+                "trackIndex",
+            )
             track_payload = {
                 "trackIndex": track_index,
                 "jetIndex": jet_index,
@@ -339,7 +382,11 @@ def ntuple_maker(input, output):
             if name not in OBJECTS:
                 continue
             record = arrays[name]
-            object_index = make_idx(first_field(record))
+            object_index = make_global_idx(
+                first_field(record),
+                partition["fileNumber"],
+                OBJECTS[name]["index_name"],
+            )
             payload = {
                 OBJECTS[name]["index_name"]: object_index,
                 "eventIndex": event_index,
