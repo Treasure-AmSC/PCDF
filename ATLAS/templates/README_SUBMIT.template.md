@@ -12,5 +12,5 @@ Local run
 
 The output root is shared across input files. Each table is written below
 `<table>/tid=<tid>/fileNumber=<fileNumber>/data.parquet`, with partition
-values derived from the DAOD filename. Leading zeros are stripped from `fileNumber`, and the generated indices reserve their leading 16 bits for the file number so they are global within each `tid`.
+values derived from the DAOD filename. Leading zeros are stripped from `fileNumber`, and the generated indices reserve their leading 16 bits for the file number so they are global within each `tid`. Event rows include `lumiBlock`; MC-only truth/flavor labels are omitted when the wizard is set to collision data.
 {{SLURM_SECTION}}

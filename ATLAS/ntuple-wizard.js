@@ -6,6 +6,7 @@
     const state = {
       step: 0,
       inputFormat: "TREASURE",
+      sampleType: "MC",
       selectedObjects: new Set(),
       selectedVariables: {},
       slurm: {
@@ -13,7 +14,7 @@
         account: "<NERSC_PROJECT>",
         qos: "regular",
         nodes: 1,
-        time: "02:00:00",
+        time: "00:30:00",
         pythonPath: generatedPythonName("TREASURE"),
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
         outputBase: "$SCRATCH/pcdf-output"
@@ -111,7 +112,7 @@
       state.slurm.account = fieldValue("slurmAccount") || "<NERSC_PROJECT>";
       state.slurm.qos = fieldValue("slurmQos") || "regular";
       state.slurm.nodes = numericFieldValue("slurmNodes", 1);
-      state.slurm.time = fieldValue("slurmTime") || "02:00:00";
+      state.slurm.time = fieldValue("slurmTime") || "00:30:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || generatedPythonName();
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
@@ -119,6 +120,18 @@
 
     function selectedInputFormat() {
       return document.querySelector("input[name='inputFormat']:checked").value;
+    }
+
+    function selectedSampleType() {
+      return document.querySelector("input[name='sampleType']:checked").value;
+    }
+
+    function variableIsAvailable(key, name) {
+      return !(state.sampleType === "DATA" && (OBJECTS[key].mcOnlyVariables || []).includes(name));
+    }
+
+    function availableVariableEntries(key) {
+      return Object.entries(OBJECTS[key].aliases).filter(([name]) => variableIsAvailable(key, name));
     }
 
     function isObjectAvailable(key) {
@@ -191,9 +204,10 @@
                 </div>
                 <p class="small text-secondary mb-2">${object.description}</p>
                 <div class="object-meta">
-                  <span class="badge text-bg-secondary">${Object.keys(object.aliases).length} variables</span>
+                  <span class="badge text-bg-secondary">${availableVariableEntries(key).length} variables</span>
                   ${dependencyBadges(key)}
                   ${disabled ? '<span class="badge text-bg-warning">Unavailable in PHYSLITE</span>' : ""}
+                  ${state.sampleType === "DATA" && (object.mcOnlyVariables || []).length ? '<span class="badge text-bg-info">MC-only labels omitted</span>' : ""}
                 </div>
                 ${deselectHint ? `<span class="d-block small dependency-note mt-2">${deselectHint}</span>` : ""}
               </div>
@@ -227,13 +241,17 @@
         const variables = Object.entries(object.aliases).map(([name, branch]) => {
           const branchText = Array.isArray(branch) ? branch.join(" / ") : branch;
           const required = variableIsRequired(key, name);
-          if (required) state.selectedVariables[key].add(name);
+          const available = variableIsAvailable(key, name);
+          if (required && available) state.selectedVariables[key].add(name);
+          if (!available) state.selectedVariables[key].delete(name);
+          const checked = available && state.selectedVariables[key].has(name);
           return `
-            <div class="form-check mb-2">
-              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${key}" id="var-${key}-${name}" ${state.selectedVariables[key].has(name) ? "checked" : ""} ${required ? "disabled" : ""}>
+            <div class="form-check mb-2 ${available ? "" : "opacity-50"}">
+              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${key}" id="var-${key}-${name}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
               <label class="form-check-label" for="var-${key}-${name}">
                 <span class="fw-semibold">${name}</span>
-                ${required ? '<span class="badge text-bg-warning ms-1">required vector component</span>' : ""}
+                ${required && available ? '<span class="badge text-bg-warning ms-1">required vector component</span>' : ""}
+                ${!available ? '<span class="badge text-bg-info ms-1">MC only; omitted for data</span>' : ""}
                 <span class="d-block small text-secondary">${branchText}</span>
               </label>
             </div>`;
@@ -301,7 +319,9 @@
     }
 
     function selectedVariables(key) {
-      return Array.from(state.selectedVariables[key] || []).filter((name) => Object.hasOwn(OBJECTS[key].aliases, name));
+      return Array.from(state.selectedVariables[key] || []).filter((name) => {
+        return Object.hasOwn(OBJECTS[key].aliases, name) && variableIsAvailable(key, name);
+      });
     }
 
     function escapeHtml(value) {
@@ -338,7 +358,7 @@
           index_name: object.indexName || null,
           aliases: Object.fromEntries(selectedVariables(key).map((name) => [name, object.aliases[name]]))
         }]));
-      return { inputFormat: state.inputFormat, objects };
+      return { inputFormat: state.inputFormat, sampleType: state.sampleType, objects };
     }
 
 
@@ -381,9 +401,13 @@
     function buildScript() {
       const config = selectedConfig();
       const objectConfig = formatPythonLiteral(config.objects);
-      const inputNote = config.inputFormat === "PHYSLITE"
+      const formatNote = config.inputFormat === "PHYSLITE"
         ? "PHYSLITE selected: jet constituents are disabled."
         : "TREASURE selected: jet constituents can be read.";
+      const sampleNote = config.sampleType === "DATA"
+        ? "Data selected: MC-only truth/flavor branches are omitted; lumiBlock is included in Events."
+        : "MC selected: truth/flavor branches can be included when selected.";
+      const inputNote = `${formatNote} ${sampleNote}`;
       return applyTemplate(requireTemplate("python"), {
         INPUT_FORMAT: config.inputFormat,
         INPUT_NOTE: inputNote,
@@ -451,7 +475,7 @@
       summary.innerHTML = `
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Input</h3>
-          <p class="mb-0 fw-semibold">${escapeHtml(config.inputFormat)}</p>
+          <p class="mb-0 fw-semibold">${escapeHtml(config.inputFormat)} · ${escapeHtml(config.sampleType)}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Objects</h3>
@@ -467,12 +491,15 @@
         </div></div>`;
     }
 
-    document.querySelectorAll("input[name='inputFormat']").forEach((input) => {
+    document.querySelectorAll("input[name='inputFormat'], input[name='sampleType']").forEach((input) => {
       input.addEventListener("change", () => {
         const previousDefaultPython = generatedPythonName(state.inputFormat);
+        const previousInputFormat = state.inputFormat;
         state.inputFormat = selectedInputFormat();
+        state.sampleType = selectedSampleType();
         const pythonPathInput = document.getElementById("slurmPythonPath");
-        if (!pythonPathInput.value.trim() || pythonPathInput.value.trim() === previousDefaultPython) {
+        if (state.inputFormat !== previousInputFormat &&
+            (!pythonPathInput.value.trim() || pythonPathInput.value.trim() === previousDefaultPython)) {
           pythonPathInput.value = generatedPythonName();
         }
         ensureDependencies();
@@ -507,7 +534,7 @@
 
     document.getElementById("restoreDefaults").addEventListener("click", () => {
       Object.entries(OBJECTS).forEach(([key, object]) => {
-        if (state.selectedObjects.has(key)) state.selectedVariables[key] = new Set(Object.keys(object.aliases));
+        if (state.selectedObjects.has(key)) state.selectedVariables[key] = new Set(availableVariableEntries(key).map(([name]) => name));
       });
       renderVariables();
       updateGeneratedScript();
@@ -518,8 +545,17 @@
       input.addEventListener("change", updateGeneratedScript);
     });
 
+    function formIsValid() {
+      const form = document.getElementById("wizardForm");
+      form.classList.add("was-validated");
+      return form.checkValidity();
+    }
+
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
-    document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 4 ? 4 : state.step + 1));
+    document.getElementById("nextStep").addEventListener("click", () => {
+      if (!formIsValid()) return;
+      setStep(state.step === 4 ? 4 : state.step + 1);
+    });
     document.querySelectorAll("[data-step-target]").forEach((button) => {
       button.addEventListener("click", () => setStep(Number(button.dataset.stepTarget)));
     });
@@ -608,19 +644,19 @@ wizard if you want a Perlmutter submission wrapper.
     }
 
     document.getElementById("downloadScript").addEventListener("click", () => {
-      if (!generationReady || !scriptOutput.value) return;
+      if (!generationReady || !scriptOutput.value || !formIsValid()) return;
       const blob = new Blob([scriptOutput.value], { type: "text/x-python" });
       downloadBlob(blob, generatedPythonName().replace(/^\.\//, ""));
     });
 
     document.getElementById("downloadSlurmScript").addEventListener("click", () => {
-      if (!generationReady || !state.slurm.enabled || !slurmScriptOutput.value) return;
+      if (!generationReady || !state.slurm.enabled || !slurmScriptOutput.value || !formIsValid()) return;
       const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
       downloadBlob(blob, "submit-pcdf-ntuple.slurm");
     });
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
-      if (!generationReady || !scriptOutput.value) return;
+      if (!generationReady || !scriptOutput.value || !formIsValid()) return;
       const pythonName = generatedPythonName().replace(/^\.\//, "");
       const files = [
         { name: pythonName, content: scriptOutput.value, mode: 0o755 },

@@ -3,12 +3,13 @@
     "title": "Events",
     "folder": "Event",
     "indexName": "eventIndex",
-    "description": "Run/event identifiers and beam spot coordinates from the original ntuple maker.",
+    "description": "Run/event identifiers, luminosity block, and beam spot coordinates from EventInfo.",
     "recommended": true,
     "requiredReason": "Event is always included to provide eventIndex links for every output folder.",
     "aliases": {
       "runNumber": "EventInfoAuxDyn.runNumber",
       "eventNumber": "EventInfoAuxDyn.eventNumber",
+      "lumiBlock": "EventInfoAuxDyn.lumiBlock",
       "beamX": "EventInfoAuxDyn.beamPosX",
       "beamY": "EventInfoAuxDyn.beamPosY",
       "beamZ": "EventInfoAuxDyn.beamPosZ"
@@ -18,7 +19,7 @@
     "title": "Small-R jets",
     "folder": "Jet",
     "indexName": "jetIndex",
-    "description": "Small-radius jet four-vectors and original parton flavor label.",
+    "description": "Small-radius jet four-vectors and original parton flavor label. MC-only labels are omitted automatically for data inputs.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -35,7 +36,10 @@
       "phi": "AnalysisJetsAuxDyn.phi",
       "m": "AnalysisJetsAuxDyn.m",
       "flavor": "AnalysisJetsAuxDyn.PartonTruthLabelID"
-    }
+    },
+    "mcOnlyVariables": [
+      "flavor"
+    ]
   },
   "Const": {
     "title": "Jet constituents",
@@ -93,7 +97,7 @@
     "title": "Large-R jets",
     "folder": "LargeRJet",
     "indexName": "largeRJetIndex",
-    "description": "Large-radius jet four-vectors and original truth label.",
+    "description": "Large-radius jet four-vectors and original truth label. MC-only labels are omitted automatically for data inputs.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -110,13 +114,16 @@
       "phi": "AnalysisLargeRJetsAuxDyn.phi",
       "m": "AnalysisLargeRJetsAuxDyn.m",
       "truth": "AnalysisLargeRJetsAuxDyn.R10TruthLabel_R22v1"
-    }
+    },
+    "mcOnlyVariables": [
+      "truth"
+    ]
   },
   "Electron": {
     "title": "Electrons",
     "folder": "Electron",
     "indexName": "electronIndex",
-    "description": "Original electron kinematics, electric charge, and truth type.",
+    "description": "Original electron kinematics, electric charge, and truth type. MC-only labels are omitted automatically for data inputs.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -132,13 +139,16 @@
       "phi": "AnalysisElectronsAuxDyn.phi",
       "charge": "AnalysisElectronsAuxDyn.charge",
       "truth": "AnalysisElectronsAuxDyn.truthType"
-    }
+    },
+    "mcOnlyVariables": [
+      "truth"
+    ]
   },
   "Muon": {
     "title": "Muons",
     "folder": "Muon",
     "indexName": "muonIndex",
-    "description": "Original muon kinematics, electric charge, and truth type.",
+    "description": "Original muon kinematics, electric charge, and truth type. MC-only labels are omitted automatically for data inputs.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -154,13 +164,16 @@
       "phi": "AnalysisMuonsAuxDyn.phi",
       "charge": "AnalysisMuonsAuxDyn.charge",
       "truth": "AnalysisMuonsAuxDyn.truthType"
-    }
+    },
+    "mcOnlyVariables": [
+      "truth"
+    ]
   },
   "Photon": {
     "title": "Photons",
     "folder": "Photon",
     "indexName": "photonIndex",
-    "description": "Original photon kinematics and truth type; charge is intentionally omitted because photons have no charge branch.",
+    "description": "Original photon kinematics and truth type; charge is intentionally omitted because photons have no charge branch. MC-only labels are omitted automatically for data inputs.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -175,7 +188,10 @@
       "eta": "AnalysisPhotonsAuxDyn.eta",
       "phi": "AnalysisPhotonsAuxDyn.phi",
       "truth": "AnalysisPhotonsAuxDyn.truthType"
-    }
+    },
+    "mcOnlyVariables": [
+      "truth"
+    ]
   },
   "MET": {
     "title": "Missing ET",
