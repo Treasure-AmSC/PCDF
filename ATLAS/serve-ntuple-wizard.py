@@ -37,11 +37,6 @@ INJECTIONS = {
         "template-slurm",
         ATLAS_DIR / "templates" / "submit-pcdf-ntuple.template.slurm",
     ),
-    "<!-- pcdf-template-transfer -->": (
-        "text/plain",
-        "template-transfer",
-        ATLAS_DIR / "templates" / "download-atlas-opendata.template.sh",
-    ),
     "<!-- pcdf-template-readme -->": (
         "text/plain",
         "template-readme",

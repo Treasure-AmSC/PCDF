@@ -24,9 +24,8 @@
             <button class="btn step-pill active flex-fill" type="button" data-step-target="0">1. Input format</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="1">2. Objects</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="2">3. Variables</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="3">4. Open Data</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="4">5. SLURM</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="5">6. Generate</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="3">4. SLURM</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="4">5. Generate</button>
           </div>
 
           <form id="wizardForm">
@@ -96,72 +95,12 @@
             </section>
 
             <section class="wizard-step d-none" data-step="3">
-              <div class="row g-4 align-items-stretch">
-                <div class="col-lg-5">
-                  <div class="card h-100 border-secondary-subtle">
-                    <div class="card-body">
-                      <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
-                        <div>
-                          <h2 class="h4 card-title mb-1">Open Data lookup</h2>
-                          <p class="text-secondary mb-0">Optional: search ATLAS Open Data research PHYSLITE datasets from the <code>2024r-pp</code> release. Leave this off if you will provide your own input manifest.</p>
-                        </div>
-                        <div class="form-check form-switch">
-                          <input class="form-check-input" type="checkbox" id="enableOpenData">
-                          <label class="form-check-label" for="enableOpenData">Use Open Data</label>
-                        </div>
-                      </div>
-                      <div class="alert alert-secondary py-2 mb-4">Only the dataset choice, transfer-speed estimate, and scratch staging directory are user configurable; API details are fixed for public deployment. The browser preview uses a CORS relay because the atlasopenmagic API does not expose browser CORS headers, and requests small pages to avoid relay payload limits; the DTN download helper performs the authoritative direct live lookup before transferring data.</div>
-                      <div class="row g-3">
-                        <div class="col-12">
-                          <label class="form-label" for="openDataQuery">Dataset search</label>
-                          <input class="form-control slurm-input" id="openDataQuery" placeholder="Search all, or enter e.g. data, ttbar, Higgs, 601" list="openDataDatasetOptions">
-                          <datalist id="openDataDatasetOptions"></datalist>
-                          <div class="form-text text-secondary">Search DSID, physics short name, process, description, or keywords.</div>
-                        </div>
-                        <div class="col-12">
-                          <label class="form-label" for="openDataDataset">Selected dataset ID or physics short name</label>
-                          <input class="form-control slurm-input" id="openDataDataset" value="data">
-                          <div class="form-text text-secondary">Click a search result to update this value, or enter a known dataset manually.</div>
-                        </div>
-                        <div class="col-md-5">
-                          <label class="form-label" for="openDataMbps">Expected DTN throughput</label>
-                          <div class="input-group">
-                            <input class="form-control slurm-input" id="openDataMbps" type="number" min="1" value="250">
-                            <span class="input-group-text">MB/s</span>
-                          </div>
-                        </div>
-                        <div class="col-md-7">
-                          <label class="form-label" for="openDataDownloadDir">Scratch download directory</label>
-                          <input class="form-control slurm-input" id="openDataDownloadDir" value="$SCRATCH/pcdf-opendata">
-                        </div>
-                        <div class="col-12">
-                          <button class="btn btn-primary" type="button" id="previewOpenData">Search and preview Open Data</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="col-lg-7">
-                  <div class="card h-100 border-secondary-subtle">
-                    <div class="card-body">
-                      <h2 class="h4 card-title">Search results and download estimate</h2>
-                      <div id="openDataPreview" class="alert alert-secondary open-data-preview mb-3" role="status">
-                        Enable Open Data, search research PHYSLITE datasets, pick a match, and preview file count, bytes, and transfer time.
-                      </div>
-                      <div id="openDataResults" class="row g-3"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section class="wizard-step d-none" data-step="4">
               <div class="card border-secondary-subtle slurm-settings">
                 <div class="card-body">
                   <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
                     <div>
                       <h2 class="h4 mb-1">SLURM / NERSC Perlmutter</h2>
-                      <p class="text-secondary mb-0">Generate a CPU-only <code>sbatch</code> wrapper for the Python converter. Input files must already be staged by the DTN transfer helper.</p>
+                      <p class="text-secondary mb-0">Generate a CPU-only <code>sbatch</code> wrapper for the Python converter. Input files must already be listed in the manifest before the compute job starts.</p>
                     </div>
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
@@ -202,30 +141,28 @@
                     <div class="col-12">
                       <label class="form-label" for="slurmInputManifest">Input manifest path</label>
                       <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt">
-                      <div class="form-text text-secondary">One local DAOD path per non-empty line. If Open Data is enabled, the DTN transfer script writes this manifest; otherwise create it yourself before the compute job starts.</div>
+                      <div class="form-text text-secondary">One local DAOD path per non-empty line. Create this manifest before submitting the compute job; the wrapper will not download data on compute nodes.</div>
                     </div>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section class="wizard-step d-none" data-step="5">
+            <section class="wizard-step d-none" data-step="4">
               <div class="row g-4 generate-grid">
                 <div class="col-xl-5 summary-column">
                   <h2 class="h4 generate-heading">Review configuration</h2>
                   <div id="summary" class="vstack gap-3 mb-4"></div>
                   <div class="action-bar">
                     <button class="btn btn-outline-light" type="button" id="downloadScript" disabled>Download Python</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadTransferScript" disabled>Download DTN transfer</button>
                     <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled>Download SLURM</button>
                     <button class="btn btn-outline-light" type="button" id="downloadBundle" disabled>Download bundle (.tar)</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">Local run: <code>uv run ./ntuple-maker-treasure.py DAOD_PHYSLITE.37620644._000244.pool.root -o parquet-output</code> (or <code>ntuple-maker-physlite.py</code> when PHYSLITE is selected). Output is written as table folders with <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions; <code>fileNumber</code> has leading zeros stripped and is encoded into the leading 16 bits of generated indices.</p>
                     <ol class="submission-steps mb-0 ps-3">
-                      <li>If you want ATLAS Open Data staging, explicitly enable it on the Open Data page and preview how many files and approximate bytes will be copied.</li>
+                      <li>Create the input manifest listed on the SLURM page before submitting; the compute job never downloads data.</li>
                       <li>Download the tar bundle, copy it to Perlmutter, and extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>If Open Data is enabled, log in to a Perlmutter data transfer node and run <code>./download-atlas-opendata.sh</code>; otherwise create the input manifest yourself before submitting.</li>
                       <li>Return to a login node, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
                       <li>Monitor with <code>squeue -u $USER</code>; inspect <code>pcdf-ntuple-&lt;jobid&gt;.out</code>, <code>.err</code>, and per-node GNU parallel logs in the generated run-helper directory if <code>PCDF_KEEP_RUN_DIR=1</code> was set.</li>
                     </ol>
@@ -240,7 +177,6 @@
                   <label for="slurmScriptHighlight" class="form-label fw-semibold">Generated SLURM submission script</label>
                   <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" aria-live="polite"><code></code></pre>
                   <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
-                  <textarea id="transferScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
                 </div>
               </div>
             </section>
@@ -257,7 +193,6 @@
   <!-- pcdf-object-config -->
   <!-- pcdf-template-python -->
   <!-- pcdf-template-slurm -->
-  <!-- pcdf-template-transfer -->
   <!-- pcdf-template-readme -->
   <!-- The local server can inline the split metadata/templates here; the static page fetches them when absent. -->
   <script src="ntuple-wizard.js"></script>

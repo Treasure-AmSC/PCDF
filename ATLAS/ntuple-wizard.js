@@ -2,13 +2,6 @@
 
     const OBJECT_CONFIG_URL = "ntuple-wizard.objects.json";
 
-    const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
-    const OPEN_DATA_BROWSER_PROXY = "https://corsproxy.io/?";
-    const OPEN_DATA_BROWSER_PAGE_SIZE = 100;
-    const OPEN_DATA_BROWSER_MAX_MATCHES = 50;
-    const OPEN_DATA_RELEASE = "2024r-pp";
-    const OPEN_DATA_SKIM = "noskim";
-    const OPEN_DATA_DTN_PATTERN = "dtn";
 
     const state = {
       step: 0,
@@ -23,15 +16,6 @@
         time: "02:00:00",
         pythonPath: generatedPythonName("TREASURE"),
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
-        openDataRelease: OPEN_DATA_RELEASE,
-        openDataQuery: "",
-        openDataDataset: "data",
-        openDataSkim: OPEN_DATA_SKIM,
-        openDataDownloadDir: "$SCRATCH/pcdf-opendata",
-        openDataDtnPattern: OPEN_DATA_DTN_PATTERN,
-        openDataMbps: 250,
-        openDataPreview: null,
-        openDataEnabled: false,
         outputBase: "$SCRATCH/pcdf-output"
       }
     };
@@ -42,10 +26,6 @@
     const scriptHighlight = document.getElementById("scriptHighlight").querySelector("code");
     const slurmScriptOutput = document.getElementById("slurmScriptOutput");
     const slurmScriptHighlight = document.getElementById("slurmScriptHighlight").querySelector("code");
-    const transferScriptOutput = document.getElementById("transferScriptOutput");
-    const openDataPreview = document.getElementById("openDataPreview");
-    const openDataResults = document.getElementById("openDataResults");
-    const openDataDatasetOptions = document.getElementById("openDataDatasetOptions");
     const summary = document.getElementById("summary");
 
     const TEMPLATE_SOURCES = {
@@ -56,10 +36,6 @@
       slurm: {
         id: "template-slurm",
         url: "templates/submit-pcdf-ntuple.template.slurm",
-      },
-      transfer: {
-        id: "template-transfer",
-        url: "templates/download-atlas-opendata.template.sh",
       },
       readme: {
         id: "template-readme",
@@ -138,14 +114,6 @@
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || generatedPythonName();
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
-      state.slurm.openDataEnabled = document.getElementById("enableOpenData").checked;
-      state.slurm.openDataRelease = OPEN_DATA_RELEASE;
-      state.slurm.openDataQuery = fieldValue("openDataQuery");
-      state.slurm.openDataDataset = fieldValue("openDataDataset") || "data";
-      state.slurm.openDataSkim = OPEN_DATA_SKIM;
-      state.slurm.openDataDownloadDir = fieldValue("openDataDownloadDir") || "$SCRATCH/pcdf-opendata";
-      state.slurm.openDataDtnPattern = OPEN_DATA_DTN_PATTERN;
-      state.slurm.openDataMbps = numericFieldValue("openDataMbps", 250);
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
     }
 
@@ -362,322 +330,6 @@
       return highlighted;
     }
 
-    function formatBytes(bytes) {
-      if (!Number.isFinite(bytes) || bytes <= 0) return "unknown size";
-      const units = ["B", "KB", "MB", "GB", "TB", "PB"];
-      let value = bytes;
-      let unit = 0;
-      while (value >= 1000 && unit < units.length - 1) {
-        value /= 1000;
-        unit += 1;
-      }
-      return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
-    }
-
-    function formatDuration(seconds) {
-      if (!Number.isFinite(seconds) || seconds <= 0) return "unknown";
-      const hours = Math.floor(seconds / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      const secs = Math.round(seconds % 60);
-      if (hours) return `${hours} h ${minutes} min`;
-      if (minutes) return `${minutes} min ${secs} s`;
-      return `${secs} s`;
-    }
-
-    function applyHttpsProtocol(url) {
-      return String(url).replace(
-        "root://eospublic.cern.ch:1094/",
-        "https://opendata.cern.ch"
-      );
-    }
-
-    function availableFileLists(metadata) {
-      const lists = new Map();
-      if (Array.isArray(metadata.file_list) && metadata.file_list.length) {
-        lists.set("noskim", metadata.file_list);
-      }
-      (metadata.skims || []).forEach((skim) => {
-        if (skim.skim_type && Array.isArray(skim.file_list) && skim.file_list.length) {
-          lists.set(skim.skim_type, skim.file_list);
-        }
-      });
-      return lists;
-    }
-
-    function declaredFileCount(metadata, skim = OPEN_DATA_SKIM) {
-      const files = availableFileLists(metadata).get(skim);
-      if (files?.length) return files.length;
-      return Number.parseInt(metadata.file_count || metadata.n_files || "0", 10) || 0;
-    }
-
-    function declaredBytes(metadata, skim = OPEN_DATA_SKIM) {
-      const skimInfo = (metadata.skims || []).find((entry) => entry.skim_type === skim);
-      const value = skimInfo?.bytes || metadata.bytes || metadata.total_bytes || 0;
-      return Number.parseInt(value, 10) || 0;
-    }
-
-    async function headContentLength(url) {
-      try {
-        const response = await fetch(url, { method: "HEAD" });
-        if (!response.ok) return 0;
-        return Number.parseInt(response.headers.get("content-length") || "0", 10) || 0;
-      } catch (error) {
-        return 0;
-      }
-    }
-
-    function apiBaseUrl() {
-      return OPEN_DATA_API_BASE.replace(/\/$/, "");
-    }
-
-    function datasetSearchText(dataset) {
-      return [
-        dataset.dataset_number,
-        dataset.physics_short,
-        dataset.process,
-        dataset.description,
-        dataset.job_path,
-        dataset.Release,
-        dataset["release.name"],
-        ...(dataset.keywords || []),
-      ].filter(Boolean).join(" ").toLowerCase();
-    }
-
-    function isResearchPhysliteDataset(dataset) {
-      // atlasopenmagic's 2024r-pp release is the research proton-proton
-      // PHYSLITE release. Keep the check explicit so later release choices do
-      // not silently mix in education, heavy-ion, or event-generation data.
-      return state.slurm.openDataRelease === "2024r-pp" &&
-        (Array.isArray(dataset.file_list) && dataset.file_list.length ||
-          declaredFileCount(dataset) > 0 || declaredBytes(dataset) > 0);
-    }
-
-    function datasetMatchesQuery(dataset, query) {
-      const normalized = query.trim().toLowerCase();
-      if (!normalized || normalized === "physlite") return true;
-      return datasetSearchText(dataset).includes(normalized);
-    }
-
-    function datasetMatchesKey(dataset, key) {
-      const normalized = String(key || "").trim().toLowerCase();
-      if (!normalized) return false;
-      return String(dataset.dataset_number || "").toLowerCase() === normalized ||
-        String(dataset.physics_short || "").toLowerCase() === normalized;
-    }
-
-    function openDataApiUrl(path, params = {}) {
-      const url = new URL(`${apiBaseUrl()}${path}`);
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          url.searchParams.set(key, value);
-        }
-      });
-      return url;
-    }
-
-    function browserProxyUrl(url) {
-      const uncached = new URL(url.toString());
-      uncached.searchParams.set("_pcdf_preview", String(Date.now()));
-      return `${OPEN_DATA_BROWSER_PROXY}${encodeURIComponent(uncached.toString())}`;
-    }
-
-    async function fetchJsonUrl(url) {
-      const response = await fetch(url, {
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) throw new Error(`API returned HTTP ${response.status}`);
-      return response.json();
-    }
-
-    async function fetchOpenDataJson(path, params = {}) {
-      const url = openDataApiUrl(path, params);
-      return fetchJsonUrl(browserProxyUrl(url));
-    }
-
-    function shouldKeepSearchingForExact(selectedKey) {
-      const normalized = String(selectedKey || "").trim().toLowerCase();
-      return Boolean(normalized && normalized !== "data");
-    }
-
-    async function fetchResearchDatasetMatches(query, selectedKey) {
-      const releaseName = state.slurm.openDataRelease;
-      const countData = await fetchOpenDataJson("/datasets/count", {
-        release_name: releaseName,
-      });
-      const total = Number.parseInt(countData.count || "0", 10) || 0;
-      const pageSize = OPEN_DATA_BROWSER_PAGE_SIZE;
-      const pages = Math.max(1, Math.ceil(total / pageSize));
-      const matches = [];
-      let exact = null;
-      let searched = 0;
-      for (let page = 0; page < pages; page += 1) {
-        const chunk = await fetchOpenDataJson("/datasets", {
-          release_name: releaseName,
-          skip: page * pageSize,
-          limit: pageSize,
-        });
-        const datasets = Array.isArray(chunk) ? chunk : chunk.datasets || [];
-        searched += datasets.length;
-        datasets
-          .filter(isResearchPhysliteDataset)
-          .map((dataset) => ({
-            ...dataset,
-            _previewSource: "live atlasopenmagic API",
-          }))
-          .forEach((dataset) => {
-            if (!exact && datasetMatchesKey(dataset, selectedKey)) {
-              exact = dataset;
-            }
-            if (matches.length < OPEN_DATA_BROWSER_MAX_MATCHES &&
-                datasetMatchesQuery(dataset, query)) {
-              matches.push(dataset);
-            }
-          });
-        if (matches.length >= OPEN_DATA_BROWSER_MAX_MATCHES &&
-            (exact || !shouldKeepSearchingForExact(selectedKey))) {
-          break;
-        }
-      }
-      return { matches, exact, searched, total };
-    }
-
-    function renderDatasetMatches(matches) {
-      openDataDatasetOptions.innerHTML = matches.slice(0, 50).map((dataset) => {
-        const label = [dataset.dataset_number, dataset.physics_short].filter(Boolean).join(" — ");
-        return `<option value="${escapeHtml(String(dataset.dataset_number || dataset.physics_short))}">${escapeHtml(label)}</option>`;
-      }).join("");
-      if (!matches.length) {
-        return '<div class="col-12"><div class="alert alert-warning mb-0">No matching 2024r-pp PHYSLITE research datasets found.</div></div>';
-      }
-      return matches.slice(0, 12).map((dataset) => {
-        const key = String(dataset.dataset_number || dataset.physics_short);
-        const title = escapeHtml(dataset.physics_short || dataset.process || key);
-        const desc = escapeHtml(dataset.process || dataset.description || "research PHYSLITE dataset");
-        const fileCount = declaredFileCount(dataset, OPEN_DATA_SKIM);
-        return `
-          <div class="col-md-6">
-            <article class="card h-100 border-secondary-subtle">
-              <div class="card-body">
-                <div class="d-flex justify-content-between gap-2 mb-2">
-                  <strong>${title}</strong>
-                  <span class="badge text-bg-info">${fileCount} file${fileCount === 1 ? "" : "s"}</span>
-                </div>
-                <p class="small text-secondary mb-3">${desc}</p>
-                <button class="btn btn-sm btn-outline-light open-data-choice" type="button" data-dataset="${escapeHtml(key)}">Use ${escapeHtml(key)}</button>
-              </div>
-            </article>
-          </div>`;
-      }).join("");
-    }
-
-    async function previewSelectedOpenDataDataset(dataset) {
-      const slurm = state.slurm;
-      const lists = availableFileLists(dataset);
-      const files = lists.get(slurm.openDataSkim);
-      if (!files || !files.length) {
-        const fileCount = declaredFileCount(dataset, slurm.openDataSkim);
-        const estimatedBytes = declaredBytes(dataset, slurm.openDataSkim);
-        if (fileCount || estimatedBytes) {
-          const seconds = estimatedBytes /
-            (Math.max(slurm.openDataMbps, 1) * 1000 * 1000);
-          state.slurm.openDataPreview = {
-            files: fileCount,
-            bytes: estimatedBytes,
-            sizedFiles: 0,
-            seconds,
-          };
-          return {
-            files: fileCount,
-            estimatedBytes,
-            sizedFiles: 0,
-            seconds,
-            source: dataset._previewSource || "metadata estimate",
-          };
-        }
-        const choices = Array.from(lists.keys()).sort().join(", ") || "none";
-        throw new Error(`Skim '${slurm.openDataSkim}' has no files. Available: ${choices}.`);
-      }
-      const urls = files.map(applyHttpsProtocol);
-      let estimatedBytes = declaredBytes(dataset, slurm.openDataSkim);
-      let sizedFiles = estimatedBytes ? declaredFileCount(dataset, slurm.openDataSkim) : 0;
-      if (!estimatedBytes && urls.length) {
-        const headSample = urls.slice(0, Math.min(urls.length, 8));
-        const sizes = await Promise.all(headSample.map(headContentLength));
-        sizedFiles = sizes.filter(Boolean).length;
-        const knownBytes = sizes.reduce((sum, value) => sum + value, 0);
-        const avgBytes = sizedFiles ? knownBytes / sizedFiles : 0;
-        estimatedBytes = avgBytes ? Math.round(avgBytes * urls.length) : 0;
-      }
-      const fileTotal = urls.length || declaredFileCount(dataset, slurm.openDataSkim);
-      const seconds = estimatedBytes / (Math.max(slurm.openDataMbps, 1) * 1000 * 1000);
-      state.slurm.openDataPreview = {
-        files: fileTotal,
-        bytes: estimatedBytes,
-        sizedFiles,
-        seconds,
-      };
-      return {
-        files: fileTotal,
-        estimatedBytes,
-        sizedFiles,
-        seconds,
-        source: dataset._previewSource || "live API",
-      };
-    }
-
-    async function lookupOpenDataPreview() {
-      syncSlurmSettings();
-      const slurm = state.slurm;
-      openDataPreview.className = "alert alert-info open-data-preview mb-3";
-      openDataPreview.textContent = "Searching 2024r-pp research PHYSLITE datasets…";
-      openDataResults.innerHTML = '<div class="col-12"><div class="card border-secondary-subtle"><div class="card-body">Loading Open Data dataset pages with AJAX…</div></div></div>';
-      try {
-        const query = slurm.openDataQuery;
-        const { matches, exact, searched, total } = await fetchResearchDatasetMatches(
-          query,
-          slurm.openDataDataset,
-        );
-        const preferExact = exact && shouldKeepSearchingForExact(slurm.openDataDataset);
-        const resultMatches = matches.length ? matches : exact ? [exact] : matches;
-        const selected = preferExact ? exact : matches[0] || exact;
-        if (!selected) throw new Error("No matching 2024r-pp research PHYSLITE datasets found.");
-        state.slurm.openDataDataset = String(selected.dataset_number || selected.physics_short);
-        document.getElementById("openDataDataset").value = state.slurm.openDataDataset;
-        const preview = await previewSelectedOpenDataDataset(selected);
-        openDataPreview.className = "alert alert-success open-data-preview mb-3";
-        const sizingText = preview.sizedFiles
-          ? `from ${preview.sizedFiles} sampled HEAD response(s)`
-          : "from metadata in the selected dataset index";
-        openDataPreview.innerHTML = `
-          <strong>${escapeHtml(slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)}</strong>
-          (${escapeHtml(slurm.openDataSkim)}) has ${preview.files} file(s).<br>
-          Estimated download: ${formatBytes(preview.estimatedBytes)} ${sizingText}.
-          At ${slurm.openDataMbps} MB/s, transfer time is about
-          ${formatDuration(preview.seconds)}. Source: ${escapeHtml(preview.source)}.
-          Actual DTN throughput and scratch I/O can differ.<br>
-          Searched ${searched.toLocaleString()} of ${total.toLocaleString()} dataset record(s)
-          using ${OPEN_DATA_BROWSER_PAGE_SIZE}-record pages to avoid relay payload limits.
-        `;
-        openDataResults.innerHTML = renderDatasetMatches(resultMatches);
-        openDataResults.querySelectorAll(".open-data-choice").forEach((button) => {
-          button.addEventListener("click", () => {
-            document.getElementById("openDataDataset").value = button.dataset.dataset;
-            state.slurm.openDataDataset = button.dataset.dataset;
-            lookupOpenDataPreview();
-          });
-        });
-        updateGeneratedScript();
-      } catch (error) {
-        state.slurm.openDataPreview = null;
-        openDataPreview.className = "alert alert-warning open-data-preview mb-3";
-        openDataPreview.textContent = `Preview unavailable: ${error.message}. ` +
-          "The DTN transfer script will perform the same API lookup before downloading.";
-        openDataResults.innerHTML = "";
-        updateGeneratedScript();
-      }
-    }
-
     function selectedConfig() {
       const objects = Object.fromEntries(Object.entries(OBJECTS)
         .filter(([key]) => state.selectedObjects.has(key) && isObjectAvailable(key))
@@ -739,31 +391,12 @@
       });
     }
 
-    function openDataExpectedBytes() {
-      return state.slurm.openDataPreview?.bytes || 0;
-    }
-
-    function openDataExpectedFiles() {
-      return state.slurm.openDataPreview?.files || 0;
-    }
-
     function commonBatchValues() {
       const slurm = state.slurm;
       return {
         PYTHON_PATH: JSON.stringify(slurm.pythonPath),
         INPUT_MANIFEST: JSON.stringify(slurm.inputManifest),
         OUTPUT_BASE: JSON.stringify(slurm.outputBase),
-        OPEN_DATA_API_BASE: JSON.stringify(OPEN_DATA_API_BASE),
-        OPEN_DATA_RELEASE: JSON.stringify(slurm.openDataRelease),
-        OPEN_DATA_QUERY: JSON.stringify(slurm.openDataQuery),
-        OPEN_DATA_DATASET: JSON.stringify(slurm.openDataDataset),
-        OPEN_DATA_SKIM: JSON.stringify(OPEN_DATA_SKIM),
-        OPEN_DATA_DOWNLOAD_DIR: JSON.stringify(slurm.openDataDownloadDir),
-        OPEN_DATA_DTN_PATTERN: JSON.stringify(slurm.openDataDtnPattern),
-        OPEN_DATA_EXPECTED_BYTES: openDataExpectedBytes(),
-        OPEN_DATA_EXPECTED_FILES: openDataExpectedFiles(),
-        OPEN_DATA_EXPECTED_MBPS: slurm.openDataMbps,
-        OPEN_DATA_ENABLED: slurm.openDataEnabled ? "1" : "0",
       };
     }
 
@@ -787,48 +420,22 @@
       });
     }
 
-    function buildTransferScript() {
-      return applyTemplate(requireTemplate("transfer"), commonBatchValues());
-    }
-
     function setDownloadButtonsEnabled(enabled) {
       document.getElementById("downloadScript").disabled = !enabled;
-      document.getElementById("downloadTransferScript").disabled = !enabled || !state.slurm.openDataEnabled;
       document.getElementById("downloadBundle").disabled = !enabled;
       document.getElementById("downloadSlurmScript").disabled = !enabled || !state.slurm.enabled;
     }
 
 
-    function updateOpenDataControls() {
-      const enabled = document.getElementById("enableOpenData").checked;
-      [
-        "openDataQuery",
-        "openDataDataset",
-        "openDataMbps",
-        "openDataDownloadDir",
-        "previewOpenData",
-      ].forEach((id) => {
-        document.getElementById(id).disabled = !enabled;
-      });
-      if (!enabled) {
-        openDataPreview.textContent =
-          "Open Data staging is disabled. Provide your own manifest, or enable this page to search and generate a DTN transfer helper.";
-        openDataResults.innerHTML = "";
-      }
-    }
-
     function updateGeneratedScript() {
       syncSlurmSettings();
-      updateOpenDataControls();
       ensureDependencies();
       const config = selectedConfig();
       const generatedScript = buildScript();
       const slurmScript = buildSlurmScript();
-      const transferScript = buildTransferScript();
       scriptOutput.value = generatedScript;
       scriptHighlight.innerHTML = highlightPython(generatedScript);
       slurmScriptOutput.value = slurmScript;
-      transferScriptOutput.value = transferScript;
       slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM wrapper disabled.";
       generationReady = true;
       setDownloadButtonsEnabled(true);
@@ -840,9 +447,7 @@
         const variableCount = Object.keys(config.objects[key].aliases).length;
         return `<li>${title}: ${variableCount} variables</li>`;
       }).join("");
-      const transferSummary = state.slurm.openDataEnabled
-        ? `${escapeHtml(state.slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)} (${escapeHtml(state.slurm.openDataSkim)}) to ${escapeHtml(state.slurm.openDataDownloadDir)}. ${state.slurm.openDataPreview ? `${formatBytes(state.slurm.openDataPreview.bytes)} estimated.` : "Preview not run."}`
-        : "Disabled; provide your own input manifest before submitting SLURM.";
+      const manifestSummary = `Use manifest ${escapeHtml(state.slurm.inputManifest)}; create it before submitting because the compute job does not download data.`;
       summary.innerHTML = `
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Input</h3>
@@ -857,8 +462,8 @@
           <p class="mb-0">${escapeHtml(slurmSummary)}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">Open Data transfer</h3>
-          <p class="mb-0">${transferSummary}</p>
+          <h3 class="h6 text-uppercase text-secondary">Input manifest</h3>
+          <p class="mb-0">${manifestSummary}</p>
         </div></div>`;
     }
 
@@ -908,18 +513,13 @@
       updateGeneratedScript();
     });
 
-    document.querySelectorAll(".slurm-input, #enableSlurm, #enableOpenData").forEach((input) => {
+    document.querySelectorAll(".slurm-input, #enableSlurm").forEach((input) => {
       input.addEventListener("input", updateGeneratedScript);
       input.addEventListener("change", updateGeneratedScript);
     });
 
-    document.getElementById("previewOpenData").addEventListener("click", () => {
-      if (!document.getElementById("enableOpenData").checked) return;
-      lookupOpenDataPreview();
-    });
-
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
-    document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 5 ? 5 : state.step + 1));
+    document.getElementById("nextStep").addEventListener("click", () => setStep(state.step === 4 ? 4 : state.step + 1));
     document.querySelectorAll("[data-step-target]").forEach((button) => {
       button.addEventListener("click", () => setStep(Number(button.dataset.stepTarget)));
     });
@@ -971,8 +571,8 @@ Perlmutter run
 --------------
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
-   The Python${state.slurm.openDataEnabled ? ", DTN transfer," : ""} and SLURM scripts are marked executable.
-2. ${state.slurm.openDataEnabled ? "From a Perlmutter data transfer node, download the Open Data files to\n   scratch and write the input manifest:\n   ./download-atlas-opendata.sh" : "Create the input manifest listed in submit-pcdf-ntuple.slurm. Do not download data on compute nodes."}
+   The Python and SLURM scripts are marked executable.
+2. Create the input manifest listed in submit-pcdf-ntuple.slurm. Do not download data on compute nodes.
 3. Return to a login node and edit submit-pcdf-ntuple.slurm if needed:
    account, manifest, output base, and nodes. The output base is a single
    Hive-partitioned dataset root. The generated wrapper requests
@@ -986,14 +586,11 @@ Perlmutter run
 Perlmutter run
 --------------
 SLURM generation was disabled in the wizard, so this bundle contains the
-Python converter${state.slurm.openDataEnabled ? ", DTN transfer helper," : ""} and this README. Re-enable SLURM in the
+Python converter and this README. Re-enable SLURM in the
 wizard if you want a Perlmutter submission wrapper.
 `;
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
-        TRANSFER_FILE_LINE: state.slurm.openDataEnabled
-          ? "- download-atlas-opendata.sh: executable DTN-only Open Data download helper.\n"
-          : "",
         SLURM_FILE_LINE: state.slurm.enabled
           ? "- submit-pcdf-ntuple.slurm: executable NERSC Perlmutter CPU/SLURM wrapper.\n"
           : "",
@@ -1016,12 +613,6 @@ wizard if you want a Perlmutter submission wrapper.
       downloadBlob(blob, generatedPythonName().replace(/^\.\//, ""));
     });
 
-    document.getElementById("downloadTransferScript").addEventListener("click", () => {
-      if (!generationReady || !state.slurm.openDataEnabled || !transferScriptOutput.value) return;
-      const blob = new Blob([transferScriptOutput.value], { type: "text/x-shellscript" });
-      downloadBlob(blob, "download-atlas-opendata.sh");
-    });
-
     document.getElementById("downloadSlurmScript").addEventListener("click", () => {
       if (!generationReady || !state.slurm.enabled || !slurmScriptOutput.value) return;
       const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
@@ -1034,9 +625,6 @@ wizard if you want a Perlmutter submission wrapper.
       const files = [
         { name: pythonName, content: scriptOutput.value, mode: 0o755 },
       ];
-      if (state.slurm.openDataEnabled) {
-        files.push({ name: "download-atlas-opendata.sh", content: transferScriptOutput.value, mode: 0o755 });
-      }
       if (state.slurm.enabled) {
         files.push({
           name: "submit-pcdf-ntuple.slurm",
@@ -1064,7 +652,6 @@ wizard if you want a Perlmutter submission wrapper.
         const message = `Wizard resource loading failed: ${error.message}`;
         scriptHighlight.textContent = message;
         slurmScriptHighlight.textContent = message;
-        transferScriptOutput.value = message;
         console.error(error);
       }
     }

@@ -14,7 +14,6 @@
 # NERSC Perlmutter wrapper from ATLAS/ntuple-wizard.html.
 # CPU-only: the generated converter does not use GPUs.
 # Data must already be on scratch; do not download on compute nodes.
-# If using Open Data, run download-atlas-opendata.sh on a DTN first.
 
 set -euo pipefail
 
@@ -26,9 +25,6 @@ OUTPUT_BASE={{OUTPUT_BASE}}
 CONVERTER_CPUS_PER_CONVERSION={{CONVERTER_CPUS_PER_CONVERSION}}
 PERLMUTTER_PHYSICAL_CORES={{PERLMUTTER_PHYSICAL_CORES}}
 PERLMUTTER_LOGICAL_CPUS={{PERLMUTTER_LOGICAL_CPUS_PER_NODE}}
-OPEN_DATA_ENABLED={{OPEN_DATA_ENABLED}}
-OPEN_DATA_DATASET={{OPEN_DATA_DATASET}}
-OPEN_DATA_RELEASE={{OPEN_DATA_RELEASE}}
 RUN_DIR="${SCRATCH:-$HOME}/pcdf-generated/${SLURM_JOB_ID}"
 
 needs_edit=0
@@ -56,12 +52,7 @@ trap cleanup_run_dir EXIT
 
 if [[ ! -s "$INPUT_MANIFEST" ]]; then
     echo "ERROR: missing or empty input manifest: $INPUT_MANIFEST" >&2
-    if [[ "$OPEN_DATA_ENABLED" == "1" ]]; then
-        echo "Run ./download-atlas-opendata.sh on a Perlmutter DTN first." >&2
-        echo "Dataset: ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}" >&2
-    else
-        echo "Create the manifest before submitting this compute job." >&2
-    fi
+    echo "Create the manifest before submitting this compute job." >&2
     exit 2
 fi
 
@@ -205,9 +196,6 @@ echo "Running on ${SLURM_NNODES} exclusive CPU node(s)"
 echo "Node list:      ${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
 echo "Work items:     $TOTAL_WORK input file(s)"
-if [[ "$OPEN_DATA_ENABLED" == "1" ]]; then
-    echo "Open Data:      ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}"
-fi
 echo "Output base:    $OUTPUT_BASE"
 echo "Run helpers:    $RUN_DIR"
 echo "CPU model:      ${PERLMUTTER_PHYSICAL_CORES} physical core(s) /" \
