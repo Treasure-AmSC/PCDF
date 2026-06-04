@@ -1,4 +1,6 @@
-    const OBJECTS = JSON.parse(document.getElementById("object-config").textContent);
+    let OBJECTS = {};
+
+    const OBJECT_CONFIG_URL = "ntuple-wizard.objects.json";
 
     const OPEN_DATA_API_BASE = "https://atlasopenmagic-api.app.cern.ch";
     const OPEN_DATA_BROWSER_PROXY = "https://corsproxy.io/?";
@@ -11,8 +13,8 @@
     const state = {
       step: 0,
       inputFormat: "TREASURE",
-      selectedObjects: new Set(Object.keys(OBJECTS).filter((key) => OBJECTS[key].recommended)),
-      selectedVariables: Object.fromEntries(Object.entries(OBJECTS).map(([key, object]) => [key, new Set(Object.keys(object.aliases))])),
+      selectedObjects: new Set(),
+      selectedVariables: {},
       slurm: {
         enabled: true,
         account: "<NERSC_PROJECT>",
@@ -46,22 +48,56 @@
     const openDataDatasetOptions = document.getElementById("openDataDatasetOptions");
     const summary = document.getElementById("summary");
 
-    const TEMPLATE_IDS = {
-      python: "template-python",
-      slurm: "template-slurm",
-      transfer: "template-transfer",
-      readme: "template-readme",
+    const TEMPLATE_SOURCES = {
+      python: {
+        id: "template-python",
+        url: "templates/ntuple-maker.template.py",
+      },
+      slurm: {
+        id: "template-slurm",
+        url: "templates/submit-pcdf-ntuple.template.slurm",
+      },
+      transfer: {
+        id: "template-transfer",
+        url: "templates/download-atlas-opendata.template.sh",
+      },
+      readme: {
+        id: "template-readme",
+        url: "templates/README_SUBMIT.template.md",
+      },
     };
 
     const templates = {};
 
 
-    function loadTemplates() {
-      Object.entries(TEMPLATE_IDS).forEach(([name, id]) => {
-        const element = document.getElementById(id);
-        if (!element) throw new Error(`Missing embedded template: ${id}`);
-        templates[name] = element.textContent.trimStart();
-      });
+    async function fetchText(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+      return response.text();
+    }
+
+    async function loadObjectConfig() {
+      const embedded = document.getElementById("object-config");
+      const text = embedded ? embedded.textContent : await fetchText(OBJECT_CONFIG_URL);
+      OBJECTS = JSON.parse(text);
+      state.selectedObjects = new Set(
+        Object.keys(OBJECTS).filter((key) => OBJECTS[key].recommended),
+      );
+      state.selectedVariables = Object.fromEntries(
+        Object.entries(OBJECTS).map(([key, object]) => [
+          key,
+          new Set(Object.keys(object.aliases)),
+        ]),
+      );
+    }
+
+    async function loadTemplates() {
+      await Promise.all(Object.entries(TEMPLATE_SOURCES).map(async ([name, source]) => {
+        const element = document.getElementById(source.id);
+        templates[name] = element
+          ? element.textContent.trimStart()
+          : (await fetchText(source.url)).trimStart();
+      }));
     }
 
     function applyTemplate(template, values) {
@@ -958,18 +994,20 @@ wizard if you want a Perlmutter submission wrapper.
     });
 
 
-    function initWizard() {
+    async function initWizard() {
       try {
-        loadTemplates();
+        await loadObjectConfig();
+        await loadTemplates();
         ensureDependencies();
         renderObjects();
         renderVariables();
         updateGeneratedScript();
         setStep(0);
       } catch (error) {
-        const message = `Template loading failed: ${error.message}`;
+        const message = `Wizard resource loading failed: ${error.message}`;
         scriptHighlight.textContent = message;
         slurmScriptHighlight.textContent = message;
+        transferScriptOutput.value = message;
         console.error(error);
       }
     }
