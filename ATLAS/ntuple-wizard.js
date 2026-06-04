@@ -20,7 +20,6 @@
         account: "<NERSC_PROJECT>",
         qos: "regular",
         nodes: 1,
-        jobsPerNode: 8,
         time: "02:00:00",
         pythonPath: "ntuple-maker.py",
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
@@ -130,8 +129,6 @@
       state.slurm.account = fieldValue("slurmAccount") || "<NERSC_PROJECT>";
       state.slurm.qos = fieldValue("slurmQos") || "regular";
       state.slurm.nodes = numericFieldValue("slurmNodes", 1);
-      state.slurm.jobsPerNode = Math.min(numericFieldValue("slurmJobsPerNode", 8), 128);
-      document.getElementById("slurmJobsPerNode").value = state.slurm.jobsPerNode;
       state.slurm.time = fieldValue("slurmTime") || "02:00:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || "ntuple-maker.py";
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
@@ -767,22 +764,18 @@
       const accountLine = slurm.account
         ? `#SBATCH --account=${slurm.account}`
         : "#SBATCH --account=<NERSC_PROJECT>";
-      const perlmutterCpuCores = 128;
+      const perlmutterPhysicalCores = 128;
+      const perlmutterLogicalCpus = 256;
       const converterCpusPerConversion = 1;
-      const cpusPerTask = Math.min(
-        perlmutterCpuCores,
-        Math.max(1, slurm.jobsPerNode * converterCpusPerConversion),
-      );
       return applyTemplate(requireTemplate("slurm"), {
         ...commonBatchValues(),
         ACCOUNT_LINE: accountLine,
         QOS: slurm.qos,
         NODES: slurm.nodes,
-        CPUS_PER_TASK: cpusPerTask,
         CONVERTER_CPUS_PER_CONVERSION: converterCpusPerConversion,
-        PERLMUTTER_CPU_CORES: perlmutterCpuCores,
+        PERLMUTTER_PHYSICAL_CORES: perlmutterPhysicalCores,
+        PERLMUTTER_LOGICAL_CPUS_PER_NODE: perlmutterLogicalCpus,
         TIME: slurm.time,
-        JOBS_PER_NODE: slurm.jobsPerNode,
       });
     }
 
@@ -928,9 +921,9 @@ Perlmutter run
    scratch and write the input manifest:
    ./download-atlas-opendata.sh
 3. Return to a login node and edit submit-pcdf-ntuple.slurm if needed:
-   account, manifest, output base, nodes, and conversions per node. The
-   generated wrapper requests one CPU per concurrent conversion because the
-   converter is effectively single-core per input file.
+   account, manifest, output base, and nodes. The generated wrapper requests
+   exclusive nodes, discovers physical cores at runtime, counts the manifest,
+   and fills the available cores with one conversion per core.
 4. Submit:
    sbatch submit-pcdf-ntuple.slurm
 5. Monitor:

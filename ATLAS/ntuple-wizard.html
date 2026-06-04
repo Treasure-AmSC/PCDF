@@ -173,9 +173,9 @@
                       <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1">
                     </div>
                     <div class="col-md-6">
-                      <label class="form-label" for="slurmJobsPerNode">Conversions per node</label>
-                      <input class="form-control slurm-input" id="slurmJobsPerNode" type="number" min="1" max="128" value="8">
-                      <div class="form-text text-secondary">The converter is effectively single-core per input file, so the generated job requests one CPU per concurrent conversion.</div>
+                      <div class="alert alert-secondary h-100 mb-0">
+                        The generated job requests exclusive CPU nodes, discovers physical cores at runtime, counts the manifest entries, and fills the available cores with one conversion per core.
+                      </div>
                     </div>
                     <div class="col-md-6">
                       <label class="form-label" for="slurmTime">Wall time</label>

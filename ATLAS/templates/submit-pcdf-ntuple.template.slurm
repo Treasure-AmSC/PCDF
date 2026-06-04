@@ -4,8 +4,9 @@
 #SBATCH --qos={{QOS}}
 #SBATCH --constraint=cpu
 #SBATCH --nodes={{NODES}}
+#SBATCH --exclusive
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task={{CPUS_PER_TASK}}
+#SBATCH --cpus-per-task={{PERLMUTTER_LOGICAL_CPUS_PER_NODE}}
 #SBATCH --time={{TIME}}
 #SBATCH --output=pcdf-ntuple-%j.out
 #SBATCH --error=pcdf-ntuple-%j.err
@@ -22,9 +23,9 @@ module load python
 PYTHON_SCRIPT={{PYTHON_PATH}}
 INPUT_MANIFEST={{INPUT_MANIFEST}}
 OUTPUT_BASE={{OUTPUT_BASE}}
-JOBS_PER_NODE={{JOBS_PER_NODE}}
 CONVERTER_CPUS_PER_CONVERSION={{CONVERTER_CPUS_PER_CONVERSION}}
-PERLMUTTER_CPU_CORES={{PERLMUTTER_CPU_CORES}}
+PERLMUTTER_PHYSICAL_CORES={{PERLMUTTER_PHYSICAL_CORES}}
+PERLMUTTER_LOGICAL_CPUS={{PERLMUTTER_LOGICAL_CPUS_PER_NODE}}
 OPEN_DATA_DATASET={{OPEN_DATA_DATASET}}
 OPEN_DATA_RELEASE={{OPEN_DATA_RELEASE}}
 
@@ -60,32 +61,33 @@ if ! command -v parallel >/dev/null 2>&1; then
     exit 2
 fi
 
-if (( JOBS_PER_NODE < 1 )); then
-    echo "ERROR: JOBS_PER_NODE must be at least 1" >&2
-    exit 2
-fi
 if (( CONVERTER_CPUS_PER_CONVERSION < 1 )); then
     echo "ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1" >&2
     exit 2
 fi
 
-REQUIRED_CPUS=$((JOBS_PER_NODE * CONVERTER_CPUS_PER_CONVERSION))
-if (( REQUIRED_CPUS > SLURM_CPUS_PER_TASK )); then
-    echo "ERROR: requested parallel conversions need ${REQUIRED_CPUS} CPUs," >&2
-    echo "but SLURM supplied ${SLURM_CPUS_PER_TASK} CPUs per task." >&2
-    exit 2
-fi
-if (( REQUIRED_CPUS > PERLMUTTER_CPU_CORES )); then
-    echo "ERROR: requested ${REQUIRED_CPUS} CPUs per node exceeds" >&2
-    echo "the Perlmutter CPU-node size (${PERLMUTTER_CPU_CORES})." >&2
-    exit 2
-fi
-
-CPUS_PER_CONVERSION="$CONVERTER_CPUS_PER_CONVERSION"
-UNUSED_CPUS=$((SLURM_CPUS_PER_TASK - REQUIRED_CPUS))
-if (( UNUSED_CPUS > 0 )); then
-    echo "$UNUSED_CPUS allocated CPU(s) idle per node."
-fi
+physical_cores_on_node() {
+    if command -v lscpu >/dev/null 2>&1; then
+        local cores_per_socket sockets threads_per_core logical_cpus
+        cores_per_socket=$(lscpu | awk -F: '/^Core\(s\) per socket:/ {gsub(/ /, "", $2); print $2; exit}')
+        sockets=$(lscpu | awk -F: '/^Socket\(s\):/ {gsub(/ /, "", $2); print $2; exit}')
+        threads_per_core=$(lscpu | awk -F: '/^Thread\(s\) per core:/ {gsub(/ /, "", $2); print $2; exit}')
+        if [[ "$cores_per_socket" =~ ^[0-9]+$ && "$sockets" =~ ^[0-9]+$ ]]; then
+            echo $((cores_per_socket * sockets))
+            return
+        fi
+        if [[ -n "${SLURM_CPUS_ON_NODE:-}" && "$threads_per_core" =~ ^[0-9]+$ && "$threads_per_core" -gt 0 ]]; then
+            echo $((SLURM_CPUS_ON_NODE / threads_per_core))
+            return
+        fi
+        logical_cpus=$(nproc 2>/dev/null || true)
+        if [[ "$logical_cpus" =~ ^[0-9]+$ && "$threads_per_core" =~ ^[0-9]+$ && "$threads_per_core" -gt 0 ]]; then
+            echo $((logical_cpus / threads_per_core))
+            return
+        fi
+    fi
+    echo "$PERLMUTTER_PHYSICAL_CORES"
+}
 
 export UV_CACHE_DIR="${SCRATCH:-$HOME}/.cache/uv"
 echo "Preparing uv environment once."
@@ -128,36 +130,88 @@ cat > "$DRIVER_SCRIPT" <<'PCDF_DRIVER'
 set -euo pipefail
 
 JOBLOG="$OUTPUT_BASE/p-${SLURM_JOB_ID}.${SLURM_NODEID}.log"
+NODE_MANIFEST="$OUTPUT_BASE/node-${SLURM_JOB_ID}.${SLURM_NODEID}.manifest"
 
 awk \
     -v N="$SLURM_NODEID" \
     -v T="$SLURM_NNODES" \
     'NF && ((NR - 1) % T == N) {print NR "	" $0}' \
-    "$INPUT_MANIFEST" |
+    "$INPUT_MANIFEST" > "$NODE_MANIFEST"
+
+NODE_WORK=$(wc -l < "$NODE_MANIFEST")
+if (( NODE_WORK == 0 )); then
+    echo "Node ${SLURM_NODEID}: no input files assigned; exiting."
+    exit 0
+fi
+
+PHYSICAL_CORES=$(physical_cores_on_node)
+if (( PHYSICAL_CORES < 1 )); then
+    echo "ERROR: could not determine physical CPU cores on this node" >&2
+    exit 2
+fi
+
+JOBS_ON_NODE=$((PHYSICAL_CORES / CPUS_PER_CONVERSION))
+if (( JOBS_ON_NODE < 1 )); then
+    echo "ERROR: ${CPUS_PER_CONVERSION} CPU(s) per conversion exceeds" >&2
+    echo "available physical cores (${PHYSICAL_CORES}) on this node." >&2
+    exit 2
+fi
+if (( JOBS_ON_NODE > NODE_WORK )); then
+    JOBS_ON_NODE="$NODE_WORK"
+fi
+
+export OMP_NUM_THREADS="$CPUS_PER_CONVERSION"
+export NUMBA_NUM_THREADS="$CPUS_PER_CONVERSION"
+export OPENBLAS_NUM_THREADS="$CPUS_PER_CONVERSION"
+export MKL_NUM_THREADS="$CPUS_PER_CONVERSION"
+export NUMEXPR_NUM_THREADS="$CPUS_PER_CONVERSION"
+export VECLIB_MAXIMUM_THREADS="$CPUS_PER_CONVERSION"
+
+echo "Node ${SLURM_NODEID}: ${NODE_WORK} file(s), ${PHYSICAL_CORES}" \
+     "physical core(s), ${JOBS_ON_NODE} concurrent conversion(s)."
+
 parallel \
     --colsep "	" \
-    --jobs "$JOBS_PER_NODE" \
+    --jobs "$JOBS_ON_NODE" \
     --line-buffer \
     --joblog "$JOBLOG" \
-    "$PAYLOAD_SCRIPT" {1} {2}
+    "$PAYLOAD_SCRIPT" {1} {2} :::: "$NODE_MANIFEST"
 PCDF_DRIVER
 chmod +x "$DRIVER_SCRIPT"
 
+TOTAL_WORK=$(awk 'NF {count += 1} END {print count + 0}' "$INPUT_MANIFEST")
 export PYTHON_SCRIPT INPUT_MANIFEST OUTPUT_BASE
-export PAYLOAD_SCRIPT JOBS_PER_NODE CPUS_PER_CONVERSION
+export PAYLOAD_SCRIPT CPUS_PER_CONVERSION
+export -f physical_cores_on_node
 
-echo "Running on ${SLURM_NNODES} node(s)"
+CPUS_PER_CONVERSION="$CONVERTER_CPUS_PER_CONVERSION"
+
+if (( TOTAL_WORK == 0 )); then
+    echo "ERROR: input manifest contains no work." >&2
+    exit 2
+fi
+
+MAX_CONCURRENT=$((SLURM_NNODES * PERLMUTTER_PHYSICAL_CORES / CPUS_PER_CONVERSION))
+if (( MAX_CONCURRENT > TOTAL_WORK )); then
+    MAX_CONCURRENT="$TOTAL_WORK"
+fi
+
+echo "Running on ${SLURM_NNODES} exclusive CPU node(s)"
 echo "Node list:      ${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
+echo "Work items:     $TOTAL_WORK input file(s)"
 echo "Open Data:      ${OPEN_DATA_RELEASE}/${OPEN_DATA_DATASET}"
 echo "Output base:    $OUTPUT_BASE"
-echo "Parallelism:    $JOBS_PER_NODE job(s)/node," \
-     "$CPUS_PER_CONVERSION CPU(s) each"
+echo "CPU model:      ${PERLMUTTER_PHYSICAL_CORES} physical core(s) /" \
+     "${PERLMUTTER_LOGICAL_CPUS} logical CPU(s) per Perlmutter CPU node"
+echo "Parallelism:    up to ${MAX_CONCURRENT} concurrent conversion(s)," \
+     "${CPUS_PER_CONVERSION} physical core(s) each"
 
 srun \
     --no-kill \
     --ntasks="${SLURM_NNODES}" \
     --ntasks-per-node=1 \
     --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
+    --cpu-bind=cores \
     --wait=0 \
     "$DRIVER_SCRIPT"
