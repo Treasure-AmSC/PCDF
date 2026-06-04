@@ -10,7 +10,6 @@ an external interface.
 from __future__ import annotations
 
 import argparse
-import html
 import sys
 import webbrowser
 from functools import partial
@@ -63,6 +62,13 @@ def combined_html() -> bytes:
         if placeholder not in page:
             raise RuntimeError(f"Missing placeholder in {HTML_PATH}: {placeholder}")
         page = page.replace(placeholder, tag)
+
+    # The source HTML lives under ATLAS/ for static deployments, where relative
+    # assets such as ntuple-wizard.css work naturally. The localhost helper is
+    # intentionally nicer to use: it serves the wizard at /, so rewrite those
+    # asset URLs to their ATLAS paths in the combined response only.
+    page = page.replace('href="ntuple-wizard.css"', 'href="/ATLAS/ntuple-wizard.css"')
+    page = page.replace('src="ntuple-wizard.js"', 'src="/ATLAS/ntuple-wizard.js"')
     return page.encode("utf-8")
 
 
@@ -71,7 +77,7 @@ class WizardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - http.server API name
         route = self.path.split("?", 1)[0].rstrip("/")
-        if route in {"", "/", "/ATLAS/ntuple-wizard.html", "/ntuple-wizard.html"}:
+        if route in {"", "/"}:
             self.serve_combined_wizard()
             return
         super().do_GET()
@@ -96,7 +102,7 @@ class WizardHandler(SimpleHTTPRequestHandler):
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Serve ATLAS/ntuple-wizard.html on localhost with templates inlined.",
+        description="Serve the ATLAS ntuple wizard at http://127.0.0.1:8000/.",
     )
     parser.add_argument("--port", type=int, default=8000, help="localhost port to bind")
     parser.add_argument(
@@ -114,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
 
     handler = partial(WizardHandler, directory=str(REPO_ROOT))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
-    url = f"http://127.0.0.1:{args.port}/ATLAS/ntuple-wizard.html"
+    url = f"http://127.0.0.1:{args.port}/"
     print(f"Serving ATLAS ntuple wizard at {url}")
     print("Listening on 127.0.0.1 only; press Ctrl-C to stop.")
     if not args.no_browser:
