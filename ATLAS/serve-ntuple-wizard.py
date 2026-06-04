@@ -10,6 +10,7 @@ an external interface.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import webbrowser
 from functools import partial
@@ -51,7 +52,7 @@ INJECTIONS = {
 
 def script_payload(path: Path) -> str:
     """Return content safe to place inside a script tag."""
-    return path.read_text().replace("</script", "<\\/script")
+    return re.sub(r"</script", r"<\\/script", path.read_text(), flags=re.IGNORECASE)
 
 
 def combined_html() -> bytes:

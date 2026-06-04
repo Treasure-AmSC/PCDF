@@ -206,10 +206,10 @@
                   <h2 class="h4 generate-heading">Review configuration</h2>
                   <div id="summary" class="vstack gap-3 mb-4"></div>
                   <div class="action-bar">
-                    <button class="btn btn-outline-light" type="button" id="downloadScript">Download Python</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadTransferScript">Download DTN transfer</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript">Download SLURM</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadBundle">Download bundle (.tar)</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadScript" disabled>Download Python</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadTransferScript" disabled>Download DTN transfer</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled>Download SLURM</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadBundle" disabled>Download bundle (.tar)</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">Local run: <code>uv run ./ntuple-maker-treasure.py input.pool.root -o parquet-output</code> (or <code>ntuple-maker-physlite.py</code> when PHYSLITE is selected).</p>

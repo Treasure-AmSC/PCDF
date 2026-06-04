@@ -67,6 +67,7 @@
     };
 
     const templates = {};
+    let generationReady = false;
 
 
     async function fetchText(url) {
@@ -787,6 +788,13 @@
       return applyTemplate(requireTemplate("transfer"), commonBatchValues());
     }
 
+    function setDownloadButtonsEnabled(enabled) {
+      document.getElementById("downloadScript").disabled = !enabled;
+      document.getElementById("downloadTransferScript").disabled = !enabled;
+      document.getElementById("downloadBundle").disabled = !enabled;
+      document.getElementById("downloadSlurmScript").disabled = !enabled || !state.slurm.enabled;
+    }
+
     function updateGeneratedScript() {
       syncSlurmSettings();
       ensureDependencies();
@@ -799,23 +807,33 @@
       slurmScriptOutput.value = slurmScript;
       transferScriptOutput.value = transferScript;
       slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM wrapper disabled.";
-      document.getElementById("downloadSlurmScript").disabled = !state.slurm.enabled;
+      generationReady = true;
+      setDownloadButtonsEnabled(true);
+      const slurmSummary = state.slurm.enabled
+        ? `Perlmutter CPU job, ${state.slurm.nodes} exclusive node(s); runtime core discovery fills physical cores with one conversion per core.`
+        : "Disabled";
+      const objectSummary = Object.keys(config.objects).map((key) => {
+        const title = escapeHtml(OBJECTS[key].title);
+        const variableCount = Object.keys(config.objects[key].aliases).length;
+        return `<li>${title}: ${variableCount} variables</li>`;
+      }).join("");
+      const transferSummary = `${escapeHtml(state.slurm.openDataRelease)}/${escapeHtml(state.slurm.openDataDataset)} (${escapeHtml(state.slurm.openDataSkim)}) to ${escapeHtml(state.slurm.openDataDownloadDir)}. ${state.slurm.openDataPreview ? `${formatBytes(state.slurm.openDataPreview.bytes)} estimated.` : "Preview not run."}`;
       summary.innerHTML = `
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Input</h3>
-          <p class="mb-0 fw-semibold">${config.inputFormat}</p>
+          <p class="mb-0 fw-semibold">${escapeHtml(config.inputFormat)}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Objects</h3>
-          <ul class="mb-0">${Object.keys(config.objects).map((key) => `<li>${OBJECTS[key].title}: ${Object.keys(config.objects[key].aliases).length} variables</li>`).join("")}</ul>
+          <ul class="mb-0">${objectSummary}</ul>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">SLURM</h3>
-          <p class="mb-0">${state.slurm.enabled ? `Perlmutter CPU job, ${state.slurm.nodes} node(s), ${state.slurm.jobsPerNode} conversion(s)/node, ${Math.floor(128 / state.slurm.jobsPerNode)} CPU(s)/conversion` : "Disabled"}</p>
+          <p class="mb-0">${escapeHtml(slurmSummary)}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Open Data transfer</h3>
-          <p class="mb-0">${state.slurm.openDataRelease}/${state.slurm.openDataDataset} (${state.slurm.openDataSkim}) to ${state.slurm.openDataDownloadDir}. ${state.slurm.openDataPreview ? `${formatBytes(state.slurm.openDataPreview.bytes)} estimated.` : "Preview not run."}</p>
+          <p class="mb-0">${transferSummary}</p>
         </div></div>`;
     }
 
@@ -964,21 +982,25 @@ wizard if you want a Perlmutter submission wrapper.
     }
 
     document.getElementById("downloadScript").addEventListener("click", () => {
+      if (!generationReady || !scriptOutput.value) return;
       const blob = new Blob([scriptOutput.value], { type: "text/x-python" });
       downloadBlob(blob, generatedPythonName().replace(/^\.\//, ""));
     });
 
     document.getElementById("downloadTransferScript").addEventListener("click", () => {
+      if (!generationReady || !transferScriptOutput.value) return;
       const blob = new Blob([transferScriptOutput.value], { type: "text/x-shellscript" });
       downloadBlob(blob, "download-atlas-opendata.sh");
     });
 
     document.getElementById("downloadSlurmScript").addEventListener("click", () => {
+      if (!generationReady || !state.slurm.enabled || !slurmScriptOutput.value) return;
       const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
       downloadBlob(blob, "submit-pcdf-ntuple.slurm");
     });
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
+      if (!generationReady || !scriptOutput.value || !transferScriptOutput.value) return;
       const pythonName = generatedPythonName().replace(/^\.\//, "");
       const files = [
         { name: pythonName, content: scriptOutput.value, mode: 0o755 },
@@ -1006,6 +1028,8 @@ wizard if you want a Perlmutter submission wrapper.
         updateGeneratedScript();
         setStep(0);
       } catch (error) {
+        generationReady = false;
+        setDownloadButtonsEnabled(false);
         const message = `Wizard resource loading failed: ${error.message}`;
         scriptHighlight.textContent = message;
         slurmScriptHighlight.textContent = message;
@@ -1014,4 +1038,5 @@ wizard if you want a Perlmutter submission wrapper.
       }
     }
 
+    setDownloadButtonsEnabled(false);
     initWizard();
