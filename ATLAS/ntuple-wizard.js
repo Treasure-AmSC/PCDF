@@ -243,7 +243,6 @@
           const required = variableIsRequired(key, name);
           const available = variableIsAvailable(key, name);
           if (required && available) state.selectedVariables[key].add(name);
-          if (!available) state.selectedVariables[key].delete(name);
           const checked = available && state.selectedVariables[key].has(name);
           return `
             <div class="form-check mb-2 ${available ? "" : "opacity-50"}">
@@ -682,6 +681,9 @@ wizard if you want a Perlmutter submission wrapper.
       try {
         await loadObjectConfig();
         await loadTemplates();
+        state.inputFormat = selectedInputFormat();
+        state.sampleType = selectedSampleType();
+        syncSlurmSettings();
         ensureDependencies();
         renderObjects();
         renderVariables();
