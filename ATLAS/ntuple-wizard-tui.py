@@ -18,6 +18,7 @@ wrapper, and optionally submit the job with ``sbatch``.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,15 +28,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, RichLog, Select, Static
+from textual.widgets import Button, Checkbox, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
 
 from ntuple_wizard_core import (
     WizardState,
     build_python,
     build_slurm,
     on_perlmutter,
+    discover_files,
     scan_manifest,
     write_bundle,
+    write_manifest,
 )
 
 
@@ -43,32 +46,34 @@ class NtupleWizardTui(App[None]):
     """Interactive Textual app for PCDF ntuple job generation."""
 
     CSS = """
+    /* Match ATLAS/ntuple-wizard.css: LBL dark blue page, teal primary,
+       yellow focus, green submit, dark panels, and light-gray borders. */
     Screen {
         background: #00313c;
-        color: white;
+        color: #ffffff;
     }
 
     Header, Footer {
         background: #002832;
-        color: white;
+        color: #ffffff;
     }
 
     .column {
         width: 1fr;
         background: #001f26;
-        border: round rgba(177, 179, 179, 0.34);
+        border: round #63666a;
         padding: 1;
         margin: 1;
     }
 
     Static, Label, Checkbox {
-        color: white;
+        color: #ffffff;
     }
 
     Input, Select {
         background: #002832;
-        color: white;
-        border: tall rgba(177, 179, 179, 0.34);
+        color: #ffffff;
+        border: tall #63666a;
         margin-bottom: 1;
     }
 
@@ -79,8 +84,8 @@ class NtupleWizardTui(App[None]):
     Button {
         margin: 1 1;
         background: #007681;
-        color: white;
-        border: tall rgba(177, 179, 179, 0.34);
+        color: #ffffff;
+        border: tall #63666a;
         text-style: bold;
     }
 
@@ -91,7 +96,7 @@ class NtupleWizardTui(App[None]):
 
     Button.-success {
         background: #74aa50;
-        color: white;
+        color: #ffffff;
     }
 
     Button:disabled {
@@ -103,10 +108,23 @@ class NtupleWizardTui(App[None]):
         margin: 0 1;
     }
 
+    DirectoryTree, SelectionList, #log {
+        background: #002832;
+        color: #ffffff;
+        border: round #007681;
+    }
+
+    DirectoryTree:focus, SelectionList:focus, #log:focus {
+        border: round #eaaa00;
+    }
+
     #log {
         height: 1fr;
-        background: #002832;
-        border: round #007681;
+    }
+
+    .section-title {
+        color: #eaaa00;
+        text-style: bold;
     }
     """
     BINDINGS = [("q", "quit", "Quit"), ("g", "generate", "Generate"), ("s", "submit", "Submit on Perlmutter")]
@@ -116,12 +134,14 @@ class NtupleWizardTui(App[None]):
         self.state_data = WizardState()
         self.perlmutter = on_perlmutter()
         self.output_dir = output_dir
+        self._syncing = False
+        self.discovered_files: list[Path] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
             with VerticalScroll(classes="column"):
-                yield Static("Input and SLURM")
+                yield Static("Input and SLURM", classes="section-title")
                 yield Label("Input format")
                 yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format")
                 yield Label("Sample type")
@@ -134,13 +154,14 @@ class NtupleWizardTui(App[None]):
                 yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest")
                 yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"))
                 yield Button("Generate scripts", id="generate", variant="primary")
-                yield Button("Scan files → manifest", id="scan")
+                yield Button("Find files", id="scan")
+                yield Button("Write selected manifest", id="manifest_write")
                 yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
             with VerticalScroll(classes="column", id="objects_box"):
-                yield Static("Objects")
+                yield Static("Objects", classes="section-title")
                 for key, obj in self.state_data.objects.items():
                     yield Checkbox(obj["title"], value=key in self.state_data.selected_objects, id=f"obj-{key}")
-                yield Static("Variables")
+                yield Static("Variables", classes="section-title")
                 for key, obj in self.state_data.objects.items():
                     yield Static(obj["title"])
                     required = set(obj.get("requiredVariables", []))
@@ -148,9 +169,15 @@ class NtupleWizardTui(App[None]):
                         label = f"  {name}" + (" (required)" if name in required else "")
                         yield Checkbox(label, value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
             with VerticalScroll(classes="column"):
-                yield Static("Perlmutter file discovery")
+                yield Static("Perlmutter file discovery", classes="section-title")
                 yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root")
                 yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob")
+                tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
+                if not tree_root.exists():
+                    tree_root = Path.cwd()
+                yield DirectoryTree(tree_root, id="tree")
+                yield Static("Discovered files", classes="section-title")
+                yield SelectionList[str](id="files")
                 yield RichLog(id="log", wrap=True, highlight=True)
         yield Footer()
 
@@ -163,6 +190,12 @@ class NtupleWizardTui(App[None]):
 
     def log_message(self, message: str) -> None:
         self.query_one("#log", RichLog).write(message)
+
+    def object_checkbox(self, key: str) -> Checkbox:
+        return self.query_one(f"#obj-{key}", Checkbox)
+
+    def variable_checkbox(self, key: str, name: str) -> Checkbox:
+        return self.query_one(f"#var-{key}-{name}", Checkbox)
 
     def sync_state(self) -> None:
         state = self.state_data
@@ -193,6 +226,53 @@ class NtupleWizardTui(App[None]):
         state.selected_variables = selected_variables
         state.ensure_dependencies()
 
+    def refresh_dependency_widgets(self) -> None:
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            state = self.state_data
+            for key, obj in state.objects.items():
+                object_box = self.object_checkbox(key)
+                available = state.object_available(key)
+                object_box.disabled = key == "Event" or not available
+                object_box.value = key in state.selected_objects and available
+                for name in obj.get("aliases", {}):
+                    variable_box = self.variable_checkbox(key, name)
+                    required = name in obj.get("requiredVariables", [])
+                    variable_available = available and state.variable_available(key, name)
+                    variable_box.disabled = required or not variable_available
+                    variable_box.value = variable_available and name in state.selected_variables.get(key, set())
+        finally:
+            self._syncing = False
+
+    def apply_dependency_change(self) -> None:
+        self.state_data.ensure_dependencies()
+        self.refresh_dependency_widgets()
+
+    def refresh_discovered_files(self) -> None:
+        self.sync_state()
+        self.discovered_files = discover_files(self.state_data.scan_root, self.state_data.glob_pattern)
+        files = self.query_one("#files", SelectionList)
+        files.clear_options()
+        files.add_options((str(path), str(path), True) for path in self.discovered_files)
+        self.log_message(f"Found {len(self.discovered_files)} file(s) under {self.state_data.scan_root}")
+
+    def selected_discovered_files(self) -> list[Path]:
+        files = self.query_one("#files", SelectionList)
+        return [Path(value) for value in files.selected]
+
+    def write_selected_manifest(self) -> Path:
+        self.sync_state()
+        selected = self.selected_discovered_files()
+        if not selected:
+            self.log_message("No files selected; writing a manifest from the current scan instead.")
+            manifest, count = scan_manifest(self.state_data)
+        else:
+            manifest, count = write_manifest(selected, self.state_data.manifest)
+        self.log_message(f"Wrote {count} input file(s) to {manifest}")
+        return manifest
+
     def build_python(self) -> str:
         return build_python(self.state_data)
 
@@ -208,10 +288,8 @@ class NtupleWizardTui(App[None]):
         return py_path, slurm_path, bundle_path
 
     def scan_manifest(self) -> Path:
-        self.sync_state()
-        manifest, count = scan_manifest(self.state_data)
-        self.log_message(f"Wrote {count} input file(s) to {manifest}")
-        return manifest
+        self.refresh_discovered_files()
+        return self.write_selected_manifest()
 
     def submit(self) -> None:
         if not self.perlmutter:
@@ -232,11 +310,49 @@ class NtupleWizardTui(App[None]):
     def action_submit(self) -> None:
         self.submit()
 
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if self._syncing or event.checkbox.id is None:
+            return
+        checkbox_id = event.checkbox.id
+        state = self.state_data
+        if checkbox_id.startswith("obj-"):
+            key = checkbox_id.removeprefix("obj-")
+            if event.value:
+                state.selected_objects.add(key)
+            elif key != "Event":
+                state.selected_objects.discard(key)
+            self.apply_dependency_change()
+            return
+        if checkbox_id.startswith("var-"):
+            _, key, name = checkbox_id.split("-", 2)
+            variables = state.selected_variables.setdefault(key, set())
+            if event.value:
+                variables.add(name)
+            elif name not in state.objects[key].get("requiredVariables", []):
+                variables.discard(name)
+            self.apply_dependency_change()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id not in {"format", "sample"}:
+            return
+        self.state_data.input_format = str(self.query_one("#format", Select).value)
+        self.state_data.sample_type = str(self.query_one("#sample", Select).value)
+        self.apply_dependency_change()
+
+    def on_directory_tree_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
+        path = str(event.path)
+        scan_root = self.query_one("#scan_root", Input)
+        scan_root.value = path
+        self.state_data.scan_root = path
+        self.log_message(f"Selected scan directory: {path}")
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "generate":
             self.generate()
         elif event.button.id == "scan":
-            self.scan_manifest()
+            self.refresh_discovered_files()
+        elif event.button.id == "manifest_write":
+            self.write_selected_manifest()
         elif event.button.id == "submit":
             self.submit()
 

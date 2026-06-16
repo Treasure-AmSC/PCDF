@@ -194,14 +194,21 @@ def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path
     return py_path, slurm_path, bundle_path
 
 
-def scan_manifest(state: WizardState) -> tuple[Path, int]:
-    root = Path(os.path.expandvars(os.path.expanduser(state.scan_root)))
-    manifest = Path(os.path.expandvars(os.path.expanduser(state.manifest)))
-    files = sorted(path for path in root.rglob(state.glob_pattern) if path.is_file())
+def discover_files(scan_root: str, glob_pattern: str) -> list[Path]:
+    root = Path(os.path.expandvars(os.path.expanduser(scan_root)))
+    return sorted(path for path in root.rglob(glob_pattern) if path.is_file())
+
+
+def write_manifest(paths: list[Path], manifest_path: str) -> tuple[Path, int]:
+    manifest = Path(os.path.expandvars(os.path.expanduser(manifest_path)))
     manifest.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile("w", delete=False, dir=manifest.parent) as tmp:
-        for path in files:
+        for path in paths:
             tmp.write(str(path) + "\n")
         tmp_path = Path(tmp.name)
     tmp_path.replace(manifest)
-    return manifest, len(files)
+    return manifest, len(paths)
+
+
+def scan_manifest(state: WizardState) -> tuple[Path, int]:
+    return write_manifest(discover_files(state.scan_root, state.glob_pattern), state.manifest)
