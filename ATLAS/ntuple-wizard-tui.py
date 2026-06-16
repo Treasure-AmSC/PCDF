@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
-from textual.widgets import Button, Checkbox, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
+from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
 
 from ntuple_wizard_core import (
     WizardState,
@@ -160,37 +160,24 @@ class NtupleWizardTui(App[None]):
         background: transparent;
     }
 
-    Checkbox {
-        width: 4;
-        height: 3;
-        margin: 0;
-        color: #ffffff;
-        background: transparent;
-    }
-
-    Checkbox:focus {
-        background: #007681;
-        color: #ffffff;
-    }
-
     .choice-card {
         width: 1fr;
         height: 3;
+        margin: 0;
         background: #00313c;
+        color: #ffffff;
         border: tall #4298b5;
-        padding: 0 1;
+        text-align: left;
     }
 
-    .choice-card:focus-within {
+    .choice-card:hover, .choice-card:focus {
         border: tall #eaaa00;
         background: #007681;
     }
 
-    .choice-label {
-        width: 1fr;
-        height: 3;
-        content-align: left middle;
-        color: #ffffff;
+    .choice-card.selected-choice {
+        background: #007681;
+        border: tall #eaaa00;
     }
 
     .choice-row {
@@ -321,9 +308,8 @@ class NtupleWizardTui(App[None]):
                         yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
-                                with Horizontal(classes="choice-card"):
-                                    yield Checkbox("", value=key in self.state_data.selected_objects, id=f"obj-{key}")
-                                    yield Static(obj["title"], classes="choice-label")
+                                selected = "☑" if key in self.state_data.selected_objects else "☐"
+                                yield Button(f"{selected} {obj['title']}", id=f"obj-{key}", classes="choice-card")
 
                 with Container(id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -334,10 +320,9 @@ class NtupleWizardTui(App[None]):
                             required = set(obj.get("requiredVariables", []))
                             with Grid(classes="object-grid"):
                                 for name in obj.get("aliases", {}):
-                                    label = f"{name}" + (" (required)" if name in required else "")
-                                    with Horizontal(classes="choice-card"):
-                                        yield Checkbox("", value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
-                                        yield Static(label, classes="choice-label")
+                                    selected = "☑" if name in self.state_data.selected_variables[key] else "☐"
+                                    suffix = " (required)" if name in required else ""
+                                    yield Button(f"{selected} {name}{suffix}", id=f"var-{key}-{name}", classes="choice-card")
 
                 with Container(id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
@@ -434,11 +419,11 @@ class NtupleWizardTui(App[None]):
         for value in ("MC", "DATA"):
             self.query_one(f"#set-sample-{value}", Button).set_class(self.state_data.sample_type == value, "active-step")
 
-    def object_checkbox(self, key: str) -> Checkbox:
-        return self.query_one(f"#obj-{key}", Checkbox)
+    def object_control(self, key: str) -> Button:
+        return self.query_one(f"#obj-{key}", Button)
 
-    def variable_checkbox(self, key: str, name: str) -> Checkbox:
-        return self.query_one(f"#var-{key}-{name}", Checkbox)
+    def variable_control(self, key: str, name: str) -> Button:
+        return self.query_one(f"#var-{key}-{name}", Button)
 
     def sync_state(self) -> None:
         state = self.state_data
@@ -455,18 +440,6 @@ class NtupleWizardTui(App[None]):
         state.manifest = self.query_one("#manifest", Input).value.strip() or "$SCRATCH/pcdf-inputs.txt"
         state.scan_root = self.query_one("#scan_root", Input).value.strip() or "$SCRATCH"
         state.glob_pattern = self.query_one("#glob", Input).value.strip() or "*.root*"
-        selected = set()
-        selected_variables: dict[str, set[str]] = {}
-        for key, obj in state.objects.items():
-            if self.query_one(f"#obj-{key}", Checkbox).value:
-                selected.add(key)
-            selected_variables[key] = {
-                name
-                for name in obj.get("aliases", {})
-                if self.query_one(f"#var-{key}-{name}", Checkbox).value
-            }
-        state.selected_objects = selected
-        state.selected_variables = selected_variables
         state.ensure_dependencies()
 
     def refresh_dependency_widgets(self) -> None:
@@ -476,16 +449,21 @@ class NtupleWizardTui(App[None]):
         try:
             state = self.state_data
             for key, obj in state.objects.items():
-                object_box = self.object_checkbox(key)
+                object_button = self.object_control(key)
                 available = state.object_available(key)
-                object_box.disabled = key == "Event" or not available
-                object_box.value = key in state.selected_objects and available
+                object_selected = key in state.selected_objects and available
+                object_button.disabled = key == "Event" or not available
+                object_button.label = f"{'☑' if object_selected else '☐'} {obj['title']}"
+                object_button.set_class(object_selected, "selected-choice")
                 for name in obj.get("aliases", {}):
-                    variable_box = self.variable_checkbox(key, name)
+                    variable_button = self.variable_control(key, name)
                     required = name in obj.get("requiredVariables", [])
                     variable_available = available and state.variable_available(key, name)
-                    variable_box.disabled = required or not variable_available
-                    variable_box.value = variable_available and name in state.selected_variables.get(key, set())
+                    variable_selected = variable_available and name in state.selected_variables.get(key, set())
+                    suffix = " (required)" if required else ""
+                    variable_button.disabled = required or not variable_available
+                    variable_button.label = f"{'☑' if variable_selected else '☐'} {name}{suffix}"
+                    variable_button.set_class(variable_selected, "selected-choice")
         finally:
             self._syncing = False
 
@@ -553,28 +531,6 @@ class NtupleWizardTui(App[None]):
     def action_submit(self) -> None:
         self.submit()
 
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        if self._syncing or event.checkbox.id is None:
-            return
-        checkbox_id = event.checkbox.id
-        state = self.state_data
-        if checkbox_id.startswith("obj-"):
-            key = checkbox_id.removeprefix("obj-")
-            if event.value:
-                state.selected_objects.add(key)
-            elif key != "Event":
-                state.selected_objects.discard(key)
-            self.apply_dependency_change()
-            return
-        if checkbox_id.startswith("var-"):
-            _, key, name = checkbox_id.split("-", 2)
-            variables = state.selected_variables.setdefault(key, set())
-            if event.value:
-                variables.add(name)
-            elif name not in state.objects[key].get("requiredVariables", []):
-                variables.discard(name)
-            self.apply_dependency_change()
-
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id not in {"format", "sample"}:
             return
@@ -590,7 +546,25 @@ class NtupleWizardTui(App[None]):
         self.log_message(f"Selected scan directory: {path}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id and event.button.id.startswith("set-format-"):
+        if event.button.id and event.button.id.startswith("obj-"):
+            key = event.button.id.removeprefix("obj-")
+            if key != "Event":
+                if key in self.state_data.selected_objects:
+                    self.state_data.selected_objects.discard(key)
+                else:
+                    self.state_data.selected_objects.add(key)
+                self.apply_dependency_change()
+        elif event.button.id and event.button.id.startswith("var-"):
+            _, key, name = event.button.id.split("-", 2)
+            required = name in self.state_data.objects[key].get("requiredVariables", [])
+            if not required:
+                variables = self.state_data.selected_variables.setdefault(key, set())
+                if name in variables:
+                    variables.discard(name)
+                else:
+                    variables.add(name)
+                self.apply_dependency_change()
+        elif event.button.id and event.button.id.startswith("set-format-"):
             value = event.button.id.removeprefix("set-format-")
             self.query_one("#format", Select).value = value
             self.state_data.input_format = value
