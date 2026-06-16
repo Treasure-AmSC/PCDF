@@ -27,7 +27,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll
+from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.widgets import Button, Checkbox, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
 
 from ntuple_wizard_core import (
@@ -45,18 +45,21 @@ from ntuple_wizard_core import (
 class NtupleWizardTui(App[None]):
     """Interactive Textual app for PCDF ntuple job generation."""
 
+    TITLE = "ATLAS ntuple wizard"
+    SUB_TITLE = "TREASURE → Parquet"
+
     STEPS = ("Input", "Objects", "Variables", "Perlmutter", "Generate")
 
     CSS = """
     /* Truecolor Textual companion to ATLAS/ntuple-wizard.css. */
     Screen {
-        background: #00313c;
+        background: #002832;
         color: #ffffff;
         layout: vertical;
     }
 
     Header, Footer {
-        background: #002832;
+        background: #001f26;
         color: #ffffff;
     }
 
@@ -64,31 +67,33 @@ class NtupleWizardTui(App[None]):
         width: 100%;
         height: 1fr;
         padding: 1 2;
-        background: #00313c;
+        background: #002832;
     }
 
     #hero {
         width: 100%;
-        height: auto;
+        height: 3;
         margin-bottom: 1;
-        padding: 1 2;
-        background: #002832;
+        padding: 0 2;
+        background: #00313c;
         border: round #007681;
         color: #ffffff;
         text-style: bold;
+        content-align: left middle;
     }
 
     #progress {
-        height: 5;
+        height: 3;
         margin-bottom: 1;
     }
 
     .progress-button {
         width: 1fr;
+        height: 3;
         margin: 0 1;
-        background: #002832;
+        background: #00313c;
         color: #d8dedf;
-        border: tall #63666a;
+        border: tall #4298b5;
         text-style: bold;
     }
 
@@ -101,15 +106,15 @@ class NtupleWizardTui(App[None]):
     .wizard-shell {
         height: 1fr;
         padding: 1;
-        background: #001f26;
-        border: round #63666a;
+        background: #00313c;
+        border: round #007681;
     }
 
     .wizard-step {
         height: 1fr;
-        padding: 1;
+        padding: 1 2;
         background: #002832;
-        border: round #63666a;
+        border: round #4298b5;
     }
 
     .step-body {
@@ -126,10 +131,17 @@ class NtupleWizardTui(App[None]):
     .column {
         width: 1fr;
         height: 1fr;
-        background: #001f26;
-        border: round #63666a;
-        padding: 1;
+        background: #00313c;
+        border: round #4298b5;
+        padding: 1 2;
         margin: 0 1;
+    }
+
+    .object-grid {
+        grid-size: 3;
+        grid-gutter: 1 2;
+        height: auto;
+        margin-top: 1;
     }
 
     .section-title {
@@ -143,26 +155,42 @@ class NtupleWizardTui(App[None]):
         margin-bottom: 1;
     }
 
-    Static, Label, Checkbox {
+    Static, Label {
+        color: #ffffff;
+        background: transparent;
+    }
+
+    Checkbox {
+        width: 100%;
+        height: 1;
+        margin: 0;
+        color: #ffffff;
+        background: transparent;
+    }
+
+    Checkbox:focus {
+        background: #007681;
         color: #ffffff;
     }
 
     Input, Select {
         background: #001f26;
         color: #ffffff;
-        border: tall #63666a;
+        border: tall #4298b5;
         margin-bottom: 1;
+        height: 3;
     }
 
-    Input:focus, Select:focus, Checkbox:focus {
+    Input:focus, Select:focus {
         border: tall #eaaa00;
     }
 
     Button {
         margin: 0 1;
+        height: 3;
         background: #007681;
         color: #ffffff;
-        border: tall #63666a;
+        border: tall #4298b5;
         text-style: bold;
     }
 
@@ -187,10 +215,6 @@ class NtupleWizardTui(App[None]):
         align-horizontal: right;
     }
 
-    Checkbox {
-        margin: 0 1;
-    }
-
     DirectoryTree, SelectionList, #log, #summary_panel {
         background: #001f26;
         color: #ffffff;
@@ -202,8 +226,12 @@ class NtupleWizardTui(App[None]):
         border: round #eaaa00;
     }
 
-    DirectoryTree, SelectionList {
-        height: 1fr;
+    DirectoryTree {
+        height: 10;
+    }
+
+    SelectionList {
+        height: 8;
     }
 
     #log {
@@ -247,8 +275,9 @@ class NtupleWizardTui(App[None]):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output objects", classes="section-title")
                         yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
-                        for key, obj in self.state_data.objects.items():
-                            yield Checkbox(obj["title"], value=key in self.state_data.selected_objects, id=f"obj-{key}")
+                        with Grid(classes="object-grid"):
+                            for key, obj in self.state_data.objects.items():
+                                yield Checkbox(obj["title"], value=key in self.state_data.selected_objects, id=f"obj-{key}")
 
                 with Container(id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -257,9 +286,10 @@ class NtupleWizardTui(App[None]):
                         for key, obj in self.state_data.objects.items():
                             yield Static(obj["title"], classes="section-title")
                             required = set(obj.get("requiredVariables", []))
-                            for name in obj.get("aliases", {}):
-                                label = f"  {name}" + (" (required)" if name in required else "")
-                                yield Checkbox(label, value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
+                            with Grid(classes="object-grid"):
+                                for name in obj.get("aliases", {}):
+                                    label = f"{name}" + (" (required)" if name in required else "")
+                                    yield Checkbox(label, value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
 
                 with Container(id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
