@@ -403,7 +403,7 @@ class NtupleWizardTui(App[None]):
                             yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
                             yield Label("NERSC account", classes="field-label")
                             if self.perlmutter:
-                                yield Select([], prompt="Loading accounts from iris…", allow_blank=False, id="account_select")
+                                yield Select([("Loading accounts from iris…", "")], value="", allow_blank=False, disabled=True, id="account_select")
                             else:
                                 yield Input(placeholder="NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
                             yield Label("Queue / QOS", classes="field-label")
@@ -516,7 +516,7 @@ class NtupleWizardTui(App[None]):
         state.sample_type = str(self.query_one("#sample", Select).value)
         if self.perlmutter:
             selected_account = self.query_one("#account_select", Select).value
-            state.account = "" if selected_account is Select.NULL else str(selected_account)
+            state.account = "" if selected_account in (Select.NULL, "") else str(selected_account)
         else:
             state.account = self.query_one("#account_input", Input).value.strip()
         qos = self.query_one("#qos", Select).value
@@ -609,20 +609,32 @@ class NtupleWizardTui(App[None]):
             result = subprocess.run(["iris"], check=False, text=True, capture_output=True, timeout=15)
         except FileNotFoundError:
             self.notify("The iris command is not available on this host.", title="Iris unavailable", severity="warning", timeout=8)
-            self.log_message("iris command not found; enter a NERSC account manually.")
+            account_select = self.query_one("#account_select", Select)
+            account_select.set_options([("iris command not found", "")])
+            account_select.value = ""
+            account_select.disabled = True
+            self.log_message("iris command not found; account selection is unavailable.")
             return
         except subprocess.TimeoutExpired:
+            account_select = self.query_one("#account_select", Select)
+            account_select.set_options([("iris timed out", "")])
+            account_select.value = ""
+            account_select.disabled = True
             self.notify("iris did not finish within 15 seconds.", title="Iris timeout", severity="warning", timeout=8)
             return
         output = "\n".join(part for part in (result.stdout, result.stderr) if part)
         accounts = self.parse_iris_accounts(output)
         account_select = self.query_one("#account_select", Select)
-        account_select.set_options((account, account) for account in accounts)
         if accounts:
+            account_select.set_options((account, account) for account in accounts)
             account_select.value = accounts[0]
+            account_select.disabled = False
             self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
             self.log_message("Iris accounts: " + ", ".join(accounts))
         else:
+            account_select.set_options([("No iris accounts found", "")])
+            account_select.value = ""
+            account_select.disabled = True
             self.notify("iris ran, but no account names were recognized.", title="No Iris accounts found", severity="warning", timeout=8)
             self.log_message("iris output did not contain recognizable accounts.")
 
@@ -640,7 +652,7 @@ class NtupleWizardTui(App[None]):
     def validate_slurm_inputs(self) -> bool:
         failures = self.invalid_inputs(("nodes", "time", "output", "manifest"))
         if self.perlmutter:
-            if self.query_one("#account_select", Select).value is Select.NULL:
+            if self.query_one("#account_select", Select).value in (Select.NULL, ""):
                 failures.append("Choose a NERSC account.")
         else:
             failures.extend(self.invalid_inputs(("account_input",)))
@@ -703,7 +715,7 @@ class NtupleWizardTui(App[None]):
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "account_select":
-            if event.value is not Select.NULL:
+            if event.value not in (Select.NULL, ""):
                 self.notify(f"Using account {event.value}", title="Account selected", severity="information", timeout=4)
             return
         if event.select.id == "qos":
