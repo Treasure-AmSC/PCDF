@@ -74,6 +74,7 @@ class NtupleWizardTui(App[None]):
     #hero {
         width: 100%;
         height: 3;
+        margin-top: 1;
         margin-bottom: 1;
         padding: 0 2;
         background: #00313c;
@@ -143,11 +144,13 @@ class NtupleWizardTui(App[None]):
         grid-gutter: 1 2;
         height: auto;
         margin-top: 1;
+        margin-bottom: 2;
     }
 
     .section-title {
         color: #eaaa00;
         text-style: bold;
+        margin-top: 1;
         margin-bottom: 1;
     }
 
@@ -166,9 +169,9 @@ class NtupleWizardTui(App[None]):
         height: 3;
         margin: 0;
         padding: 0 2;
-        background: #00313c;
-        color: #ffffff;
-        border: tall #4298b5;
+        background: #001f26;
+        color: #d8dedf;
+        border: tall #63666a;
         content-align: left middle;
         text-align: left;
     }
@@ -176,11 +179,19 @@ class NtupleWizardTui(App[None]):
     .choice-card:hover, .choice-card:focus {
         border: tall #eaaa00;
         background: #007681;
+        color: #ffffff;
     }
 
     .choice-card.selected-choice {
-        background: #007681;
-        border: tall #eaaa00;
+        background: #0b6f59;
+        color: #ffffff;
+        border: heavy #eaaa00;
+    }
+
+    .choice-card.deselected-choice {
+        background: #001f26;
+        color: #d8dedf;
+        border: tall #63666a;
     }
 
     .choice-row {
@@ -243,6 +254,20 @@ class NtupleWizardTui(App[None]):
     Button:disabled {
         background: #63666a;
         color: #d8dedf;
+    }
+
+    #generate-actions {
+        height: 3;
+        margin-top: 1;
+    }
+
+    #generate-actions Button {
+        width: 28;
+    }
+
+    #accounts {
+        height: 5;
+        margin-bottom: 1;
     }
 
     #wizard-nav {
@@ -351,6 +376,9 @@ class NtupleWizardTui(App[None]):
                             yield Static("SLURM / NERSC Perlmutter", classes="section-title")
                             yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
                             yield Input(placeholder="NERSC account", id="account", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
+                            yield Button("Load accounts with iris", id="load_accounts")
+                            yield SelectionList[str](id="accounts")
+                            yield Button("Use selected account", id="use_account")
                             yield Input(value="regular", placeholder="QOS", id="qos", validators=[Function(self.non_empty, "QOS may not be empty.")], validate_on=["blur", "submitted"])
                             yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Number(minimum=1, failure_description="Nodes must be at least 1.")], validate_on=["blur", "submitted"])
                             yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
@@ -376,8 +404,9 @@ class NtupleWizardTui(App[None]):
                             yield Static("Generate", classes="section-title")
                             yield Static("Generate the converter, SLURM wrapper, and tar bundle. On Perlmutter, submit directly after reviewing the settings.", classes="hint")
                             yield Static("", id="summary_panel")
-                            yield Button("Generate scripts", id="generate", variant="primary")
-                            yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
+                            with Horizontal(id="generate-actions"):
+                                yield Button("Generate scripts", id="generate", variant="primary")
+                                yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
                         with VerticalScroll(classes="column"):
                             yield Static("Status", classes="section-title")
                             yield RichLog(id="log", wrap=True, highlight=True)
@@ -476,6 +505,7 @@ class NtupleWizardTui(App[None]):
                 object_button.disabled = key == "Event" or not available
                 object_button.label = f"{'ON ' if object_selected else 'OFF'}  {obj['title']}"
                 object_button.set_class(object_selected, "selected-choice")
+                object_button.set_class(not object_selected, "deselected-choice")
                 for name in obj.get("aliases", {}):
                     variable_button = self.variable_control(key, name)
                     required = name in obj.get("requiredVariables", [])
@@ -488,6 +518,7 @@ class NtupleWizardTui(App[None]):
                     variable_button.disabled = required or not variable_available
                     variable_button.label = f"{status}  {name}"
                     variable_button.set_class(variable_selected, "selected-choice")
+                    variable_button.set_class(not variable_selected, "deselected-choice")
         finally:
             self._syncing = False
 
@@ -523,6 +554,48 @@ class NtupleWizardTui(App[None]):
         self.log_message(f"Wrote {count} input file(s) to {manifest}")
         self.notify(f"Wrote {count} file(s) to {manifest}", title="Manifest written", severity="information", timeout=6)
         return manifest
+
+    def parse_iris_accounts(self, output: str) -> list[str]:
+        accounts: list[str] = []
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.lower().startswith(("project", "account", "-")):
+                continue
+            first = stripped.split()[0]
+            if first.replace("_", "").replace("-", "").isalnum() and first not in accounts:
+                accounts.append(first)
+        return accounts
+
+    def load_accounts_with_iris(self) -> None:
+        try:
+            result = subprocess.run(["iris"], check=False, text=True, capture_output=True, timeout=15)
+        except FileNotFoundError:
+            self.notify("The iris command is not available on this host.", title="Iris unavailable", severity="warning", timeout=8)
+            self.log_message("iris command not found; enter a NERSC account manually.")
+            return
+        except subprocess.TimeoutExpired:
+            self.notify("iris did not finish within 15 seconds.", title="Iris timeout", severity="warning", timeout=8)
+            return
+        output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        accounts = self.parse_iris_accounts(output)
+        account_list = self.query_one("#accounts", SelectionList)
+        account_list.clear_options()
+        account_list.add_options((account, account, index == 0) for index, account in enumerate(accounts))
+        if accounts:
+            self.query_one("#account", Input).value = accounts[0]
+            self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
+            self.log_message("Iris accounts: " + ", ".join(accounts))
+        else:
+            self.notify("iris ran, but no account names were recognized.", title="No Iris accounts found", severity="warning", timeout=8)
+            self.log_message("iris output did not contain recognizable accounts.")
+
+    def use_selected_account(self) -> None:
+        selected = list(self.query_one("#accounts", SelectionList).selected)
+        if not selected:
+            self.notify("Select an account from the iris list first.", title="No account selected", severity="warning", timeout=5)
+            return
+        self.query_one("#account", Input).value = selected[0]
+        self.notify(f"Using account {selected[0]}", title="Account selected", severity="information", timeout=4)
 
     def invalid_inputs(self, ids: tuple[str, ...]) -> list[str]:
         messages: list[str] = []
@@ -655,6 +728,10 @@ class NtupleWizardTui(App[None]):
             self.state_data.sample_type = value
             self.apply_dependency_change()
             self.refresh_choice_buttons()
+        elif event.button.id == "load_accounts":
+            self.load_accounts_with_iris()
+        elif event.button.id == "use_account":
+            self.use_selected_account()
         elif event.button.id == "generate":
             self.generate()
         elif event.button.id == "scan":
