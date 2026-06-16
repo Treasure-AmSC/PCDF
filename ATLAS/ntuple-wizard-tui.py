@@ -164,9 +164,11 @@ class NtupleWizardTui(App[None]):
         width: 1fr;
         height: 3;
         margin: 0;
+        padding: 0 2;
         background: #00313c;
         color: #ffffff;
         border: tall #4298b5;
+        content-align: left middle;
         text-align: left;
     }
 
@@ -308,8 +310,8 @@ class NtupleWizardTui(App[None]):
                         yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
-                                selected = "☑" if key in self.state_data.selected_objects else "☐"
-                                yield Button(f"{selected} {obj['title']}", id=f"obj-{key}", classes="choice-card")
+                                selected = "ON " if key in self.state_data.selected_objects else "OFF"
+                                yield Button(f"{selected}  {obj['title']}", id=f"obj-{key}", classes="choice-card")
 
                 with Container(id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -320,9 +322,11 @@ class NtupleWizardTui(App[None]):
                             required = set(obj.get("requiredVariables", []))
                             with Grid(classes="object-grid"):
                                 for name in obj.get("aliases", {}):
-                                    selected = "☑" if name in self.state_data.selected_variables[key] else "☐"
-                                    suffix = " (required)" if name in required else ""
-                                    yield Button(f"{selected} {name}{suffix}", id=f"var-{key}-{name}", classes="choice-card")
+                                    if name in required:
+                                        status = "LOCKED"
+                                    else:
+                                        status = "ON " if name in self.state_data.selected_variables[key] else "OFF"
+                                    yield Button(f"{status}  {name}", id=f"var-{key}-{name}", classes="choice-card")
 
                 with Container(id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
@@ -453,16 +457,19 @@ class NtupleWizardTui(App[None]):
                 available = state.object_available(key)
                 object_selected = key in state.selected_objects and available
                 object_button.disabled = key == "Event" or not available
-                object_button.label = f"{'☑' if object_selected else '☐'} {obj['title']}"
+                object_button.label = f"{'ON ' if object_selected else 'OFF'}  {obj['title']}"
                 object_button.set_class(object_selected, "selected-choice")
                 for name in obj.get("aliases", {}):
                     variable_button = self.variable_control(key, name)
                     required = name in obj.get("requiredVariables", [])
                     variable_available = available and state.variable_available(key, name)
                     variable_selected = variable_available and name in state.selected_variables.get(key, set())
-                    suffix = " (required)" if required else ""
+                    if required:
+                        status = "LOCKED"
+                    else:
+                        status = "ON " if variable_selected else "OFF"
                     variable_button.disabled = required or not variable_available
-                    variable_button.label = f"{'☑' if variable_selected else '☐'} {name}{suffix}"
+                    variable_button.label = f"{status}  {name}"
                     variable_button.set_class(variable_selected, "selected-choice")
         finally:
             self._syncing = False
