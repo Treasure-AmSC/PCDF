@@ -27,7 +27,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual.widgets import Button, Checkbox, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
 
 from ntuple_wizard_core import (
@@ -45,12 +45,14 @@ from ntuple_wizard_core import (
 class NtupleWizardTui(App[None]):
     """Interactive Textual app for PCDF ntuple job generation."""
 
+    STEPS = ("Input", "Objects", "Variables", "Perlmutter", "Generate")
+
     CSS = """
-    /* Match ATLAS/ntuple-wizard.css: LBL dark blue page, teal primary,
-       yellow focus, green submit, dark panels, and light-gray borders. */
+    /* Truecolor Textual companion to ATLAS/ntuple-wizard.css. */
     Screen {
         background: #00313c;
         color: #ffffff;
+        layout: vertical;
     }
 
     Header, Footer {
@@ -58,12 +60,87 @@ class NtupleWizardTui(App[None]):
         color: #ffffff;
     }
 
+    #page {
+        width: 100%;
+        height: 1fr;
+        padding: 1 2;
+        background: #00313c;
+    }
+
+    #hero {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+        padding: 1 2;
+        background: #002832;
+        border: round #007681;
+        color: #ffffff;
+        text-style: bold;
+    }
+
+    #progress {
+        height: 5;
+        margin-bottom: 1;
+    }
+
+    .progress-button {
+        width: 1fr;
+        margin: 0 1;
+        background: #002832;
+        color: #d8dedf;
+        border: tall #63666a;
+        text-style: bold;
+    }
+
+    .progress-button.active-step {
+        background: #007681;
+        color: #ffffff;
+        border: tall #eaaa00;
+    }
+
+    .wizard-shell {
+        height: 1fr;
+        padding: 1;
+        background: #001f26;
+        border: round #63666a;
+    }
+
+    .wizard-step {
+        height: 1fr;
+        padding: 1;
+        background: #002832;
+        border: round #63666a;
+    }
+
+    .step-body {
+        height: 1fr;
+        scrollbar-color: #007681;
+        scrollbar-color-hover: #4298b5;
+        scrollbar-color-active: #eaaa00;
+    }
+
+    .two-column {
+        height: 1fr;
+    }
+
     .column {
         width: 1fr;
+        height: 1fr;
         background: #001f26;
         border: round #63666a;
         padding: 1;
-        margin: 1;
+        margin: 0 1;
+    }
+
+    .section-title {
+        color: #eaaa00;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    .hint {
+        color: #d8dedf;
+        margin-bottom: 1;
     }
 
     Static, Label, Checkbox {
@@ -71,7 +148,7 @@ class NtupleWizardTui(App[None]):
     }
 
     Input, Select {
-        background: #002832;
+        background: #001f26;
         color: #ffffff;
         border: tall #63666a;
         margin-bottom: 1;
@@ -82,7 +159,7 @@ class NtupleWizardTui(App[None]):
     }
 
     Button {
-        margin: 1 1;
+        margin: 0 1;
         background: #007681;
         color: #ffffff;
         border: tall #63666a;
@@ -104,27 +181,38 @@ class NtupleWizardTui(App[None]):
         color: #d8dedf;
     }
 
+    #wizard-nav {
+        height: 3;
+        margin-top: 1;
+        align-horizontal: right;
+    }
+
     Checkbox {
         margin: 0 1;
     }
 
-    DirectoryTree, SelectionList, #log {
-        background: #002832;
+    DirectoryTree, SelectionList, #log, #summary_panel {
+        background: #001f26;
         color: #ffffff;
         border: round #007681;
+        padding: 1;
     }
 
     DirectoryTree:focus, SelectionList:focus, #log:focus {
         border: round #eaaa00;
     }
 
+    DirectoryTree, SelectionList {
+        height: 1fr;
+    }
+
     #log {
         height: 1fr;
     }
 
-    .section-title {
-        color: #eaaa00;
-        text-style: bold;
+    #summary_panel {
+        height: auto;
+        margin-bottom: 1;
     }
     """
     BINDINGS = [("q", "quit", "Quit"), ("g", "generate", "Generate"), ("s", "submit", "Submit on Perlmutter")]
@@ -134,54 +222,89 @@ class NtupleWizardTui(App[None]):
         self.state_data = WizardState()
         self.perlmutter = on_perlmutter()
         self.output_dir = output_dir
+        self.current_step = 0
         self._syncing = False
         self.discovered_files: list[Path] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Horizontal():
-            with VerticalScroll(classes="column"):
-                yield Static("Input and SLURM", classes="section-title")
-                yield Label("Input format")
-                yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format")
-                yield Label("Sample type")
-                yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample")
-                yield Input(placeholder="NERSC account", id="account")
-                yield Input(value="regular", placeholder="QOS", id="qos")
-                yield Input(value="1", placeholder="Nodes", id="nodes")
-                yield Input(value="00:30:00", placeholder="Wall time", id="time")
-                yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output")
-                yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest")
-                yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"))
-                yield Button("Generate scripts", id="generate", variant="primary")
-                yield Button("Find files", id="scan")
-                yield Button("Write selected manifest", id="manifest_write")
-                yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
-            with VerticalScroll(classes="column", id="objects_box"):
-                yield Static("Objects", classes="section-title")
-                for key, obj in self.state_data.objects.items():
-                    yield Checkbox(obj["title"], value=key in self.state_data.selected_objects, id=f"obj-{key}")
-                yield Static("Variables", classes="section-title")
-                for key, obj in self.state_data.objects.items():
-                    yield Static(obj["title"])
-                    required = set(obj.get("requiredVariables", []))
-                    for name in obj.get("aliases", {}):
-                        label = f"  {name}" + (" (required)" if name in required else "")
-                        yield Checkbox(label, value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
-            with VerticalScroll(classes="column"):
-                yield Static("Perlmutter file discovery", classes="section-title")
-                yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root")
-                yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob")
-                tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
-                if not tree_root.exists():
-                    tree_root = Path.cwd()
-                yield DirectoryTree(tree_root, id="tree")
-                yield Static("Discovered files", classes="section-title")
-                yield SelectionList[str](id="files")
-                yield RichLog(id="log", wrap=True, highlight=True)
+        with Container(id="page"):
+            yield Static("✦ ATLAS TREASURE → Parquet script wizard", id="hero")
+            with Horizontal(id="progress"):
+                for index, label in enumerate(self.STEPS):
+                    yield Button(f"{index + 1}. {label}", id=f"progress-{index}", classes="progress-button")
+            with Container(classes="wizard-shell"):
+                with Container(id="step-0", classes="wizard-step"):
+                    with VerticalScroll(classes="step-body"):
+                        yield Static("Input format and sample type", classes="section-title")
+                        yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables TREASURE-only constituent output; data mode omits MC-only variables.", classes="hint")
+                        yield Label("Input format")
+                        yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format")
+                        yield Label("Sample type")
+                        yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample")
+
+                with Container(id="step-1", classes="wizard-step"):
+                    with VerticalScroll(classes="step-body"):
+                        yield Static("Output objects", classes="section-title")
+                        yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
+                        for key, obj in self.state_data.objects.items():
+                            yield Checkbox(obj["title"], value=key in self.state_data.selected_objects, id=f"obj-{key}")
+
+                with Container(id="step-2", classes="wizard-step"):
+                    with VerticalScroll(classes="step-body"):
+                        yield Static("Output variables", classes="section-title")
+                        yield Static("Required vector components stay locked on; MC-only labels are disabled for collision data.", classes="hint")
+                        for key, obj in self.state_data.objects.items():
+                            yield Static(obj["title"], classes="section-title")
+                            required = set(obj.get("requiredVariables", []))
+                            for name in obj.get("aliases", {}):
+                                label = f"  {name}" + (" (required)" if name in required else "")
+                                yield Checkbox(label, value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
+
+                with Container(id="step-3", classes="wizard-step"):
+                    with Horizontal(classes="two-column"):
+                        with VerticalScroll(classes="column"):
+                            yield Static("SLURM / NERSC Perlmutter", classes="section-title")
+                            yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
+                            yield Input(placeholder="NERSC account", id="account")
+                            yield Input(value="regular", placeholder="QOS", id="qos")
+                            yield Input(value="1", placeholder="Nodes", id="nodes")
+                            yield Input(value="00:30:00", placeholder="Wall time", id="time")
+                            yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output")
+                            yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest")
+                            yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"), classes="hint")
+                        with VerticalScroll(classes="column"):
+                            yield Static("Interactive file and folder picker", classes="section-title")
+                            yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root")
+                            yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob")
+                            tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
+                            if not tree_root.exists():
+                                tree_root = Path.cwd()
+                            yield DirectoryTree(tree_root, id="tree")
+                            yield Button("Find files", id="scan")
+                            yield Static("Discovered files", classes="section-title")
+                            yield SelectionList[str](id="files")
+                            yield Button("Write selected manifest", id="manifest_write")
+
+                with Container(id="step-4", classes="wizard-step"):
+                    with Horizontal(classes="two-column"):
+                        with VerticalScroll(classes="column"):
+                            yield Static("Generate", classes="section-title")
+                            yield Static("Generate the converter, SLURM wrapper, and tar bundle. On Perlmutter, submit directly after reviewing the settings.", classes="hint")
+                            yield Static("", id="summary_panel")
+                            yield Button("Generate scripts", id="generate", variant="primary")
+                            yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
+                        with VerticalScroll(classes="column"):
+                            yield Static("Status", classes="section-title")
+                            yield RichLog(id="log", wrap=True, highlight=True)
+            with Horizontal(id="wizard-nav"):
+                yield Button("Previous", id="prev_step")
+                yield Button("Next", id="next_step", variant="primary")
         yield Footer()
 
     def on_mount(self) -> None:
+        self.refresh_dependency_widgets()
+        self.refresh_step()
         self.log_message("PCDF ntuple Textual wizard ready.")
         if self.perlmutter:
             self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
@@ -190,6 +313,41 @@ class NtupleWizardTui(App[None]):
 
     def log_message(self, message: str) -> None:
         self.query_one("#log", RichLog).write(message)
+
+    def refresh_summary(self) -> None:
+        state = self.state_data
+        config = state.selected_config()
+        object_lines = [
+            f"• {state.objects[key]['title']}: {len(value['aliases'])} variable(s)"
+            for key, value in config["objects"].items()
+        ]
+        slurm_status = (
+            f"Perlmutter CPU job: {state.nodes} exclusive node(s), QOS {state.qos}, wall time {state.time}."
+            if self.perlmutter
+            else "Generation only on this host; submission is enabled automatically on Perlmutter."
+        )
+        summary = "\n".join([
+            f"Input: {state.input_format} · {state.sample_type}",
+            slurm_status,
+            f"Manifest: {state.manifest}",
+            f"Output: {state.output_base}",
+            "Objects:",
+            *(object_lines or ["• none selected"]),
+        ])
+        self.query_one("#summary_panel", Static).update(summary)
+
+    def refresh_step(self) -> None:
+        self.current_step = max(0, min(len(self.STEPS) - 1, self.current_step))
+        for index, _label in enumerate(self.STEPS):
+            step = self.query_one(f"#step-{index}", Container)
+            step.display = index == self.current_step
+            progress = self.query_one(f"#progress-{index}", Button)
+            progress.set_class(index == self.current_step, "active-step")
+        self.query_one("#prev_step", Button).disabled = self.current_step == 0
+        next_button = self.query_one("#next_step", Button)
+        next_button.label = "Review" if self.current_step == len(self.STEPS) - 2 else "Next"
+        next_button.disabled = self.current_step == len(self.STEPS) - 1
+        self.refresh_summary()
 
     def object_checkbox(self, key: str) -> Checkbox:
         return self.query_one(f"#obj-{key}", Checkbox)
@@ -355,6 +513,15 @@ class NtupleWizardTui(App[None]):
             self.write_selected_manifest()
         elif event.button.id == "submit":
             self.submit()
+        elif event.button.id == "prev_step":
+            self.current_step -= 1
+            self.refresh_step()
+        elif event.button.id == "next_step":
+            self.current_step += 1
+            self.refresh_step()
+        elif event.button.id and event.button.id.startswith("progress-"):
+            self.current_step = int(event.button.id.removeprefix("progress-"))
+            self.refresh_step()
 
 
 def main() -> None:
