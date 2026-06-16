@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.validation import Function, Number, Regex
-from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
+from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static, Switch
 
 from ntuple_wizard_core import (
     WizardState,
@@ -164,39 +164,52 @@ class NtupleWizardTui(App[None]):
         background: transparent;
     }
 
-    .choice-card {
+    .toggle-card {
         width: 1fr;
-        height: 3;
+        height: 4;
         margin: 0;
-        padding: 0 2;
+        padding: 0 1;
         background: #001f26;
         color: #d8dedf;
         border: tall #63666a;
-        content-align: left middle;
-        text-align: left;
     }
 
-    .choice-card:hover, .choice-card:focus {
+    .toggle-card:hover, .toggle-card:focus-within {
         border: tall #eaaa00;
         background: #007681;
         color: #ffffff;
     }
 
-    .choice-card.selected-choice {
+    .toggle-card.selected-choice {
         background: #0b6f59;
         color: #ffffff;
         border: tall #74aa50;
     }
 
-    .choice-card.deselected-choice {
+    .toggle-card.deselected-choice {
         background: #001f26;
         color: #d8dedf;
         border: tall #63666a;
     }
 
+    .toggle-card Label {
+        width: 1fr;
+        content-align: left middle;
+    }
+
+    Switch {
+        width: 10;
+        height: 3;
+        margin-right: 1;
+    }
+
+    Switch.-on {
+        background: #74aa50;
+    }
+
     .choice-row {
         height: 3;
-        margin-bottom: 1;
+        margin-bottom: 2;
     }
 
     .choice-button {
@@ -218,6 +231,23 @@ class NtupleWizardTui(App[None]):
         border: tall #4298b5;
         margin-bottom: 1;
         height: 3;
+    }
+
+    Select {
+        width: 100%;
+        height: 4;
+        content-align: left middle;
+    }
+
+    .field-label {
+        color: #ffffff;
+        text-style: bold;
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+
+    #step-0 .field-label {
+        margin-top: 2;
     }
 
     Input:focus, Select:focus {
@@ -257,7 +287,6 @@ class NtupleWizardTui(App[None]):
     }
 
     #generate-actions {
-        height: 3;
         margin-top: 1;
     }
 
@@ -330,12 +359,12 @@ class NtupleWizardTui(App[None]):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Input format and sample type", classes="section-title")
                         yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables TREASURE-only constituent output; data mode omits MC-only variables.", classes="hint")
-                        yield Label("Input format")
+                        yield Label("Input format", classes="field-label")
                         yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format", classes="hidden-select")
                         with Horizontal(classes="choice-row"):
                             yield Button("TREASURE", id="set-format-TREASURE", classes="choice-button active-step")
                             yield Button("PHYSLITE", id="set-format-PHYSLITE", classes="choice-button")
-                        yield Label("Sample type")
+                        yield Label("Sample type", classes="field-label")
                         yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample", classes="hidden-select")
                         with Horizontal(classes="choice-row"):
                             yield Button("MC", id="set-sample-MC", classes="choice-button active-step")
@@ -347,8 +376,10 @@ class NtupleWizardTui(App[None]):
                         yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
-                                selected = "ON " if key in self.state_data.selected_objects else "OFF"
-                                yield Button(f"{selected}  {obj['title']}", id=f"obj-{key}", classes="choice-card")
+                                selected = key in self.state_data.selected_objects
+                                with Horizontal(id=f"obj-card-{key}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
+                                    yield Switch(value=selected, id=f"obj-{key}", disabled=key == "Event")
+                                    yield Label(obj["title"], id=f"obj-label-{key}")
 
                 with Container(id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -359,28 +390,38 @@ class NtupleWizardTui(App[None]):
                             required = set(obj.get("requiredVariables", []))
                             with Grid(classes="object-grid"):
                                 for name in obj.get("aliases", {}):
-                                    if name in required:
-                                        status = "LOCKED"
-                                    else:
-                                        status = "ON " if name in self.state_data.selected_variables[key] else "OFF"
-                                    yield Button(f"{status}  {name}", id=f"var-{key}-{name}", classes="choice-card")
+                                    selected = name in self.state_data.selected_variables[key]
+                                    with Horizontal(id=f"var-card-{key}-{name}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
+                                        yield Switch(value=selected, id=f"var-{key}-{name}", disabled=name in required)
+                                        suffix = " (required)" if name in required else ""
+                                        yield Label(f"{name}{suffix}", id=f"var-label-{key}-{name}")
 
                 with Container(id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
                             yield Static("SLURM / NERSC Perlmutter", classes="section-title")
                             yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
-                            yield Select([], prompt="NERSC account from iris", allow_blank=True, id="account_select")
-                            yield Input(placeholder="NERSC account (manual fallback)", id="account", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
-                            yield Input(value="regular", placeholder="QOS", id="qos", validators=[Function(self.non_empty, "QOS may not be empty.")], validate_on=["blur", "submitted"])
+                            yield Label("NERSC account", classes="field-label")
+                            if self.perlmutter:
+                                yield Select([], prompt="Loading accounts from iris…", allow_blank=False, id="account_select")
+                            else:
+                                yield Input(placeholder="NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
+                            yield Label("Queue / QOS", classes="field-label")
+                            yield Select([(label, label) for label in ("regular", "debug", "premium", "shared")], value="regular", allow_blank=False, id="qos")
+                            yield Label("Nodes", classes="field-label")
                             yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Number(minimum=1, failure_description="Nodes must be at least 1.")], validate_on=["blur", "submitted"])
+                            yield Label("Wall time", classes="field-label")
                             yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
+                            yield Label("Output base", classes="field-label")
                             yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output", validators=[Function(self.non_empty, "Output base may not be empty.")], validate_on=["blur", "submitted"])
+                            yield Label("Input manifest", classes="field-label")
                             yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest", validators=[Function(self.non_empty, "Input manifest may not be empty.")], validate_on=["blur", "submitted"])
                             yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"), classes="hint")
                         with VerticalScroll(classes="column"):
                             yield Static("Interactive file and folder picker", classes="section-title")
+                            yield Label("Directory to scan", classes="field-label")
                             yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root", validators=[Function(self.existing_directory, "Scan directory must exist.")], validate_on=["blur", "submitted"])
+                            yield Label("File glob", classes="field-label")
                             yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
                             tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
                             if not tree_root.exists():
@@ -463,21 +504,23 @@ class NtupleWizardTui(App[None]):
         for value in ("MC", "DATA"):
             self.query_one(f"#set-sample-{value}", Button).set_class(self.state_data.sample_type == value, "active-step")
 
-    def object_control(self, key: str) -> Button:
-        return self.query_one(f"#obj-{key}", Button)
+    def object_control(self, key: str) -> Switch:
+        return self.query_one(f"#obj-{key}", Switch)
 
-    def variable_control(self, key: str, name: str) -> Button:
-        return self.query_one(f"#var-{key}-{name}", Button)
+    def variable_control(self, key: str, name: str) -> Switch:
+        return self.query_one(f"#var-{key}-{name}", Switch)
 
     def sync_state(self) -> None:
         state = self.state_data
         state.input_format = str(self.query_one("#format", Select).value)
         state.sample_type = str(self.query_one("#sample", Select).value)
-        selected_account = self.query_one("#account_select", Select).value
-        if selected_account is not Select.NULL:
-            self.query_one("#account", Input).value = str(selected_account)
-        state.account = self.query_one("#account", Input).value.strip()
-        state.qos = self.query_one("#qos", Input).value.strip() or "regular"
+        if self.perlmutter:
+            selected_account = self.query_one("#account_select", Select).value
+            state.account = "" if selected_account is Select.NULL else str(selected_account)
+        else:
+            state.account = self.query_one("#account_input", Input).value.strip()
+        qos = self.query_one("#qos", Select).value
+        state.qos = "regular" if qos is Select.NULL else str(qos)
         try:
             state.nodes = max(1, int(self.query_one("#nodes", Input).value.strip()))
         except ValueError:
@@ -496,26 +539,24 @@ class NtupleWizardTui(App[None]):
         try:
             state = self.state_data
             for key, obj in state.objects.items():
-                object_button = self.object_control(key)
+                object_switch = self.object_control(key)
+                object_card = self.query_one(f"#obj-card-{key}", Horizontal)
                 available = state.object_available(key)
                 object_selected = key in state.selected_objects and available
-                object_button.disabled = key == "Event" or not available
-                object_button.label = f"{'ON ' if object_selected else 'OFF'}  {obj['title']}"
-                object_button.set_class(object_selected, "selected-choice")
-                object_button.set_class(not object_selected, "deselected-choice")
+                object_switch.disabled = key == "Event" or not available
+                object_switch.value = object_selected
+                object_card.set_class(object_selected, "selected-choice")
+                object_card.set_class(not object_selected, "deselected-choice")
                 for name in obj.get("aliases", {}):
-                    variable_button = self.variable_control(key, name)
+                    variable_switch = self.variable_control(key, name)
+                    variable_card = self.query_one(f"#var-card-{key}-{name}", Horizontal)
                     required = name in obj.get("requiredVariables", [])
                     variable_available = available and state.variable_available(key, name)
                     variable_selected = variable_available and name in state.selected_variables.get(key, set())
-                    if required:
-                        status = "LOCKED"
-                    else:
-                        status = "ON " if variable_selected else "OFF"
-                    variable_button.disabled = required or not variable_available
-                    variable_button.label = f"{status}  {name}"
-                    variable_button.set_class(variable_selected, "selected-choice")
-                    variable_button.set_class(not variable_selected, "deselected-choice")
+                    variable_switch.disabled = required or not variable_available
+                    variable_switch.value = variable_selected
+                    variable_card.set_class(variable_selected, "selected-choice")
+                    variable_card.set_class(not variable_selected, "deselected-choice")
         finally:
             self._syncing = False
 
@@ -579,7 +620,6 @@ class NtupleWizardTui(App[None]):
         account_select.set_options((account, account) for account in accounts)
         if accounts:
             account_select.value = accounts[0]
-            self.query_one("#account", Input).value = accounts[0]
             self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
             self.log_message("Iris accounts: " + ", ".join(accounts))
         else:
@@ -598,7 +638,12 @@ class NtupleWizardTui(App[None]):
         return messages
 
     def validate_slurm_inputs(self) -> bool:
-        failures = self.invalid_inputs(("account", "qos", "nodes", "time", "output", "manifest"))
+        failures = self.invalid_inputs(("nodes", "time", "output", "manifest"))
+        if self.perlmutter:
+            if self.query_one("#account_select", Select).value is Select.NULL:
+                failures.append("Choose a NERSC account.")
+        else:
+            failures.extend(self.invalid_inputs(("account_input",)))
         if failures:
             self.notify("\n".join(failures), title="Fix SLURM settings", severity="error", timeout=8)
             self.log_message("Validation failed: " + "; ".join(failures))
@@ -659,8 +704,10 @@ class NtupleWizardTui(App[None]):
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "account_select":
             if event.value is not Select.NULL:
-                self.query_one("#account", Input).value = str(event.value)
                 self.notify(f"Using account {event.value}", title="Account selected", severity="information", timeout=4)
+            return
+        if event.select.id == "qos":
+            self.sync_state()
             return
         if event.select.id not in {"format", "sample"}:
             return
@@ -691,26 +738,30 @@ class NtupleWizardTui(App[None]):
         self.state_data.scan_root = path
         self.log_message(f"Selected scan directory: {path}")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id and event.button.id.startswith("obj-"):
-            key = event.button.id.removeprefix("obj-")
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        if self._syncing:
+            return
+        if event.switch.id and event.switch.id.startswith("obj-"):
+            key = event.switch.id.removeprefix("obj-")
             if key != "Event":
-                if key in self.state_data.selected_objects:
-                    self.state_data.selected_objects.discard(key)
-                else:
+                if event.value:
                     self.state_data.selected_objects.add(key)
+                else:
+                    self.state_data.selected_objects.discard(key)
                 self.apply_dependency_change()
-        elif event.button.id and event.button.id.startswith("var-"):
-            _, key, name = event.button.id.split("-", 2)
+        elif event.switch.id and event.switch.id.startswith("var-"):
+            _, key, name = event.switch.id.split("-", 2)
             required = name in self.state_data.objects[key].get("requiredVariables", [])
             if not required:
                 variables = self.state_data.selected_variables.setdefault(key, set())
-                if name in variables:
-                    variables.discard(name)
-                else:
+                if event.value:
                     variables.add(name)
+                else:
+                    variables.discard(name)
                 self.apply_dependency_change()
-        elif event.button.id and event.button.id.startswith("set-format-"):
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id and event.button.id.startswith("set-format-"):
             value = event.button.id.removeprefix("set-format-")
             self.query_one("#format", Select).value = value
             self.state_data.input_format = value
