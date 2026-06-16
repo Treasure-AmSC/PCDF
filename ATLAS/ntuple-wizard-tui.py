@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
+from textual.validation import Function, Number, Regex
 from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static
 
 from ntuple_wizard_core import (
@@ -212,6 +213,14 @@ class NtupleWizardTui(App[None]):
         border: tall #eaaa00;
     }
 
+    Input.-valid {
+        border: tall #74aa50;
+    }
+
+    Input.-invalid {
+        border: tall #e04b39;
+    }
+
     Button {
         margin: 0 1;
         height: 3;
@@ -281,6 +290,14 @@ class NtupleWizardTui(App[None]):
         self._syncing = False
         self.discovered_files: list[Path] = []
 
+    @staticmethod
+    def non_empty(value: str) -> bool:
+        return bool(value.strip())
+
+    @staticmethod
+    def existing_directory(value: str) -> bool:
+        return Path(os.path.expandvars(os.path.expanduser(value or "."))).is_dir()
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="page"):
@@ -333,17 +350,17 @@ class NtupleWizardTui(App[None]):
                         with VerticalScroll(classes="column"):
                             yield Static("SLURM / NERSC Perlmutter", classes="section-title")
                             yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
-                            yield Input(placeholder="NERSC account", id="account")
-                            yield Input(value="regular", placeholder="QOS", id="qos")
-                            yield Input(value="1", placeholder="Nodes", id="nodes")
-                            yield Input(value="00:30:00", placeholder="Wall time", id="time")
-                            yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output")
-                            yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest")
+                            yield Input(placeholder="NERSC account", id="account", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
+                            yield Input(value="regular", placeholder="QOS", id="qos", validators=[Function(self.non_empty, "QOS may not be empty.")], validate_on=["blur", "submitted"])
+                            yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Number(minimum=1, failure_description="Nodes must be at least 1.")], validate_on=["blur", "submitted"])
+                            yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
+                            yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output", validators=[Function(self.non_empty, "Output base may not be empty.")], validate_on=["blur", "submitted"])
+                            yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest", validators=[Function(self.non_empty, "Input manifest may not be empty.")], validate_on=["blur", "submitted"])
                             yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"), classes="hint")
                         with VerticalScroll(classes="column"):
                             yield Static("Interactive file and folder picker", classes="section-title")
-                            yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root")
-                            yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob")
+                            yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root", validators=[Function(self.existing_directory, "Scan directory must exist.")], validate_on=["blur", "submitted"])
+                            yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
                             tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
                             if not tree_root.exists():
                                 tree_root = Path.cwd()
@@ -479,18 +496,23 @@ class NtupleWizardTui(App[None]):
         self.refresh_dependency_widgets()
 
     def refresh_discovered_files(self) -> None:
+        if not self.validate_scan_inputs():
+            return
         self.sync_state()
         self.discovered_files = discover_files(self.state_data.scan_root, self.state_data.glob_pattern)
         files = self.query_one("#files", SelectionList)
         files.clear_options()
         files.add_options((str(path), str(path), True) for path in self.discovered_files)
         self.log_message(f"Found {len(self.discovered_files)} file(s) under {self.state_data.scan_root}")
+        self.notify(f"Found {len(self.discovered_files)} file(s)", title="Discovery complete", severity="information", timeout=4)
 
     def selected_discovered_files(self) -> list[Path]:
         files = self.query_one("#files", SelectionList)
         return [Path(value) for value in files.selected]
 
-    def write_selected_manifest(self) -> Path:
+    def write_selected_manifest(self) -> Path | None:
+        if not self.validate_scan_inputs():
+            return None
         self.sync_state()
         selected = self.selected_discovered_files()
         if not selected:
@@ -499,7 +521,35 @@ class NtupleWizardTui(App[None]):
         else:
             manifest, count = write_manifest(selected, self.state_data.manifest)
         self.log_message(f"Wrote {count} input file(s) to {manifest}")
+        self.notify(f"Wrote {count} file(s) to {manifest}", title="Manifest written", severity="information", timeout=6)
         return manifest
+
+    def invalid_inputs(self, ids: tuple[str, ...]) -> list[str]:
+        messages: list[str] = []
+        for input_id in ids:
+            widget = self.query_one(f"#{input_id}", Input)
+            result = widget.validate(widget.value)
+            widget.set_class(result.is_valid, "-valid")
+            widget.set_class(not result.is_valid, "-invalid")
+            if not result.is_valid:
+                messages.extend(result.failure_descriptions)
+        return messages
+
+    def validate_slurm_inputs(self) -> bool:
+        failures = self.invalid_inputs(("account", "qos", "nodes", "time", "output", "manifest"))
+        if failures:
+            self.notify("\n".join(failures), title="Fix SLURM settings", severity="error", timeout=8)
+            self.log_message("Validation failed: " + "; ".join(failures))
+            return False
+        return True
+
+    def validate_scan_inputs(self) -> bool:
+        failures = self.invalid_inputs(("scan_root", "glob", "manifest"))
+        if failures:
+            self.notify("\n".join(failures), title="Fix file discovery settings", severity="error", timeout=8)
+            self.log_message("Validation failed: " + "; ".join(failures))
+            return False
+        return True
 
     def build_python(self) -> str:
         return build_python(self.state_data)
@@ -507,12 +557,15 @@ class NtupleWizardTui(App[None]):
     def build_slurm(self) -> str:
         return build_slurm(self.state_data, self.output_dir)
 
-    def generate(self) -> tuple[Path, Path, Path]:
+    def generate(self) -> tuple[Path, Path, Path] | None:
+        if not self.validate_slurm_inputs():
+            return None
         self.sync_state()
         py_path, slurm_path, bundle_path = write_bundle(self.state_data, self.output_dir)
         self.log_message(f"Generated {py_path}")
         self.log_message(f"Generated {slurm_path}")
         self.log_message(f"Generated {bundle_path}")
+        self.notify(f"Generated bundle in {self.output_dir}", title="Generation complete", severity="information", timeout=6)
         return py_path, slurm_path, bundle_path
 
     def scan_manifest(self) -> Path:
@@ -523,7 +576,10 @@ class NtupleWizardTui(App[None]):
         if not self.perlmutter:
             self.log_message("Refusing to submit: this does not look like Perlmutter.")
             return
-        _, slurm_path, _ = self.generate()
+        generated = self.generate()
+        if generated is None:
+            return
+        _, slurm_path, _ = generated
         result = subprocess.run(["sbatch", str(slurm_path)], check=False, text=True, capture_output=True)
         if result.stdout:
             self.log_message(result.stdout.strip())
@@ -544,6 +600,22 @@ class NtupleWizardTui(App[None]):
         self.state_data.input_format = str(self.query_one("#format", Select).value)
         self.state_data.sample_type = str(self.query_one("#sample", Select).value)
         self.apply_dependency_change()
+
+    def on_input_blurred(self, event: Input.Blurred) -> None:
+        if event.validation_result is None:
+            return
+        event.input.set_class(event.validation_result.is_valid, "-valid")
+        event.input.set_class(not event.validation_result.is_valid, "-invalid")
+        if not event.validation_result.is_valid:
+            self.notify("\n".join(event.validation_result.failure_descriptions), title="Invalid input", severity="warning", timeout=5)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.validation_result is None:
+            return
+        event.input.set_class(event.validation_result.is_valid, "-valid")
+        event.input.set_class(not event.validation_result.is_valid, "-invalid")
+        if not event.validation_result.is_valid:
+            self.notify("\n".join(event.validation_result.failure_descriptions), title="Invalid input", severity="warning", timeout=5)
 
     def on_directory_tree_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
         path = str(event.path)
