@@ -161,8 +161,8 @@ class NtupleWizardTui(App[None]):
     }
 
     Checkbox {
-        width: 100%;
-        height: 1;
+        width: 4;
+        height: 3;
         margin: 0;
         color: #ffffff;
         background: transparent;
@@ -171,6 +171,44 @@ class NtupleWizardTui(App[None]):
     Checkbox:focus {
         background: #007681;
         color: #ffffff;
+    }
+
+    .choice-card {
+        width: 1fr;
+        height: 3;
+        background: #00313c;
+        border: tall #4298b5;
+        padding: 0 1;
+    }
+
+    .choice-card:focus-within {
+        border: tall #eaaa00;
+        background: #007681;
+    }
+
+    .choice-label {
+        width: 1fr;
+        height: 3;
+        content-align: left middle;
+        color: #ffffff;
+    }
+
+    .choice-row {
+        height: 3;
+        margin-bottom: 1;
+    }
+
+    .choice-button {
+        width: 24;
+    }
+
+    .choice-button.active-step {
+        background: #007681;
+        border: tall #eaaa00;
+    }
+
+    .hidden-select {
+        display: none;
     }
 
     Input, Select {
@@ -267,9 +305,15 @@ class NtupleWizardTui(App[None]):
                         yield Static("Input format and sample type", classes="section-title")
                         yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables TREASURE-only constituent output; data mode omits MC-only variables.", classes="hint")
                         yield Label("Input format")
-                        yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format")
+                        yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format", classes="hidden-select")
+                        with Horizontal(classes="choice-row"):
+                            yield Button("TREASURE", id="set-format-TREASURE", classes="choice-button active-step")
+                            yield Button("PHYSLITE", id="set-format-PHYSLITE", classes="choice-button")
                         yield Label("Sample type")
-                        yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample")
+                        yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample", classes="hidden-select")
+                        with Horizontal(classes="choice-row"):
+                            yield Button("MC", id="set-sample-MC", classes="choice-button active-step")
+                            yield Button("DATA", id="set-sample-DATA", classes="choice-button")
 
                 with Container(id="step-1", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -277,7 +321,9 @@ class NtupleWizardTui(App[None]):
                         yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
-                                yield Checkbox(obj["title"], value=key in self.state_data.selected_objects, id=f"obj-{key}")
+                                with Horizontal(classes="choice-card"):
+                                    yield Checkbox("", value=key in self.state_data.selected_objects, id=f"obj-{key}")
+                                    yield Static(obj["title"], classes="choice-label")
 
                 with Container(id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -289,7 +335,9 @@ class NtupleWizardTui(App[None]):
                             with Grid(classes="object-grid"):
                                 for name in obj.get("aliases", {}):
                                     label = f"{name}" + (" (required)" if name in required else "")
-                                    yield Checkbox(label, value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
+                                    with Horizontal(classes="choice-card"):
+                                        yield Checkbox("", value=name in self.state_data.selected_variables[key], id=f"var-{key}-{name}", disabled=name in required)
+                                        yield Static(label, classes="choice-label")
 
                 with Container(id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
@@ -377,7 +425,14 @@ class NtupleWizardTui(App[None]):
         next_button = self.query_one("#next_step", Button)
         next_button.label = "Review" if self.current_step == len(self.STEPS) - 2 else "Next"
         next_button.disabled = self.current_step == len(self.STEPS) - 1
+        self.refresh_choice_buttons()
         self.refresh_summary()
+
+    def refresh_choice_buttons(self) -> None:
+        for value in ("TREASURE", "PHYSLITE"):
+            self.query_one(f"#set-format-{value}", Button).set_class(self.state_data.input_format == value, "active-step")
+        for value in ("MC", "DATA"):
+            self.query_one(f"#set-sample-{value}", Button).set_class(self.state_data.sample_type == value, "active-step")
 
     def object_checkbox(self, key: str) -> Checkbox:
         return self.query_one(f"#obj-{key}", Checkbox)
@@ -535,7 +590,19 @@ class NtupleWizardTui(App[None]):
         self.log_message(f"Selected scan directory: {path}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "generate":
+        if event.button.id and event.button.id.startswith("set-format-"):
+            value = event.button.id.removeprefix("set-format-")
+            self.query_one("#format", Select).value = value
+            self.state_data.input_format = value
+            self.apply_dependency_change()
+            self.refresh_choice_buttons()
+        elif event.button.id and event.button.id.startswith("set-sample-"):
+            value = event.button.id.removeprefix("set-sample-")
+            self.query_one("#sample", Select).value = value
+            self.state_data.sample_type = value
+            self.apply_dependency_change()
+            self.refresh_choice_buttons()
+        elif event.button.id == "generate":
             self.generate()
         elif event.button.id == "scan":
             self.refresh_discovered_files()
