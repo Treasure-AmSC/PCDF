@@ -185,7 +185,7 @@ class NtupleWizardTui(App[None]):
     .choice-card.selected-choice {
         background: #0b6f59;
         color: #ffffff;
-        border: heavy #eaaa00;
+        border: tall #74aa50;
     }
 
     .choice-card.deselected-choice {
@@ -263,11 +263,6 @@ class NtupleWizardTui(App[None]):
 
     #generate-actions Button {
         width: 28;
-    }
-
-    #accounts {
-        height: 5;
-        margin-bottom: 1;
     }
 
     #wizard-nav {
@@ -375,10 +370,8 @@ class NtupleWizardTui(App[None]):
                         with VerticalScroll(classes="column"):
                             yield Static("SLURM / NERSC Perlmutter", classes="section-title")
                             yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
-                            yield Input(placeholder="NERSC account", id="account", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
-                            yield Button("Load accounts with iris", id="load_accounts")
-                            yield SelectionList[str](id="accounts")
-                            yield Button("Use selected account", id="use_account")
+                            yield Select([], prompt="NERSC account from iris", allow_blank=True, id="account_select")
+                            yield Input(placeholder="NERSC account (manual fallback)", id="account", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
                             yield Input(value="regular", placeholder="QOS", id="qos", validators=[Function(self.non_empty, "QOS may not be empty.")], validate_on=["blur", "submitted"])
                             yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Number(minimum=1, failure_description="Nodes must be at least 1.")], validate_on=["blur", "submitted"])
                             yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
@@ -421,6 +414,7 @@ class NtupleWizardTui(App[None]):
         self.log_message("PCDF ntuple Textual wizard ready.")
         if self.perlmutter:
             self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
+            self.load_accounts_with_iris()
         else:
             self.log_message("Not on Perlmutter: generation is enabled; sbatch submission is disabled.")
 
@@ -479,6 +473,9 @@ class NtupleWizardTui(App[None]):
         state = self.state_data
         state.input_format = str(self.query_one("#format", Select).value)
         state.sample_type = str(self.query_one("#sample", Select).value)
+        selected_account = self.query_one("#account_select", Select).value
+        if selected_account is not Select.NULL:
+            self.query_one("#account", Input).value = str(selected_account)
         state.account = self.query_one("#account", Input).value.strip()
         state.qos = self.query_one("#qos", Input).value.strip() or "regular"
         try:
@@ -578,24 +575,16 @@ class NtupleWizardTui(App[None]):
             return
         output = "\n".join(part for part in (result.stdout, result.stderr) if part)
         accounts = self.parse_iris_accounts(output)
-        account_list = self.query_one("#accounts", SelectionList)
-        account_list.clear_options()
-        account_list.add_options((account, account, index == 0) for index, account in enumerate(accounts))
+        account_select = self.query_one("#account_select", Select)
+        account_select.set_options((account, account) for account in accounts)
         if accounts:
+            account_select.value = accounts[0]
             self.query_one("#account", Input).value = accounts[0]
             self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
             self.log_message("Iris accounts: " + ", ".join(accounts))
         else:
             self.notify("iris ran, but no account names were recognized.", title="No Iris accounts found", severity="warning", timeout=8)
             self.log_message("iris output did not contain recognizable accounts.")
-
-    def use_selected_account(self) -> None:
-        selected = list(self.query_one("#accounts", SelectionList).selected)
-        if not selected:
-            self.notify("Select an account from the iris list first.", title="No account selected", severity="warning", timeout=5)
-            return
-        self.query_one("#account", Input).value = selected[0]
-        self.notify(f"Using account {selected[0]}", title="Account selected", severity="information", timeout=4)
 
     def invalid_inputs(self, ids: tuple[str, ...]) -> list[str]:
         messages: list[str] = []
@@ -668,6 +657,11 @@ class NtupleWizardTui(App[None]):
         self.submit()
 
     def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "account_select":
+            if event.value is not Select.NULL:
+                self.query_one("#account", Input).value = str(event.value)
+                self.notify(f"Using account {event.value}", title="Account selected", severity="information", timeout=4)
+            return
         if event.select.id not in {"format", "sample"}:
             return
         self.state_data.input_format = str(self.query_one("#format", Select).value)
@@ -728,10 +722,6 @@ class NtupleWizardTui(App[None]):
             self.state_data.sample_type = value
             self.apply_dependency_change()
             self.refresh_choice_buttons()
-        elif event.button.id == "load_accounts":
-            self.load_accounts_with_iris()
-        elif event.button.id == "use_account":
-            self.use_selected_account()
         elif event.button.id == "generate":
             self.generate()
         elif event.button.id == "scan":
