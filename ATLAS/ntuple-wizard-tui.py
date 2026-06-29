@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # dependencies = [
-#   "textual>=0.89",
+#   "textual>=8.2.7",
 # ]
 # ///
 """Textual TUI for generating PCDF ATLAS ntuple conversion bundles.
@@ -104,7 +104,7 @@ class NtupleWizardTui(App[None]):
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
                                 selected = key in self.state_data.selected_objects
-                                with Horizontal(id=f"obj-card-{key}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
+                                with Grid(id=f"obj-card-{key}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
                                     yield Switch(value=selected, id=f"obj-{key}", classes="toggle-switch", disabled=key == "Event")
                                     yield Label(obj["title"], id=f"obj-label-{key}", classes="toggle-label")
 
@@ -118,7 +118,7 @@ class NtupleWizardTui(App[None]):
                             with Grid(classes="object-grid"):
                                 for name in obj.get("aliases", {}):
                                     selected = name in self.state_data.selected_variables[key]
-                                    with Horizontal(id=f"var-card-{key}-{name}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
+                                    with Grid(id=f"var-card-{key}-{name}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
                                         yield Switch(value=selected, id=f"var-{key}-{name}", classes="toggle-switch", disabled=name in required)
                                         suffix = " (required)" if name in required else ""
                                         yield Label(f"{name}{suffix}", id=f"var-label-{key}-{name}", classes="toggle-label")
@@ -267,7 +267,7 @@ class NtupleWizardTui(App[None]):
             state = self.state_data
             for key, obj in state.objects.items():
                 object_switch = self.object_control(key)
-                object_card = self.query_one(f"#obj-card-{key}", Horizontal)
+                object_card = self.query_one(f"#obj-card-{key}", Grid)
                 available = state.object_available(key)
                 object_selected = key in state.selected_objects and available
                 object_switch.disabled = key == "Event" or not available
@@ -276,7 +276,7 @@ class NtupleWizardTui(App[None]):
                 object_card.set_class(not object_selected, "deselected-choice")
                 for name in obj.get("aliases", {}):
                     variable_switch = self.variable_control(key, name)
-                    variable_card = self.query_one(f"#var-card-{key}-{name}", Horizontal)
+                    variable_card = self.query_one(f"#var-card-{key}-{name}", Grid)
                     required = name in obj.get("requiredVariables", [])
                     variable_available = available and state.variable_available(key, name)
                     variable_selected = variable_available and name in state.selected_variables.get(key, set())

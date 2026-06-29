@@ -112,12 +112,16 @@ Static, Label {
 
 .toggle-card {
     width: 1fr;
-    height: 3;
+    height: auto;
     margin: 0;
     padding: 0 1;
     background: #001f26;
     color: #d8dedf;
     border: tall #63666a;
+    layout: grid;
+    grid-size: 2;
+    grid-columns: auto 1fr;
+    grid-gutter: 0 1;
     align-vertical: middle;
 }
 
@@ -145,8 +149,7 @@ Static, Label {
 }
 
 .toggle-card .toggle-switch {
-    width: 16;
-    margin: 0 1 0 0;
+    margin: 0;
 }
 
 .choice-row {
