@@ -53,6 +53,10 @@ Header, Footer {
 
 .two-column {
     height: 1fr;
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 1fr 1fr;
+    grid-gutter: 0 1;
 }
 
 .column {
@@ -60,8 +64,8 @@ Header, Footer {
     height: 1fr;
     background: #00313c;
     border: round #4298b5;
-    padding: 1 2;
-    margin: 0 1;
+    padding: 1;
+    margin: 0;
 }
 
 .object-grid {
@@ -211,11 +215,18 @@ Button:disabled {
 }
 
 #generate-actions {
+    height: 3;
     margin-top: 1;
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 1fr 1fr;
+    grid-gutter: 0 1;
 }
 
 #generate-actions Button {
-    width: 28;
+    width: 1fr;
+    margin: 0;
+    content-align: center middle;
 }
 
 #wizard-nav {
