@@ -338,6 +338,8 @@ class NtupleWizardTui(App[None]):
         self.output_dir = output_dir
         self.current_step = 0
         self._syncing = False
+        self._loading_accounts = False
+        self._suppress_account_select_notice = False
         self.discovered_files: list[Path] = []
 
     @staticmethod
@@ -456,7 +458,7 @@ class NtupleWizardTui(App[None]):
         self.log_message("PCDF ntuple Textual wizard ready.")
         if self.perlmutter:
             self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
-            self.load_accounts_with_iris()
+            self.load_accounts_with_iris(notify_user=False)
         else:
             self.log_message("Not on Perlmutter: generation is enabled; sbatch submission is disabled.")
 
@@ -605,39 +607,50 @@ class NtupleWizardTui(App[None]):
                 accounts.append(first)
         return accounts
 
-    def load_accounts_with_iris(self) -> None:
+    def load_accounts_with_iris(self, notify_user: bool = True) -> None:
+        self._loading_accounts = True
         try:
             result = subprocess.run(["iris"], check=False, text=True, capture_output=True, timeout=15)
         except FileNotFoundError:
-            self.notify("The iris command is not available on this host.", title="Iris unavailable", severity="warning", timeout=8)
+            if notify_user:
+                self.notify("The iris command is not available on this host.", title="Iris unavailable", severity="warning", timeout=8)
             account_select = self.query_one("#account_select", Select)
             account_select.set_options([("iris command not found", "")])
             account_select.value = ""
             account_select.disabled = True
             self.log_message("iris command not found; account selection is unavailable.")
+            self._loading_accounts = False
             return
         except subprocess.TimeoutExpired:
             account_select = self.query_one("#account_select", Select)
             account_select.set_options([("iris timed out", "")])
             account_select.value = ""
             account_select.disabled = True
-            self.notify("iris did not finish within 15 seconds.", title="Iris timeout", severity="warning", timeout=8)
+            if notify_user:
+                self.notify("iris did not finish within 15 seconds.", title="Iris timeout", severity="warning", timeout=8)
+            self._loading_accounts = False
             return
-        output = "\n".join(part for part in (result.stdout, result.stderr) if part)
-        accounts = self.parse_iris_accounts(output)
-        account_select = self.query_one("#account_select", Select)
-        if accounts:
-            account_select.set_options((account, account) for account in accounts)
-            account_select.value = accounts[0]
-            account_select.disabled = False
-            self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
-            self.log_message("Iris accounts: " + ", ".join(accounts))
-        else:
-            account_select.set_options([("No iris accounts found", "")])
-            account_select.value = ""
-            account_select.disabled = True
-            self.notify("iris ran, but no account names were recognized.", title="No Iris accounts found", severity="warning", timeout=8)
-            self.log_message("iris output did not contain recognizable accounts.")
+        try:
+            output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+            accounts = self.parse_iris_accounts(output)
+            account_select = self.query_one("#account_select", Select)
+            if accounts:
+                account_select.set_options((account, account) for account in accounts)
+                self._suppress_account_select_notice = not notify_user
+                account_select.value = accounts[0]
+                account_select.disabled = False
+                if notify_user:
+                    self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
+                self.log_message("Iris accounts: " + ", ".join(accounts))
+            else:
+                account_select.set_options([("No iris accounts found", "")])
+                account_select.value = ""
+                account_select.disabled = True
+                if notify_user:
+                    self.notify("iris ran, but no account names were recognized.", title="No Iris accounts found", severity="warning", timeout=8)
+                self.log_message("iris output did not contain recognizable accounts.")
+        finally:
+            self._loading_accounts = False
 
     def invalid_inputs(self, ids: tuple[str, ...]) -> list[str]:
         messages: list[str] = []
@@ -716,7 +729,10 @@ class NtupleWizardTui(App[None]):
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "account_select":
-            if event.value not in (Select.NULL, ""):
+            if self._suppress_account_select_notice and event.value not in (Select.NULL, ""):
+                self._suppress_account_select_notice = False
+                return
+            if event.value not in (Select.NULL, "") and not self._loading_accounts:
                 self.notify(f"Using account {event.value}", title="Account selected", severity="information", timeout=4)
             return
         if event.select.id == "qos":
