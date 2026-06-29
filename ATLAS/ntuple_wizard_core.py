@@ -218,7 +218,14 @@ def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path
 
 def discover_files(scan_root: str, glob_pattern: str) -> list[Path]:
     root = Path(os.path.expandvars(os.path.expanduser(scan_root)))
-    return sorted(path for path in root.rglob(glob_pattern) if path.is_file())
+    def visible(path: Path) -> bool:
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            relative = path
+        return not any(part.startswith(".") for part in relative.parts)
+
+    return sorted(path for path in root.rglob(glob_pattern) if path.is_file() and visible(path))
 
 
 def write_manifest(paths: list[Path], manifest_path: str) -> tuple[Path, int]:

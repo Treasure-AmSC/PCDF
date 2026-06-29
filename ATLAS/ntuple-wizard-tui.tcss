@@ -218,8 +218,8 @@ Button:disabled {
     height: 3;
     margin-top: 1;
     layout: grid;
-    grid-size: 2;
-    grid-columns: 1fr 1fr;
+    grid-size: 3;
+    grid-columns: 1fr 1fr 1fr;
     grid-gutter: 0 1;
 }
 
@@ -240,6 +240,13 @@ DirectoryTree, SelectionList, #log, #summary_panel {
     color: #ffffff;
     border: round #007681;
     padding: 1;
+}
+
+.script-preview {
+    height: 12;
+    background: #001f26;
+    color: #ffffff;
+    border: round #007681;
 }
 
 DirectoryTree:focus, SelectionList:focus, #log:focus {

@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.validation import Function, Number, Regex
-from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane
+from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
 
 from ntuple_wizard_core import (
     WizardState,
@@ -41,6 +41,13 @@ from ntuple_wizard_core import (
     write_bundle,
     write_manifest,
 )
+
+
+class VisibleDirectoryTree(DirectoryTree):
+    """Directory tree that hides dot-prefixed files and directories."""
+
+    def filter_paths(self, paths: Any) -> Any:
+        return [path for path in paths if not path.name.startswith(".")]
 
 
 class NtupleWizardTui(App[None]):
@@ -64,6 +71,7 @@ class NtupleWizardTui(App[None]):
         self._syncing = False
         self._loading_accounts = False
         self._suppress_account_select_notice = False
+        self.review_confirmed = False
         self.discovered_files: list[Path] = []
 
     @staticmethod
@@ -145,12 +153,13 @@ class NtupleWizardTui(App[None]):
                             yield Static("Interactive file and folder picker", classes="section-title")
                             yield Label("Directory to scan", classes="field-label")
                             yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root", validators=[Function(self.existing_directory, "Scan directory must exist.")], validate_on=["blur", "submitted"])
-                            yield Label("File glob", classes="field-label")
-                            yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
+                            with Collapsible(title="Advanced manifest options", collapsed=True):
+                                yield Label("File glob", classes="field-label")
+                                yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
                             tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
                             if not tree_root.exists():
                                 tree_root = Path.cwd()
-                            yield DirectoryTree(tree_root, id="tree")
+                            yield VisibleDirectoryTree(tree_root, id="tree")
                             yield Button("Find files", id="scan")
                             yield Static("Discovered files", classes="section-title")
                             yield SelectionList[str](id="files")
@@ -162,8 +171,15 @@ class NtupleWizardTui(App[None]):
                             yield Static("Generate", classes="section-title")
                             yield Static("Generate the converter, SLURM wrapper, and tar bundle. On Perlmutter, submit directly after reviewing the settings.", classes="hint")
                             yield Static("", id="summary_panel")
+                            yield Static("Review generated scripts before submitting", classes="section-title")
+                            with TabbedContent(initial="preview-python", id="review-tabs"):
+                                with TabPane("Python", id="preview-python"):
+                                    yield TextArea("", language="python", read_only=True, show_line_numbers=True, id="python_preview", classes="script-preview")
+                                with TabPane("SLURM", id="preview-slurm"):
+                                    yield TextArea("", language="bash", read_only=True, show_line_numbers=True, id="slurm_preview", classes="script-preview")
                             with Horizontal(id="generate-actions"):
                                 yield Button("Generate scripts", id="generate", variant="primary")
+                                yield Button("I reviewed scripts", id="confirm_review")
                                 yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
                         with VerticalScroll(classes="column"):
                             yield Static("Status", classes="section-title")
@@ -207,6 +223,9 @@ class NtupleWizardTui(App[None]):
             *(object_lines or ["• none selected"]),
         ])
         self.query_one("#summary_panel", Static).update(summary)
+        self.query_one("#python_preview", TextArea).load_text(self.build_python())
+        self.query_one("#slurm_preview", TextArea).load_text(self.build_slurm())
+        self.query_one("#submit", Button).disabled = (not self.perlmutter) or (not self.review_confirmed)
 
     def refresh_step(self) -> None:
         self.current_step = max(0, min(len(self.STEPS) - 1, self.current_step))
@@ -452,6 +471,10 @@ class NtupleWizardTui(App[None]):
         if not self.perlmutter:
             self.log_message("Refusing to submit: this does not look like Perlmutter.")
             return
+        if not self.review_confirmed:
+            self.notify("Review and confirm the generated Python and SLURM scripts before submitting.", title="Review required", severity="warning", timeout=8)
+            self.log_message("Submission blocked: generated scripts have not been reviewed.")
+            return
         if not self.ensure_manifest_for_submit():
             return
         generated = self.generate()
@@ -564,6 +587,12 @@ class NtupleWizardTui(App[None]):
             self.refresh_choice_buttons()
         elif event.button.id == "generate":
             self.generate()
+        elif event.button.id == "confirm_review":
+            self.sync_state()
+            self.refresh_summary()
+            self.review_confirmed = True
+            self.query_one("#submit", Button).disabled = not self.perlmutter
+            self.notify("Generated Python and SLURM previews marked reviewed.", title="Review confirmed", severity="information", timeout=5)
         elif event.button.id == "scan":
             self.refresh_discovered_files()
         elif event.button.id == "manifest_write":
