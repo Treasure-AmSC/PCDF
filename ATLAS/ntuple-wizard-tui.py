@@ -204,10 +204,6 @@ class NtupleWizardTui(App[None]):
         margin: 0 2 0 0;
     }
 
-    .toggle-card .toggle-switch.-on {
-        background: #74aa50;
-    }
-
     .choice-row {
         height: 3;
         margin-bottom: 2;
