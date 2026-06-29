@@ -202,6 +202,19 @@ class NtupleWizardTui(App[None]):
         width: 10;
         height: 3;
         margin: 0 2 0 0;
+        background: #001f26;
+        border: tall #4298b5;
+        padding: 0 2;
+    }
+
+    .toggle-card .toggle-switch .switch--slider {
+        background: #001f26;
+        color: #63666a;
+    }
+
+    .toggle-card .toggle-switch.-on .switch--slider {
+        background: #001f26;
+        color: #eaaa00;
     }
 
     .choice-row {
