@@ -168,7 +168,7 @@ class NtupleWizardTui(App[None]):
         width: 1fr;
         height: 3;
         margin: 0;
-        padding: 0 2;
+        padding: 0 1;
         background: #001f26;
         color: #d8dedf;
         border: tall #63666a;
@@ -199,9 +199,9 @@ class NtupleWizardTui(App[None]):
     }
 
     .toggle-card .toggle-switch {
-        width: 10;
-        height: 3;
-        margin: 0 2 0 0;
+        width: 14;
+        height: auto;
+        margin: 0 1 0 0;
         background: #001f26;
         border: tall #4298b5;
         padding: 0 2;
