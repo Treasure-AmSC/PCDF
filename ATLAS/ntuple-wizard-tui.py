@@ -302,6 +302,14 @@ class NtupleWizardTui(App[None]):
         files = self.query_one("#files", SelectionList)
         return [Path(value) for value in files.selected]
 
+    def manifest_path(self) -> Path:
+        self.sync_state()
+        return Path(os.path.expandvars(os.path.expanduser(self.state_data.manifest)))
+
+    def manifest_has_work(self) -> bool:
+        manifest = self.manifest_path()
+        return manifest.is_file() and manifest.stat().st_size > 0
+
     def write_selected_manifest(self) -> Path | None:
         if not self.validate_scan_inputs():
             return None
@@ -312,9 +320,24 @@ class NtupleWizardTui(App[None]):
             manifest, count = scan_manifest(self.state_data)
         else:
             manifest, count = write_manifest(selected, self.state_data.manifest)
+        if count == 0:
+            self.log_message(f"No input files matched {self.state_data.glob_pattern} under {self.state_data.scan_root}; manifest was not usable.")
+            self.notify("No input files were found for the manifest.", title="Manifest empty", severity="warning", timeout=8)
+            return None
         self.log_message(f"Wrote {count} input file(s) to {manifest}")
         self.notify(f"Wrote {count} file(s) to {manifest}", title="Manifest written", severity="information", timeout=6)
         return manifest
+
+    def ensure_manifest_for_submit(self) -> bool:
+        if self.manifest_has_work():
+            return True
+        self.log_message("Input manifest is missing or empty; writing it before submission.")
+        manifest = self.write_selected_manifest()
+        if manifest is None or not self.manifest_has_work():
+            self.notify("Create a non-empty input manifest before submitting.", title="Submission blocked", severity="error", timeout=8)
+            self.log_message("Submission blocked: input manifest is still missing or empty.")
+            return False
+        return True
 
     def parse_iris_accounts(self, output: str) -> list[str]:
         accounts: list[str] = []
@@ -428,6 +451,8 @@ class NtupleWizardTui(App[None]):
     def submit(self) -> None:
         if not self.perlmutter:
             self.log_message("Refusing to submit: this does not look like Perlmutter.")
+            return
+        if not self.ensure_manifest_for_submit():
             return
         generated = self.generate()
         if generated is None:
