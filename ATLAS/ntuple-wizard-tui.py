@@ -199,9 +199,9 @@ class NtupleWizardTui(App[None]):
     }
 
     .toggle-card .toggle-switch {
-        width: 8;
-        height: 1;
-        margin: 1 2 0 0;
+        width: 10;
+        height: 3;
+        margin: 0 2 0 0;
     }
 
     .toggle-card .toggle-switch.-on {
