@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.validation import Function, Number, Regex
-from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static, Switch
+from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane
 
 from ntuple_wizard_core import (
     WizardState,
@@ -78,11 +78,8 @@ class NtupleWizardTui(App[None]):
         yield Header()
         with Container(id="page"):
             yield Static("✦ ATLAS TREASURE → Parquet script wizard", id="hero")
-            with Horizontal(id="progress"):
-                for index, label in enumerate(self.STEPS):
-                    yield Button(f"{index + 1}. {label}", id=f"progress-{index}", classes="progress-button")
-            with Container(classes="wizard-shell"):
-                with Container(id="step-0", classes="wizard-step"):
+            with TabbedContent(initial="step-0", id="wizard-tabs", classes="wizard-shell"):
+                with TabPane("1. Input", id="step-0", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Input format and sample type", classes="section-title")
                         yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables TREASURE-only constituent output; data mode omits MC-only variables.", classes="hint")
@@ -97,7 +94,7 @@ class NtupleWizardTui(App[None]):
                             yield Button("MC", id="set-sample-MC", classes="choice-button active-step")
                             yield Button("DATA", id="set-sample-DATA", classes="choice-button")
 
-                with Container(id="step-1", classes="wizard-step"):
+                with TabPane("2. Objects", id="step-1", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output objects", classes="section-title")
                         yield Static("Toggle objects interactively. Dependencies are selected automatically; turning off an object also turns off selected objects that depend on it.", classes="hint")
@@ -108,7 +105,7 @@ class NtupleWizardTui(App[None]):
                                     yield Switch(value=selected, id=f"obj-{key}", classes="toggle-switch", disabled=key == "Event")
                                     yield Label(obj["title"], id=f"obj-label-{key}", classes="toggle-label")
 
-                with Container(id="step-2", classes="wizard-step"):
+                with TabPane("3. Variables", id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output variables", classes="section-title")
                         yield Static("Required vector components stay locked on; MC-only labels are disabled for collision data.", classes="hint")
@@ -123,7 +120,7 @@ class NtupleWizardTui(App[None]):
                                         suffix = " (required)" if name in required else ""
                                         yield Label(f"{name}{suffix}", id=f"var-label-{key}-{name}", classes="toggle-label")
 
-                with Container(id="step-3", classes="wizard-step"):
+                with TabPane("4. Perlmutter", id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
                             yield Static("SLURM / NERSC Perlmutter", classes="section-title")
@@ -159,7 +156,7 @@ class NtupleWizardTui(App[None]):
                             yield SelectionList[str](id="files")
                             yield Button("Write selected manifest", id="manifest_write")
 
-                with Container(id="step-4", classes="wizard-step"):
+                with TabPane("5. Generate", id="step-4", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
                             yield Static("Generate", classes="section-title")
@@ -213,11 +210,10 @@ class NtupleWizardTui(App[None]):
 
     def refresh_step(self) -> None:
         self.current_step = max(0, min(len(self.STEPS) - 1, self.current_step))
-        for index, _label in enumerate(self.STEPS):
-            step = self.query_one(f"#step-{index}", Container)
-            step.display = index == self.current_step
-            progress = self.query_one(f"#progress-{index}", Button)
-            progress.set_class(index == self.current_step, "active-step")
+        tabs = self.query_one("#wizard-tabs", TabbedContent)
+        target = f"step-{self.current_step}"
+        if tabs.active != target:
+            tabs.active = target
         self.query_one("#prev_step", Button).disabled = self.current_step == 0
         next_button = self.query_one("#next_step", Button)
         next_button.label = "Review" if self.current_step == len(self.STEPS) - 2 else "Next"
@@ -491,6 +487,13 @@ class NtupleWizardTui(App[None]):
         self.state_data.scan_root = path
         self.log_message(f"Selected scan directory: {path}")
 
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if event.tabbed_content.id != "wizard-tabs" or event.pane.id is None:
+            return
+        if event.pane.id.startswith("step-"):
+            self.current_step = int(event.pane.id.removeprefix("step-"))
+            self.refresh_step()
+
     def on_switch_changed(self, event: Switch.Changed) -> None:
         if self._syncing:
             return
@@ -547,9 +550,6 @@ class NtupleWizardTui(App[None]):
             self.refresh_step()
         elif event.button.id == "next_step":
             self.current_step += 1
-            self.refresh_step()
-        elif event.button.id and event.button.id.startswith("progress-"):
-            self.current_step = int(event.button.id.removeprefix("progress-"))
             self.refresh_step()
 
 

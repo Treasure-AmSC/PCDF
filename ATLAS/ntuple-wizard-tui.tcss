@@ -30,27 +30,6 @@ Header, Footer {
     content-align: left middle;
 }
 
-#progress {
-    height: 3;
-    margin-bottom: 1;
-}
-
-.progress-button {
-    width: 1fr;
-    height: 3;
-    margin: 0 1;
-    background: #00313c;
-    color: #d8dedf;
-    border: tall #4298b5;
-    text-style: bold;
-}
-
-.progress-button.active-step {
-    background: #007681;
-    color: #ffffff;
-    border: tall #eaaa00;
-}
-
 .wizard-shell {
     height: 1fr;
     padding: 1;
