@@ -166,12 +166,13 @@ class NtupleWizardTui(App[None]):
 
     .toggle-card {
         width: 1fr;
-        height: 4;
+        height: 3;
         margin: 0;
-        padding: 0 1;
+        padding: 0 2;
         background: #001f26;
         color: #d8dedf;
         border: tall #63666a;
+        align-vertical: middle;
     }
 
     .toggle-card:hover, .toggle-card:focus-within {
@@ -192,18 +193,18 @@ class NtupleWizardTui(App[None]):
         border: tall #63666a;
     }
 
-    .toggle-card Label {
+    .toggle-card .toggle-label {
         width: 1fr;
         content-align: left middle;
     }
 
-    Switch {
-        width: 10;
-        height: 3;
-        margin-right: 1;
+    .toggle-card .toggle-switch {
+        width: 8;
+        height: 1;
+        margin: 1 2 0 0;
     }
 
-    Switch.-on {
+    .toggle-card .toggle-switch.-on {
         background: #74aa50;
     }
 
@@ -373,13 +374,13 @@ class NtupleWizardTui(App[None]):
                 with Container(id="step-1", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output objects", classes="section-title")
-                        yield Static("Toggle objects interactively. Dependencies are selected automatically and unavailable objects are disabled, matching the browser wizard behavior.", classes="hint")
+                        yield Static("Toggle objects interactively. Dependencies are selected automatically; turning off an object also turns off selected objects that depend on it.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
                                 selected = key in self.state_data.selected_objects
                                 with Horizontal(id=f"obj-card-{key}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
-                                    yield Switch(value=selected, id=f"obj-{key}", disabled=key == "Event")
-                                    yield Label(obj["title"], id=f"obj-label-{key}")
+                                    yield Switch(value=selected, id=f"obj-{key}", classes="toggle-switch", disabled=key == "Event")
+                                    yield Label(obj["title"], id=f"obj-label-{key}", classes="toggle-label")
 
                 with Container(id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -392,9 +393,9 @@ class NtupleWizardTui(App[None]):
                                 for name in obj.get("aliases", {}):
                                     selected = name in self.state_data.selected_variables[key]
                                     with Horizontal(id=f"var-card-{key}-{name}", classes="toggle-card selected-choice" if selected else "toggle-card deselected-choice"):
-                                        yield Switch(value=selected, id=f"var-{key}-{name}", disabled=name in required)
+                                        yield Switch(value=selected, id=f"var-{key}-{name}", classes="toggle-switch", disabled=name in required)
                                         suffix = " (required)" if name in required else ""
-                                        yield Label(f"{name}{suffix}", id=f"var-label-{key}-{name}")
+                                        yield Label(f"{name}{suffix}", id=f"var-label-{key}-{name}", classes="toggle-label")
 
                 with Container(id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
@@ -759,7 +760,15 @@ class NtupleWizardTui(App[None]):
                 if event.value:
                     self.state_data.selected_objects.add(key)
                 else:
-                    self.state_data.selected_objects.discard(key)
+                    dependents = self.state_data.remove_object_with_dependents(key)
+                    if dependents:
+                        dependent_titles = ", ".join(self.state_data.objects[dependent]["title"] for dependent in dependents)
+                        self.notify(
+                            f"Also turned off dependent object(s): {dependent_titles}",
+                            title=f"{self.state_data.objects[key]['title']} disabled",
+                            severity="information",
+                            timeout=6,
+                        )
                 self.apply_dependency_change()
         elif event.switch.id and event.switch.id.startswith("var-"):
             _, key, name = event.switch.id.split("-", 2)

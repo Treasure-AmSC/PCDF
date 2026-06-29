@@ -118,6 +118,28 @@ class WizardState:
                 self.selected_objects.add(dependency)
                 self.add_dependencies(dependency)
 
+    def dependent_objects(self, key: str) -> list[str]:
+        """Return selected objects that directly or indirectly depend on key."""
+        dependents: list[str] = []
+        remaining = [key]
+        while remaining:
+            dependency = remaining.pop()
+            for candidate in sorted(self.selected_objects):
+                if candidate in dependents or candidate == key:
+                    continue
+                if dependency in self.objects[candidate].get("dependsOn", []):
+                    dependents.append(candidate)
+                    remaining.append(candidate)
+        return dependents
+
+    def remove_object_with_dependents(self, key: str) -> list[str]:
+        """Remove key plus selected dependent objects and return removed dependents."""
+        dependents = self.dependent_objects(key)
+        self.selected_objects.discard(key)
+        for dependent in dependents:
+            self.selected_objects.discard(dependent)
+        return dependents
+
     def ensure_dependencies(self) -> None:
         if self.input_format == "PHYSLITE":
             self.selected_objects.discard("Const")
