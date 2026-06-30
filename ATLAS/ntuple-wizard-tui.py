@@ -754,11 +754,21 @@ class NtupleWizardTui(App[None]):
             self.refresh_step()
 
 
+def default_output_dir() -> Path:
+    """Create a generated-file directory visible to Perlmutter compute nodes."""
+    scratch = os.environ.get("SCRATCH")
+    if scratch:
+        scratch_path = Path(os.path.expandvars(os.path.expanduser(scratch)))
+        if scratch_path.exists():
+            return Path(tempfile.mkdtemp(prefix="pcdf-ntuple-", dir=scratch_path))
+    return Path(tempfile.mkdtemp(prefix="pcdf-ntuple-", dir=Path.cwd()))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the PCDF ATLAS ntuple Textual wizard.")
-    parser.add_argument("--output-dir", type=Path, default=None, help="Directory for generated scripts and bundle. Defaults to a temporary directory.")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Directory for generated scripts and bundle. Defaults to a temporary directory under $SCRATCH when available, otherwise under the current directory.")
     args = parser.parse_args()
-    output_dir = args.output_dir or Path(tempfile.mkdtemp(prefix="pcdf-ntuple-"))
+    output_dir = args.output_dir or default_output_dir()
     print(f"PCDF ntuple wizard generated files/log directory: {output_dir}", file=sys.stderr)
     NtupleWizardTui(output_dir=output_dir).run()
     print(f"PCDF ntuple wizard generated files/log directory: {output_dir}", file=sys.stderr)
