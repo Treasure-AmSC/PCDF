@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # dependencies = [
-#   "textual>=8.2.7",
+#   "textual>=8.2.8",
 # ]
 # ///
 """Textual TUI for generating PCDF ATLAS ntuple conversion bundles.
@@ -303,8 +303,14 @@ class NtupleWizardTui(App[None]):
             self._syncing = False
 
     def apply_dependency_change(self) -> None:
+        self.mark_unreviewed()
         self.state_data.ensure_dependencies()
         self.refresh_dependency_widgets()
+
+    def mark_unreviewed(self) -> None:
+        self.review_confirmed = False
+        if self.is_mounted:
+            self.query_one("#submit", Button).disabled = True
 
     def refresh_discovered_files(self) -> None:
         if not self.validate_scan_inputs():
@@ -501,9 +507,11 @@ class NtupleWizardTui(App[None]):
                 self._suppress_account_select_notice = False
                 return
             if event.value not in (Select.NULL, "") and not self._loading_accounts:
+                self.mark_unreviewed()
                 self.notify(f"Using account {event.value}", title="Account selected", severity="information", timeout=4)
             return
         if event.select.id == "qos":
+            self.mark_unreviewed()
             self.sync_state()
             return
         if event.select.id not in {"format", "sample"}:
@@ -517,6 +525,8 @@ class NtupleWizardTui(App[None]):
             return
         event.input.set_class(event.validation_result.is_valid, "-valid")
         event.input.set_class(not event.validation_result.is_valid, "-invalid")
+        if event.input.id in {"account_input", "nodes", "time", "output", "manifest"}:
+            self.mark_unreviewed()
         if not event.validation_result.is_valid:
             self.notify("\n".join(event.validation_result.failure_descriptions), title="Invalid input", severity="warning", timeout=5)
 
@@ -525,6 +535,8 @@ class NtupleWizardTui(App[None]):
             return
         event.input.set_class(event.validation_result.is_valid, "-valid")
         event.input.set_class(not event.validation_result.is_valid, "-invalid")
+        if event.input.id in {"account_input", "nodes", "time", "output", "manifest"}:
+            self.mark_unreviewed()
         if not event.validation_result.is_valid:
             self.notify("\n".join(event.validation_result.failure_descriptions), title="Invalid input", severity="warning", timeout=5)
 
@@ -589,6 +601,8 @@ class NtupleWizardTui(App[None]):
             self.generate()
         elif event.button.id == "confirm_review":
             self.sync_state()
+            if not self.validate_slurm_inputs():
+                return
             self.refresh_summary()
             self.review_confirmed = True
             self.query_one("#submit", Button).disabled = not self.perlmutter
