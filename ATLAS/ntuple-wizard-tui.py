@@ -70,6 +70,7 @@ class NtupleWizardTui(App[None]):
         self.state_data = WizardState()
         self.perlmutter = on_perlmutter()
         self.output_dir = output_dir
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.current_step = 0
         self._syncing = False
         self._loading_accounts = False
@@ -192,6 +193,7 @@ class NtupleWizardTui(App[None]):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Job status", classes="section-title")
                         yield Static("No job submitted yet.", id="job_status", classes="hint")
+                        yield Static("", id="log_paths", classes="hint")
                         yield Button("Refresh now", id="refresh_job")
                         with Grid(classes="job-log-grid"):
                             yield Static("stdout", classes="section-title")
@@ -213,9 +215,9 @@ class NtupleWizardTui(App[None]):
         if self.perlmutter:
             self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
             self.load_accounts_with_iris(notify_user=False)
-            self.schedule_file_discovery(delay=0.1)
         else:
             self.log_message("Not on Perlmutter: generation is enabled; sbatch submission is disabled.")
+        self.refresh_log_locations()
 
     def log_message(self, message: str) -> None:
         self.query_one("#log", RichLog).write(message)
@@ -552,6 +554,8 @@ class NtupleWizardTui(App[None]):
             return
         self.stdout_path = self.output_dir / f"pcdf-ntuple-{self.job_id}.out"
         self.stderr_path = self.output_dir / f"pcdf-ntuple-{self.job_id}.err"
+        if self.is_mounted:
+            self.refresh_log_locations()
 
     def update_log_widget(self, widget_id: str, path: Path | None) -> None:
         log = self.query_one(widget_id, Log)
@@ -569,7 +573,15 @@ class NtupleWizardTui(App[None]):
             return
         log.write_lines(lines or [f"{path} is empty."])
 
+    def refresh_log_locations(self) -> None:
+        if self.stdout_path is not None and self.stderr_path is not None:
+            text = f"SLURM stdout: {self.stdout_path}\nSLURM stderr: {self.stderr_path}"
+        else:
+            text = f"Generated files directory: {self.output_dir}\nSLURM logs will be written here as pcdf-ntuple-<jobid>.out/.err after submission."
+        self.query_one("#log_paths", Static).update(text)
+
     def refresh_job_logs(self) -> None:
+        self.refresh_log_locations()
         self.update_log_widget("#stdout_log", self.stdout_path)
         self.update_log_widget("#stderr_log", self.stderr_path)
 
@@ -747,7 +759,9 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=None, help="Directory for generated scripts and bundle. Defaults to a temporary directory.")
     args = parser.parse_args()
     output_dir = args.output_dir or Path(tempfile.mkdtemp(prefix="pcdf-ntuple-"))
+    print(f"PCDF ntuple wizard generated files/log directory: {output_dir}", file=sys.stderr)
     NtupleWizardTui(output_dir=output_dir).run()
+    print(f"PCDF ntuple wizard generated files/log directory: {output_dir}", file=sys.stderr)
 
 
 if __name__ == "__main__":
