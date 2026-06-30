@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.validation import Function, Number, Regex
-from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Header, Input, Label, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
+from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Header, Input, Label, Log, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
 
 from ntuple_wizard_core import (
     WizardState,
@@ -74,6 +74,8 @@ class NtupleWizardTui(App[None]):
         self._suppress_account_select_notice = False
         self.review_confirmed = False
         self.job_id = ""
+        self.stdout_path: Path | None = None
+        self.stderr_path: Path | None = None
         self.discovered_files: list[Path] = []
 
     @staticmethod
@@ -188,6 +190,12 @@ class NtupleWizardTui(App[None]):
                         yield Static("Job status", classes="section-title")
                         yield Static("No job submitted yet.", id="job_status", classes="hint")
                         yield Button("Refresh job status", id="refresh_job")
+                        with Grid(classes="job-log-grid"):
+                            yield Static("stdout", classes="section-title")
+                            yield Static("stderr", classes="section-title")
+                            yield Log(id="stdout_log", classes="job-log")
+                            yield Log(id="stderr_log", classes="job-log")
+                        yield Static("TUI log", classes="section-title")
                         yield RichLog(id="log", wrap=True, highlight=True)
             with Horizontal(id="wizard-nav"):
                 yield Button("Previous", id="prev_step")
@@ -508,6 +516,7 @@ class NtupleWizardTui(App[None]):
             return
         self.job_id = self.parse_sbatch_job_id(result.stdout)
         if self.job_id:
+            self.set_job_log_paths()
             self.query_one("#job_status", Static).update(f"Submitted SLURM job {self.job_id}.")
             self.refresh_job_status()
         self.current_step = 5
@@ -519,9 +528,38 @@ class NtupleWizardTui(App[None]):
                 return token
         return ""
 
+    def set_job_log_paths(self) -> None:
+        if not self.job_id:
+            self.stdout_path = None
+            self.stderr_path = None
+            return
+        self.stdout_path = self.output_dir / f"pcdf-ntuple-{self.job_id}.out"
+        self.stderr_path = self.output_dir / f"pcdf-ntuple-{self.job_id}.err"
+
+    def update_log_widget(self, widget_id: str, path: Path | None) -> None:
+        log = self.query_one(widget_id, Log)
+        log.clear()
+        if path is None:
+            log.write_line("No job submitted yet.")
+            return
+        if not path.exists():
+            log.write_line(f"Waiting for {path}")
+            return
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError as error:
+            log.write_line(f"Could not read {path}: {error}")
+            return
+        log.write_lines(lines or [f"{path} is empty."])
+
+    def refresh_job_logs(self) -> None:
+        self.update_log_widget("#stdout_log", self.stdout_path)
+        self.update_log_widget("#stderr_log", self.stderr_path)
+
     def refresh_job_status(self) -> None:
         if not self.job_id:
             self.notify("Submit a job before refreshing status.", title="No job", severity="warning", timeout=5)
+            self.refresh_job_logs()
             return
         result = subprocess.run(
             ["squeue", "-j", self.job_id, "-o", "%.18i %.9T %.10M %.20R"],
@@ -537,6 +575,7 @@ class NtupleWizardTui(App[None]):
             message = result.stderr.strip() or f"Job {self.job_id} is no longer in squeue."
             self.query_one("#job_status", Static).update(message)
             self.log_message(message)
+        self.refresh_job_logs()
 
     def action_generate(self) -> None:
         self.generate()

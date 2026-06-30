@@ -192,6 +192,8 @@ def build_slurm(state: WizardState, output_dir: Path) -> str:
         "QOS": state.qos,
         "NODES": str(state.nodes),
         "TIME": state.time,
+        "LOG_OUT": json.dumps(str(output_dir / "pcdf-ntuple-%j.out")),
+        "LOG_ERR": json.dumps(str(output_dir / "pcdf-ntuple-%j.err")),
         "PYTHON_PATH": json.dumps(str(output_dir / generated_python_name(state.input_format))),
         "INPUT_MANIFEST": json.dumps(state.manifest),
         "OUTPUT_BASE": json.dumps(state.output_base),

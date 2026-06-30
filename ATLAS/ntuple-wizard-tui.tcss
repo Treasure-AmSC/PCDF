@@ -249,7 +249,24 @@ DirectoryTree, SelectionList, #log, #summary_panel {
     border: round #007681;
 }
 
-DirectoryTree:focus, SelectionList:focus, #log:focus {
+.job-log-grid {
+    height: 1fr;
+    layout: grid;
+    grid-size: 2 2;
+    grid-columns: 1fr 1fr;
+    grid-rows: auto 1fr;
+    grid-gutter: 0 1;
+}
+
+.job-log {
+    height: 1fr;
+    background: #001f26;
+    color: #ffffff;
+    border: round #007681;
+    padding: 1;
+}
+
+DirectoryTree:focus, SelectionList:focus, #log:focus, .job-log:focus {
     border: round #eaaa00;
 }
 

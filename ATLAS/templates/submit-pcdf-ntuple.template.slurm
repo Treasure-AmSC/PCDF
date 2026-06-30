@@ -8,8 +8,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task={{PERLMUTTER_LOGICAL_CPUS_PER_NODE}}
 #SBATCH --time={{TIME}}
-#SBATCH --output=pcdf-ntuple-%j.out
-#SBATCH --error=pcdf-ntuple-%j.err
+#SBATCH --output={{LOG_OUT}}
+#SBATCH --error={{LOG_ERR}}
 
 # NERSC Perlmutter wrapper from ATLAS/ntuple-wizard.html.
 # CPU-only: the generated converter does not use GPUs.
