@@ -150,16 +150,30 @@ def make_global_idx(arr, file_number, label):
 
 
 
+def selected_output_partition_paths(output, partition):
+    tid_dir = f"tid={partition['tid']}"
+    file_dir = f"fileNumber={partition['fileNumber']}"
+    return [
+        output / config["folder"] / tid_dir / file_dir
+        for config in OBJECTS.values()
+    ]
+
+
+def existing_output_partitions(output, partition):
+    if not output.exists():
+        return []
+    return [path for path in selected_output_partition_paths(output, partition) if path.exists()]
+
+
 def cleanup_output_partitions(output, partition):
     tid_dir = f"tid={partition['tid']}"
     file_dir = f"fileNumber={partition['fileNumber']}"
     if not output.exists():
         return
-    for folder in output.iterdir():
-        target = folder / tid_dir / file_dir
+    for target in selected_output_partition_paths(output, partition):
         if target.exists():
             shutil.rmtree(target)
-        tid_path = folder / tid_dir
+        tid_path = target.parent
         try:
             tid_path.rmdir()
         except OSError:
@@ -207,8 +221,23 @@ def write_object(output, folder, partition, payload, flatten=True):
     show_default=True,
     help="Skip unreadable or truncated ROOT inputs instead of failing the job.",
 )
-def ntuple_maker(input, output, skip_unreadable):
+@click.option(
+    "--skip-existing/--fail-existing",
+    default=True,
+    show_default=True,
+    help="Skip inputs whose selected output partitions already exist, allowing safe job reruns.",
+)
+def ntuple_maker(input, output, skip_unreadable, skip_existing):
     partition = partition_from_filename(input)
+    existing_partitions = existing_output_partitions(output, partition)
+    if existing_partitions:
+        paths = ", ".join(str(path) for path in existing_partitions[:3])
+        suffix = "" if len(existing_partitions) <= 3 else f", and {len(existing_partitions) - 3} more"
+        message = f"Output partition exists for {input}: {paths}{suffix}"
+        if skip_existing:
+            click.echo(f"WARNING: skipping existing output partition: {message}", err=True)
+            return
+        raise click.ClickException(message)
 
     try:
         with up.open(input) as file:
