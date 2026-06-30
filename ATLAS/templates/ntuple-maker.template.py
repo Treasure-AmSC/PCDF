@@ -184,10 +184,24 @@ def write_object(output, folder, partition, payload, flatten=True):
     ),
     required=True,
 )
-def ntuple_maker(input, output):
+@click.option(
+    "--skip-unreadable/--fail-unreadable",
+    default=True,
+    show_default=True,
+    help="Skip unreadable or truncated ROOT inputs instead of failing the job.",
+)
+def ntuple_maker(input, output, skip_unreadable):
     partition = partition_from_filename(input)
 
-    with up.open(input) as file:
+    try:
+        file_context = up.open(input)
+    except OSError as error:
+        if skip_unreadable:
+            click.echo(f"WARNING: skipping unreadable input {input}: {error}", err=True)
+            return
+        raise click.ClickException(f"Cannot open input ROOT file {input}: {error}") from error
+
+    with file_context as file:
         tree = file["CollectionTree"]
         aliases = {
             name: selected_aliases(name)

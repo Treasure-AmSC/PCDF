@@ -225,7 +225,13 @@ def discover_files(scan_root: str, glob_pattern: str) -> list[Path]:
             relative = path
         return not any(part.startswith(".") for part in relative.parts)
 
-    return sorted(path for path in root.rglob(glob_pattern) if path.is_file() and visible(path))
+    def usable(path: Path) -> bool:
+        try:
+            return path.stat().st_size > 1024
+        except OSError:
+            return False
+
+    return sorted(path for path in root.rglob(glob_pattern) if path.is_file() and visible(path) and usable(path))
 
 
 def write_manifest(paths: list[Path], manifest_path: str) -> tuple[Path, int]:
