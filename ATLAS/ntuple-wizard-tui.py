@@ -31,7 +31,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.validation import Function, Number, Regex
 from textual.timer import Timer
-from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Header, Input, Label, Log, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
+from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Input, Label, Log, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
 
 from ntuple_wizard_core import (
     WizardState,
@@ -71,6 +71,7 @@ class NtupleWizardTui(App[None]):
         self.perlmutter = on_perlmutter()
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.state_data.manifest = str(self.output_dir / "pcdf-inputs.txt")
         self.current_step = 0
         self._syncing = False
         self._loading_accounts = False
@@ -92,7 +93,6 @@ class NtupleWizardTui(App[None]):
         return Path(os.path.expandvars(os.path.expanduser(value or "."))).is_dir()
 
     def compose(self) -> ComposeResult:
-        yield Header()
         with Container(id="page"):
             yield Static("✦ ATLAS TREASURE → Parquet script wizard", id="hero")
             with TabbedContent(initial="step-0", id="wizard-tabs", classes="wizard-shell"):
@@ -156,7 +156,7 @@ class NtupleWizardTui(App[None]):
                             yield Label("Output base", classes="field-label")
                             yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output", validators=[Function(self.non_empty, "Output base may not be empty.")], validate_on=["blur", "submitted"])
                             yield Label("Input manifest", classes="field-label")
-                            yield Input(value="$SCRATCH/pcdf-inputs.txt", placeholder="Input manifest", id="manifest", validators=[Function(self.non_empty, "Input manifest may not be empty.")], validate_on=["blur", "submitted"])
+                            yield Input(value=self.state_data.manifest, placeholder="Input manifest", id="manifest", validators=[Function(self.non_empty, "Input manifest may not be empty.")], validate_on=["blur", "submitted"])
                             yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"), classes="hint")
                         with VerticalScroll(classes="column"):
                             yield Static("Interactive file and folder picker", classes="section-title")
@@ -496,6 +496,8 @@ class NtupleWizardTui(App[None]):
         return build_slurm(self.state_data, self.output_dir)
 
     def generate(self) -> tuple[Path, Path, Path] | None:
+        if self.discovered_files and self.write_selected_manifest() is None:
+            return None
         if not self.validate_slurm_inputs():
             return None
         self.sync_state()
