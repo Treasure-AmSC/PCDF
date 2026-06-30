@@ -602,7 +602,7 @@ class NtupleWizardTui(App[None]):
             return
         try:
             result = subprocess.run(
-                ["squeue", "-j", self.job_id, "-o", "%.18i %.9T %.10M %.20R"],
+                ["squeue", "--noheader", f"--jobs={self.job_id}", "--format=%.18i %.9T %.10M %.20R"],
                 check=False,
                 text=True,
                 capture_output=True,
@@ -612,8 +612,8 @@ class NtupleWizardTui(App[None]):
             self.stop_job_auto_refresh()
             self.refresh_job_logs()
             return
-        if result.returncode == 0 and result.stdout.strip():
-            status = result.stdout.strip()
+        status = result.stdout.strip()
+        if result.returncode == 0 and status:
             self.query_one("#job_status", Static).update(status)
             self.log_message(status)
         else:
