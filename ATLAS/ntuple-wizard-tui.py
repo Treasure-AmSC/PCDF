@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.validation import Function, Number, Regex
+from textual.timer import Timer
 from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Header, Input, Label, Log, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
 
 from ntuple_wizard_core import (
@@ -62,6 +63,7 @@ class NtupleWizardTui(App[None]):
     CSS_PATH = Path(__file__).with_name("ntuple-wizard-tui.tcss")
 
     BINDINGS = [("q", "quit", "Quit"), ("g", "generate", "Generate"), ("s", "submit", "Submit on Perlmutter")]
+    JOB_REFRESH_INTERVAL = 10.0
 
     def __init__(self, output_dir: Path, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -76,6 +78,8 @@ class NtupleWizardTui(App[None]):
         self.job_id = ""
         self.stdout_path: Path | None = None
         self.stderr_path: Path | None = None
+        self.job_refresh_timer: Timer | None = None
+        self.file_scan_timer: Timer | None = None
         self.discovered_files: list[Path] = []
 
     @staticmethod
@@ -164,7 +168,6 @@ class NtupleWizardTui(App[None]):
                             if not tree_root.exists():
                                 tree_root = Path.cwd()
                             yield VisibleDirectoryTree(tree_root, id="tree")
-                            yield Button("Find files", id="scan")
                             yield Static("Discovered files", classes="section-title")
                             yield SelectionList[str](id="files")
                             yield Button("Write selected manifest", id="manifest_write")
@@ -189,7 +192,7 @@ class NtupleWizardTui(App[None]):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Job status", classes="section-title")
                         yield Static("No job submitted yet.", id="job_status", classes="hint")
-                        yield Button("Refresh job status", id="refresh_job")
+                        yield Button("Refresh now", id="refresh_job")
                         with Grid(classes="job-log-grid"):
                             yield Static("stdout", classes="section-title")
                             yield Static("stderr", classes="section-title")
@@ -210,6 +213,7 @@ class NtupleWizardTui(App[None]):
         if self.perlmutter:
             self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
             self.load_accounts_with_iris(notify_user=False)
+            self.schedule_file_discovery(delay=0.1)
         else:
             self.log_message("Not on Perlmutter: generation is enabled; sbatch submission is disabled.")
 
@@ -331,8 +335,13 @@ class NtupleWizardTui(App[None]):
         if self.is_mounted:
             self.query_one("#submit", Button).disabled = True
 
+    def schedule_file_discovery(self, delay: float = 0.6) -> None:
+        if self.file_scan_timer is not None:
+            self.file_scan_timer.stop()
+        self.file_scan_timer = self.set_timer(delay, self.refresh_discovered_files)
+
     def refresh_discovered_files(self) -> None:
-        if not self.validate_scan_inputs():
+        if not self.validate_file_discovery_inputs():
             return
         self.sync_state()
         self.discovered_files = discover_files(self.state_data.scan_root, self.state_data.glob_pattern)
@@ -340,7 +349,6 @@ class NtupleWizardTui(App[None]):
         files.clear_options()
         files.add_options((str(path), str(path), True) for path in self.discovered_files)
         self.log_message(f"Found {len(self.discovered_files)} file(s) under {self.state_data.scan_root}")
-        self.notify(f"Found {len(self.discovered_files)} file(s)", title="Discovery complete", severity="information", timeout=4)
 
     def selected_discovered_files(self) -> list[Path]:
         files = self.query_one("#files", SelectionList)
@@ -463,10 +471,18 @@ class NtupleWizardTui(App[None]):
             return False
         return True
 
+    def validate_file_discovery_inputs(self) -> bool:
+        failures = self.invalid_inputs(("scan_root", "glob"))
+        if failures:
+            self.notify("\n".join(failures), title="Fix file discovery settings", severity="error", timeout=8)
+            self.log_message("Validation failed: " + "; ".join(failures))
+            return False
+        return True
+
     def validate_scan_inputs(self) -> bool:
         failures = self.invalid_inputs(("scan_root", "glob", "manifest"))
         if failures:
-            self.notify("\n".join(failures), title="Fix file discovery settings", severity="error", timeout=8)
+            self.notify("\n".join(failures), title="Fix manifest settings", severity="error", timeout=8)
             self.log_message("Validation failed: " + "; ".join(failures))
             return False
         return True
@@ -518,6 +534,7 @@ class NtupleWizardTui(App[None]):
         if self.job_id:
             self.set_job_log_paths()
             self.query_one("#job_status", Static).update(f"Submitted SLURM job {self.job_id}.")
+            self.start_job_auto_refresh()
             self.refresh_job_status()
         self.current_step = 5
         self.refresh_step()
@@ -556,17 +573,33 @@ class NtupleWizardTui(App[None]):
         self.update_log_widget("#stdout_log", self.stdout_path)
         self.update_log_widget("#stderr_log", self.stderr_path)
 
+    def start_job_auto_refresh(self, interval: float | None = None) -> None:
+        if self.job_refresh_timer is not None:
+            self.job_refresh_timer.stop()
+        self.job_refresh_timer = self.set_interval(interval or self.JOB_REFRESH_INTERVAL, self.refresh_job_status)
+
+    def stop_job_auto_refresh(self) -> None:
+        if self.job_refresh_timer is not None:
+            self.job_refresh_timer.stop()
+            self.job_refresh_timer = None
+
     def refresh_job_status(self) -> None:
         if not self.job_id:
             self.notify("Submit a job before refreshing status.", title="No job", severity="warning", timeout=5)
             self.refresh_job_logs()
             return
-        result = subprocess.run(
-            ["squeue", "-j", self.job_id, "-o", "%.18i %.9T %.10M %.20R"],
-            check=False,
-            text=True,
-            capture_output=True,
-        )
+        try:
+            result = subprocess.run(
+                ["squeue", "-j", self.job_id, "-o", "%.18i %.9T %.10M %.20R"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+        except FileNotFoundError:
+            self.query_one("#job_status", Static).update("squeue is not available on this host; showing log files only.")
+            self.stop_job_auto_refresh()
+            self.refresh_job_logs()
+            return
         if result.returncode == 0 and result.stdout.strip():
             status = result.stdout.strip()
             self.query_one("#job_status", Static).update(status)
@@ -575,6 +608,7 @@ class NtupleWizardTui(App[None]):
             message = result.stderr.strip() or f"Job {self.job_id} is no longer in squeue."
             self.query_one("#job_status", Static).update(message)
             self.log_message(message)
+            self.stop_job_auto_refresh()
         self.refresh_job_logs()
 
     def action_generate(self) -> None:
@@ -609,6 +643,8 @@ class NtupleWizardTui(App[None]):
         event.input.set_class(not event.validation_result.is_valid, "-invalid")
         if event.input.id in {"account_input", "nodes", "time", "output", "manifest"}:
             self.mark_unreviewed()
+        if event.input.id in {"scan_root", "glob"} and event.validation_result.is_valid:
+            self.schedule_file_discovery()
         if not event.validation_result.is_valid:
             self.notify("\n".join(event.validation_result.failure_descriptions), title="Invalid input", severity="warning", timeout=5)
 
@@ -619,6 +655,8 @@ class NtupleWizardTui(App[None]):
         event.input.set_class(not event.validation_result.is_valid, "-invalid")
         if event.input.id in {"account_input", "nodes", "time", "output", "manifest"}:
             self.mark_unreviewed()
+        if event.input.id in {"scan_root", "glob"} and event.validation_result.is_valid:
+            self.schedule_file_discovery()
         if not event.validation_result.is_valid:
             self.notify("\n".join(event.validation_result.failure_descriptions), title="Invalid input", severity="warning", timeout=5)
 
@@ -628,6 +666,7 @@ class NtupleWizardTui(App[None]):
         scan_root.value = path
         self.state_data.scan_root = path
         self.log_message(f"Selected scan directory: {path}")
+        self.schedule_file_discovery(delay=0.1)
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if event.tabbed_content.id != "wizard-tabs" or event.pane.id is None:
@@ -689,8 +728,6 @@ class NtupleWizardTui(App[None]):
             self.review_confirmed = True
             self.query_one("#submit", Button).disabled = not self.perlmutter
             self.notify("Generated Python and SLURM previews marked reviewed.", title="Review confirmed", severity="information", timeout=5)
-        elif event.button.id == "scan":
-            self.refresh_discovered_files()
         elif event.button.id == "manifest_write":
             self.write_selected_manifest()
         elif event.button.id == "submit":

@@ -13,16 +13,16 @@ Header, Footer {
 #page {
     width: 100%;
     height: 1fr;
-    padding: 1 2;
+    padding: 0 1;
     background: #002832;
 }
 
 #hero {
     width: 100%;
-    height: 3;
-    margin-top: 1;
-    margin-bottom: 1;
-    padding: 0 2;
+    height: 2;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 0 1;
     background: #00313c;
     border: round #007681;
     color: #ffffff;
@@ -32,14 +32,14 @@ Header, Footer {
 
 .wizard-shell {
     height: 1fr;
-    padding: 1;
+    padding: 0;
     background: #00313c;
     border: round #007681;
 }
 
 .wizard-step {
     height: 1fr;
-    padding: 1 2;
+    padding: 0 1;
     background: #002832;
     border: round #4298b5;
 }
@@ -64,7 +64,7 @@ Header, Footer {
     height: 1fr;
     background: #00313c;
     border: round #4298b5;
-    padding: 1;
+    padding: 0 1;
     margin: 0;
 }
 
@@ -79,13 +79,13 @@ Header, Footer {
 .section-title {
     color: #eaaa00;
     text-style: bold;
-    margin-top: 1;
-    margin-bottom: 1;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .hint {
     color: #d8dedf;
-    margin-bottom: 1;
+    margin-bottom: 0;
 }
 
 Static, Label {
@@ -157,7 +157,7 @@ Input, Select {
     background: #001f26;
     color: #ffffff;
     border: tall #4298b5;
-    margin-bottom: 1;
+    margin-bottom: 0;
     height: 3;
 }
 
@@ -170,8 +170,8 @@ Select {
 .field-label {
     color: #ffffff;
     text-style: bold;
-    margin-top: 1;
-    margin-bottom: 1;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 #step-0 .field-label {
@@ -239,11 +239,11 @@ DirectoryTree, SelectionList, #log, #summary_panel {
     background: #001f26;
     color: #ffffff;
     border: round #007681;
-    padding: 1;
+    padding: 0 1;
 }
 
 .script-preview {
-    height: 12;
+    height: 14;
     background: #001f26;
     color: #ffffff;
     border: round #007681;
@@ -263,7 +263,7 @@ DirectoryTree, SelectionList, #log, #summary_panel {
     background: #001f26;
     color: #ffffff;
     border: round #007681;
-    padding: 1;
+    padding: 0;
 }
 
 DirectoryTree:focus, SelectionList:focus, #log:focus, .job-log:focus {
@@ -275,7 +275,7 @@ DirectoryTree {
 }
 
 SelectionList {
-    height: 8;
+    height: 12;
 }
 
 #log {
@@ -284,5 +284,5 @@ SelectionList {
 
 #summary_panel {
     height: auto;
-    margin-bottom: 1;
+    margin-bottom: 0;
 }
