@@ -21,6 +21,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +57,7 @@ class NtupleWizardTui(App[None]):
     TITLE = "ATLAS ntuple wizard"
     SUB_TITLE = "TREASURE → Parquet"
 
-    STEPS = ("Input", "Objects", "Variables", "Perlmutter", "Generate")
+    STEPS = ("Input", "Objects", "Variables", "Perlmutter", "Generate", "Status")
 
     CSS_PATH = Path(__file__).with_name("ntuple-wizard-tui.tcss")
 
@@ -72,6 +73,7 @@ class NtupleWizardTui(App[None]):
         self._loading_accounts = False
         self._suppress_account_select_notice = False
         self.review_confirmed = False
+        self.job_id = ""
         self.discovered_files: list[Path] = []
 
     @staticmethod
@@ -181,9 +183,12 @@ class NtupleWizardTui(App[None]):
                                 yield Button("Generate scripts", id="generate", variant="primary")
                                 yield Button("I reviewed scripts", id="confirm_review")
                                 yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
-                        with VerticalScroll(classes="column"):
-                            yield Static("Status", classes="section-title")
-                            yield RichLog(id="log", wrap=True, highlight=True)
+                with TabPane("6. Status", id="step-5", classes="wizard-step"):
+                    with VerticalScroll(classes="step-body"):
+                        yield Static("Job status", classes="section-title")
+                        yield Static("No job submitted yet.", id="job_status", classes="hint")
+                        yield Button("Refresh job status", id="refresh_job")
+                        yield RichLog(id="log", wrap=True, highlight=True)
             with Horizontal(id="wizard-nav"):
                 yield Button("Previous", id="prev_step")
                 yield Button("Next", id="next_step", variant="primary")
@@ -193,6 +198,7 @@ class NtupleWizardTui(App[None]):
         self.refresh_dependency_widgets()
         self.refresh_step()
         self.log_message("PCDF ntuple Textual wizard ready.")
+        self.log_message(f"Generated files will be written under {self.output_dir}.")
         if self.perlmutter:
             self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
             self.load_accounts_with_iris(notify_user=False)
@@ -235,7 +241,12 @@ class NtupleWizardTui(App[None]):
             tabs.active = target
         self.query_one("#prev_step", Button).disabled = self.current_step == 0
         next_button = self.query_one("#next_step", Button)
-        next_button.label = "Review" if self.current_step == len(self.STEPS) - 2 else "Next"
+        if self.current_step == 3:
+            next_button.label = "Review"
+        elif self.current_step == 4:
+            next_button.label = "Status"
+        else:
+            next_button.label = "Next"
         next_button.disabled = self.current_step == len(self.STEPS) - 1
         self.refresh_choice_buttons()
         self.refresh_summary()
@@ -494,6 +505,38 @@ class NtupleWizardTui(App[None]):
             self.log_message(result.stderr.strip())
         if result.returncode:
             self.log_message(f"sbatch failed with exit code {result.returncode}")
+            return
+        self.job_id = self.parse_sbatch_job_id(result.stdout)
+        if self.job_id:
+            self.query_one("#job_status", Static).update(f"Submitted SLURM job {self.job_id}.")
+            self.refresh_job_status()
+        self.current_step = 5
+        self.refresh_step()
+
+    def parse_sbatch_job_id(self, output: str) -> str:
+        for token in output.split():
+            if token.isdigit():
+                return token
+        return ""
+
+    def refresh_job_status(self) -> None:
+        if not self.job_id:
+            self.notify("Submit a job before refreshing status.", title="No job", severity="warning", timeout=5)
+            return
+        result = subprocess.run(
+            ["squeue", "-j", self.job_id, "-o", "%.18i %.9T %.10M %.20R"],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            status = result.stdout.strip()
+            self.query_one("#job_status", Static).update(status)
+            self.log_message(status)
+        else:
+            message = result.stderr.strip() or f"Job {self.job_id} is no longer in squeue."
+            self.query_one("#job_status", Static).update(message)
+            self.log_message(message)
 
     def action_generate(self) -> None:
         self.generate()
@@ -613,6 +656,8 @@ class NtupleWizardTui(App[None]):
             self.write_selected_manifest()
         elif event.button.id == "submit":
             self.submit()
+        elif event.button.id == "refresh_job":
+            self.refresh_job_status()
         elif event.button.id == "prev_step":
             self.current_step -= 1
             self.refresh_step()
@@ -623,9 +668,10 @@ class NtupleWizardTui(App[None]):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the PCDF ATLAS ntuple Textual wizard.")
-    parser.add_argument("--output-dir", type=Path, default=Path.cwd(), help="Directory for generated scripts and bundle.")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Directory for generated scripts and bundle. Defaults to a temporary directory.")
     args = parser.parse_args()
-    NtupleWizardTui(output_dir=args.output_dir).run()
+    output_dir = args.output_dir or Path(tempfile.mkdtemp(prefix="pcdf-ntuple-"))
+    NtupleWizardTui(output_dir=output_dir).run()
 
 
 if __name__ == "__main__":
