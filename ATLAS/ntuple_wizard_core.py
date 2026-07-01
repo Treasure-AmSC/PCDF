@@ -27,7 +27,7 @@ def on_perlmutter() -> bool:
     """Return true when the process appears to be running on Perlmutter."""
     nersc_host = os.environ.get("NERSC_HOST", "").lower()
     hostname = socket.gethostname().lower()
-    return nersc_host == "perlmutter" or "perlmutter" in hostname or hostname.startswith("nid")
+    return nersc_host == "perlmutter" or "perlmutter" in hostname
 
 
 def generated_python_name(input_format: str) -> str:
@@ -97,7 +97,7 @@ class WizardState:
     output_base: str = "$SCRATCH/pcdf-output"
     manifest: str = "$SCRATCH/pcdf-inputs.txt"
     scan_root: str = "$SCRATCH"
-    glob_pattern: str = "*.root*"
+    glob_pattern: str = "DAOD_*.pool.root*"
 
     def __post_init__(self) -> None:
         if not self.selected_objects:
@@ -141,8 +141,6 @@ class WizardState:
         return dependents
 
     def ensure_dependencies(self) -> None:
-        if self.input_format == "PHYSLITE":
-            self.selected_objects.discard("Const")
         for key in list(self.selected_objects):
             if not self.object_available(key):
                 self.selected_objects.discard(key)
@@ -150,8 +148,10 @@ class WizardState:
                 self.add_dependencies(key)
         self.selected_objects.add("Event")
         for key, obj in self.objects.items():
-            self.selected_variables.setdefault(key, set())
-            self.selected_variables[key].update(obj.get("requiredVariables", []))
+            variables = self.selected_variables.setdefault(key, set())
+            variables.update(obj.get("requiredVariables", []))
+            if key in self.selected_objects and not variables and obj.get("aliases"):
+                variables.add(next(iter(obj["aliases"])))
 
     def selected_config(self) -> dict[str, Any]:
         objects: dict[str, Any] = {}
@@ -186,17 +186,21 @@ def build_python(state: WizardState) -> str:
     })
 
 
+def expanded_path(value: str) -> str:
+    return str(Path(os.path.expandvars(os.path.expanduser(value))))
+
+
 def build_slurm(state: WizardState, output_dir: Path) -> str:
     return apply_template((TEMPLATE_DIR / "submit-pcdf-ntuple.template.slurm").read_text(), {
         "ACCOUNT_LINE": f"#SBATCH --account={state.account}",
         "QOS": state.qos,
         "NODES": str(state.nodes),
         "TIME": state.time,
-        "LOG_OUT": json.dumps(str(output_dir / "pcdf-ntuple-%j.out")),
-        "LOG_ERR": json.dumps(str(output_dir / "pcdf-ntuple-%j.err")),
-        "PYTHON_PATH": json.dumps(str(output_dir / generated_python_name(state.input_format))),
-        "INPUT_MANIFEST": json.dumps(state.manifest),
-        "OUTPUT_BASE": json.dumps(state.output_base),
+        "LOG_OUT": json.dumps("pcdf-ntuple-%j.out"),
+        "LOG_ERR": json.dumps("pcdf-ntuple-%j.err"),
+        "PYTHON_PATH": json.dumps("./" + generated_python_name(state.input_format)),
+        "INPUT_MANIFEST": json.dumps(expanded_path(state.manifest)),
+        "OUTPUT_BASE": json.dumps(expanded_path(state.output_base)),
         "CONVERTER_CPUS_PER_CONVERSION": "1",
         "PERLMUTTER_PHYSICAL_CORES": str(PERLMUTTER_PHYSICAL_CORES),
         "PERLMUTTER_LOGICAL_CPUS_PER_NODE": str(PERLMUTTER_LOGICAL_CPUS),
@@ -248,4 +252,7 @@ def write_manifest(paths: list[Path], manifest_path: str) -> tuple[Path, int]:
 
 
 def scan_manifest(state: WizardState) -> tuple[Path, int]:
-    return write_manifest(discover_files(state.scan_root, state.glob_pattern), state.manifest)
+    paths = discover_files(state.scan_root, state.glob_pattern)
+    if not paths:
+        return Path(os.path.expandvars(os.path.expanduser(state.manifest))), 0
+    return write_manifest(paths, state.manifest)

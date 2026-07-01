@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Grid, Horizontal, VerticalScroll
-from textual.validation import Function, Number, Regex
+from textual.validation import Function, Regex
 from textual.timer import Timer
 from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Input, Label, Log, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
 
@@ -92,6 +92,10 @@ class NtupleWizardTui(App[None]):
     def existing_directory(value: str) -> bool:
         return Path(os.path.expandvars(os.path.expanduser(value or "."))).is_dir()
 
+    @staticmethod
+    def positive_integer(value: str) -> bool:
+        return value.strip().isdigit() and int(value.strip()) >= 1
+
     def compose(self) -> ComposeResult:
         with Container(id="page"):
             yield Static("✦ ATLAS TREASURE → Parquet script wizard", id="hero")
@@ -145,12 +149,13 @@ class NtupleWizardTui(App[None]):
                             yield Label("NERSC account", classes="field-label")
                             if self.perlmutter:
                                 yield Select([("Loading accounts from iris…", "")], value="", allow_blank=False, disabled=True, id="account_select")
+                                yield Input(placeholder="Manual NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
                             else:
                                 yield Input(placeholder="NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
                             yield Label("Queue / QOS", classes="field-label")
-                            yield Select([(label, label) for label in ("regular", "debug", "premium", "shared")], value="regular", allow_blank=False, id="qos")
+                            yield Select([(label, label) for label in ("regular", "debug", "premium")], value="regular", allow_blank=False, id="qos")
                             yield Label("Nodes", classes="field-label")
-                            yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Number(minimum=1, failure_description="Nodes must be at least 1.")], validate_on=["blur", "submitted"])
+                            yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Function(self.positive_integer, "Nodes must be a positive integer.")], validate_on=["blur", "submitted"])
                             yield Label("Wall time", classes="field-label")
                             yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
                             yield Label("Output base", classes="field-label")
@@ -164,7 +169,7 @@ class NtupleWizardTui(App[None]):
                             yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root", validators=[Function(self.existing_directory, "Scan directory must exist.")], validate_on=["blur", "submitted"])
                             with Collapsible(title="Advanced manifest options", collapsed=True):
                                 yield Label("File glob", classes="field-label")
-                                yield Input(value="*.root*", placeholder="Glob, e.g. *.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
+                                yield Input(value="DAOD_*.pool.root*", placeholder="Glob, e.g. DAOD_*.pool.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
                             tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
                             if not tree_root.exists():
                                 tree_root = Path.cwd()
@@ -282,8 +287,10 @@ class NtupleWizardTui(App[None]):
         state.input_format = str(self.query_one("#format", Select).value)
         state.sample_type = str(self.query_one("#sample", Select).value)
         if self.perlmutter:
-            selected_account = self.query_one("#account_select", Select).value
-            state.account = "" if selected_account in (Select.NULL, "") else str(selected_account)
+            account_select = self.query_one("#account_select", Select)
+            selected_account = account_select.value
+            manual_account = self.query_one("#account_input", Input).value.strip()
+            state.account = str(selected_account) if (not account_select.disabled and selected_account not in (Select.NULL, "")) else manual_account
         else:
             state.account = self.query_one("#account_input", Input).value.strip()
         qos = self.query_one("#qos", Select).value
@@ -296,7 +303,7 @@ class NtupleWizardTui(App[None]):
         state.output_base = self.query_one("#output", Input).value.strip() or "$SCRATCH/pcdf-output"
         state.manifest = self.query_one("#manifest", Input).value.strip() or "$SCRATCH/pcdf-inputs.txt"
         state.scan_root = self.query_one("#scan_root", Input).value.strip() or "$SCRATCH"
-        state.glob_pattern = self.query_one("#glob", Input).value.strip() or "*.root*"
+        state.glob_pattern = self.query_one("#glob", Input).value.strip() or "DAOD_*.pool.root*"
         state.ensure_dependencies()
 
     def refresh_dependency_widgets(self) -> None:
@@ -370,7 +377,11 @@ class NtupleWizardTui(App[None]):
         self.sync_state()
         selected = self.selected_discovered_files()
         if not selected:
-            self.log_message("No files selected; writing a manifest from the current scan instead.")
+            if self.discovered_files:
+                self.log_message("No discovered files are selected; manifest was not changed.")
+                self.notify("Select at least one discovered file before writing the manifest.", title="Manifest unchanged", severity="warning", timeout=8)
+                return None
+            self.log_message("No discovery list is loaded; writing a manifest from the current scan instead.")
             manifest, count = scan_manifest(self.state_data)
         else:
             manifest, count = write_manifest(selected, self.state_data.manifest)
@@ -383,6 +394,14 @@ class NtupleWizardTui(App[None]):
         return manifest
 
     def ensure_manifest_for_submit(self) -> bool:
+        if self.discovered_files:
+            self.log_message("Refreshing the manifest from the current discovered-file selection before submission.")
+            manifest = self.write_selected_manifest()
+            if manifest is None or not self.manifest_has_work():
+                self.notify("Create a non-empty input manifest before submitting.", title="Submission blocked", severity="error", timeout=8)
+                self.log_message("Submission blocked: input manifest is still missing or empty.")
+                return False
+            return True
         if self.manifest_has_work():
             return True
         self.log_message("Input manifest is missing or empty; writing it before submission.")
@@ -415,7 +434,7 @@ class NtupleWizardTui(App[None]):
             account_select.set_options([("iris command not found", "")])
             account_select.value = ""
             account_select.disabled = True
-            self.log_message("iris command not found; account selection is unavailable.")
+            self.log_message("iris command not found; enter an account manually.")
             self._loading_accounts = False
             return
         except subprocess.TimeoutExpired:
@@ -424,12 +443,12 @@ class NtupleWizardTui(App[None]):
             account_select.value = ""
             account_select.disabled = True
             if notify_user:
-                self.notify("iris did not finish within 15 seconds.", title="Iris timeout", severity="warning", timeout=8)
+                self.notify("iris did not finish within 15 seconds; enter an account manually.", title="Iris timeout", severity="warning", timeout=8)
             self._loading_accounts = False
             return
         try:
             output = "\n".join(part for part in (result.stdout, result.stderr) if part)
-            accounts = self.parse_iris_accounts(output)
+            accounts = [] if result.returncode else self.parse_iris_accounts(output)
             account_select = self.query_one("#account_select", Select)
             if accounts:
                 account_select.set_options((account, account) for account in accounts)
@@ -463,8 +482,15 @@ class NtupleWizardTui(App[None]):
     def validate_slurm_inputs(self) -> bool:
         failures = self.invalid_inputs(("nodes", "time", "output", "manifest"))
         if self.perlmutter:
-            if self.query_one("#account_select", Select).value in (Select.NULL, ""):
-                failures.append("Choose a NERSC account.")
+            account_select = self.query_one("#account_select", Select)
+            selected_account = account_select.value
+            manual_account = self.query_one("#account_input", Input).value.strip()
+            if account_select.disabled or selected_account in (Select.NULL, ""):
+                failures.extend(self.invalid_inputs(("account_input",)))
+            if account_select.disabled and not manual_account:
+                failures.append("Enter a NERSC account.")
+            elif (not account_select.disabled) and selected_account in (Select.NULL, "") and not manual_account:
+                failures.append("Choose or enter a NERSC account.")
         else:
             failures.extend(self.invalid_inputs(("account_input",)))
         if failures:
