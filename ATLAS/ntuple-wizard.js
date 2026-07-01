@@ -420,6 +420,8 @@
         PYTHON_PATH: JSON.stringify(slurm.pythonPath),
         INPUT_MANIFEST: JSON.stringify(slurm.inputManifest),
         OUTPUT_BASE: JSON.stringify(slurm.outputBase),
+        LOG_OUT: JSON.stringify("pcdf-ntuple-%j.out"),
+        LOG_ERR: JSON.stringify("pcdf-ntuple-%j.err"),
       };
     }
 

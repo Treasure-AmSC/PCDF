@@ -1,0 +1,288 @@
+/* Truecolor Textual companion to ATLAS/ntuple-wizard.css. */
+Screen {
+    background: #002832;
+    color: #ffffff;
+    layout: vertical;
+}
+
+Header, Footer {
+    background: #001f26;
+    color: #ffffff;
+}
+
+#page {
+    width: 100%;
+    height: 1fr;
+    padding: 0 1;
+    background: #002832;
+}
+
+#hero {
+    width: 100%;
+    height: 2;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 0 1;
+    background: #00313c;
+    border: round #007681;
+    color: #ffffff;
+    text-style: bold;
+    content-align: left middle;
+}
+
+.wizard-shell {
+    height: 1fr;
+    padding: 0;
+    background: #00313c;
+    border: round #007681;
+}
+
+.wizard-step {
+    height: 1fr;
+    padding: 0 1;
+    background: #002832;
+    border: round #4298b5;
+}
+
+.step-body {
+    height: 1fr;
+    scrollbar-color: #007681;
+    scrollbar-color-hover: #4298b5;
+    scrollbar-color-active: #eaaa00;
+}
+
+.two-column {
+    height: 1fr;
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 1fr 1fr;
+    grid-gutter: 0 1;
+}
+
+.column {
+    width: 1fr;
+    height: 1fr;
+    background: #00313c;
+    border: round #4298b5;
+    padding: 0 1;
+    margin: 0;
+}
+
+.object-grid {
+    grid-size: 3;
+    grid-gutter: 1 2;
+    height: auto;
+    margin-top: 1;
+    margin-bottom: 2;
+}
+
+.section-title {
+    color: #eaaa00;
+    text-style: bold;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.hint {
+    color: #d8dedf;
+    margin-bottom: 0;
+}
+
+Static, Label {
+    color: #ffffff;
+    background: transparent;
+}
+
+.toggle-card {
+    width: 1fr;
+    height: auto;
+    margin: 0;
+    padding: 0 1;
+    background: #001f26;
+    color: #d8dedf;
+    border: tall #63666a;
+    layout: grid;
+    grid-size: 2;
+    grid-columns: auto 1fr;
+    grid-gutter: 0 1;
+    align-vertical: middle;
+}
+
+.toggle-card:hover, .toggle-card:focus-within {
+    border: tall #eaaa00;
+    background: #007681;
+    color: #ffffff;
+}
+
+.toggle-card.selected-choice {
+    background: #0b6f59;
+    color: #ffffff;
+    border: tall #74aa50;
+}
+
+.toggle-card.deselected-choice {
+    background: #001f26;
+    color: #d8dedf;
+    border: tall #63666a;
+}
+
+.toggle-card .toggle-label {
+    width: 1fr;
+    content-align: left middle;
+}
+
+.toggle-card .toggle-switch {
+    margin: 0;
+}
+
+.choice-row {
+    height: 3;
+    margin-bottom: 2;
+}
+
+.choice-button {
+    width: 24;
+}
+
+.choice-button.active-step {
+    background: #007681;
+    border: tall #eaaa00;
+}
+
+.hidden-select {
+    display: none;
+}
+
+Input, Select {
+    background: #001f26;
+    color: #ffffff;
+    border: tall #4298b5;
+    margin-bottom: 0;
+    height: 3;
+}
+
+Select {
+    width: 100%;
+    height: 4;
+    content-align: left middle;
+}
+
+.field-label {
+    color: #ffffff;
+    text-style: bold;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+#step-0 .field-label {
+    margin-top: 2;
+}
+
+Input:focus, Select:focus {
+    border: tall #eaaa00;
+}
+
+Input.-valid {
+    border: tall #74aa50;
+}
+
+Input.-invalid {
+    border: tall #e04b39;
+}
+
+Button {
+    margin: 0 1;
+    height: 3;
+    background: #007681;
+    color: #ffffff;
+    border: tall #4298b5;
+    text-style: bold;
+}
+
+Button:hover, Button:focus {
+    background: #4298b5;
+    border: tall #eaaa00;
+}
+
+Button.-success {
+    background: #74aa50;
+    color: #ffffff;
+}
+
+Button:disabled {
+    background: #63666a;
+    color: #d8dedf;
+}
+
+#generate-actions {
+    height: 3;
+    margin-top: 1;
+    layout: grid;
+    grid-size: 3;
+    grid-columns: 1fr 1fr 1fr;
+    grid-gutter: 0 1;
+}
+
+#generate-actions Button {
+    width: 1fr;
+    margin: 0;
+    content-align: center middle;
+}
+
+#wizard-nav {
+    height: 3;
+    margin-top: 1;
+    align-horizontal: right;
+}
+
+DirectoryTree, SelectionList, #log, #summary_panel {
+    background: #001f26;
+    color: #ffffff;
+    border: round #007681;
+    padding: 0 1;
+}
+
+.script-preview {
+    height: 14;
+    background: #001f26;
+    color: #ffffff;
+    border: round #007681;
+}
+
+.job-log-grid {
+    height: 1fr;
+    layout: grid;
+    grid-size: 2 2;
+    grid-columns: 1fr 1fr;
+    grid-rows: auto 1fr;
+    grid-gutter: 0 1;
+}
+
+.job-log {
+    height: 1fr;
+    background: #001f26;
+    color: #ffffff;
+    border: round #007681;
+    padding: 0;
+}
+
+DirectoryTree:focus, SelectionList:focus, #log:focus, .job-log:focus {
+    border: round #eaaa00;
+}
+
+DirectoryTree {
+    height: 10;
+}
+
+SelectionList {
+    height: 12;
+}
+
+#log {
+    height: 1fr;
+}
+
+#summary_panel {
+    height: auto;
+    margin-bottom: 0;
+}
