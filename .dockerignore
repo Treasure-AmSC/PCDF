@@ -1,0 +1,6 @@
+.git
+.agents
+.codex
+*.root
+**/__pycache__
+*.py[cod]

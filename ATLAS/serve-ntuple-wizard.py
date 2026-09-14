@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Serve the ATLAS ntuple wizard on localhost with split templates inlined.
+"""Serve the ATLAS ntuple wizard with split templates inlined.
 
 The wizard is stored as inspectable static assets plus separate generated-script
 templates.  This helper combines those pieces in memory for the browser and
-serves them from a localhost-only HTTP server.  It intentionally never binds to
-an external interface.
+serves them over HTTP. The default listener remains local-only; container
+deployments can select another bind address explicitly.
 """
 
 from __future__ import annotations
@@ -73,10 +73,21 @@ class WizardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - http.server API name
         route = self.path.split("?", 1)[0].rstrip("/")
+        if route == "/healthz":
+            self.serve_health()
+            return
         if route in {"", "/"}:
             self.serve_combined_wizard()
             return
         super().do_GET()
+
+    def serve_health(self) -> None:
+        body = b"ok\n"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def serve_combined_wizard(self) -> None:
         try:
@@ -100,7 +111,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Serve the ATLAS ntuple wizard at http://127.0.0.1:8000/.",
     )
-    parser.add_argument("--port", type=int, default=8000, help="localhost port to bind")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="address to bind (default: 127.0.0.1)",
+    )
+    parser.add_argument("--port", type=int, default=8000, help="port to bind")
     parser.add_argument(
         "--no-browser",
         action="store_true",
@@ -115,10 +131,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--port must be between 1 and 65535")
 
     handler = partial(WizardHandler, directory=str(REPO_ROOT))
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
-    url = f"http://127.0.0.1:{args.port}/"
+    server = ThreadingHTTPServer((args.host, args.port), handler)
+    url = f"http://{args.host}:{args.port}/"
     print(f"Serving ATLAS ntuple wizard at {url}")
-    print("Listening on 127.0.0.1 only; press Ctrl-C to stop.")
+    print(f"Listening on {args.host}; press Ctrl-C to stop.")
     if not args.no_browser:
         webbrowser.open(url)
     try:
