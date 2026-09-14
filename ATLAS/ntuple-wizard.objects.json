@@ -45,9 +45,9 @@
     "title": "Jet constituents",
     "folder": "Const",
     "indexName": "constIndex",
-    "description": "Charged and neutral PFO constituent four-vectors from the original ntuple maker; TREASURE only.",
+    "description": "Charged and neutral PFO constituent four-vectors linked from AnalysisJets; JETM16 only.",
     "recommended": true,
-    "requiresTreasure": true,
+    "requiresJetm16": true,
     "dependsOn": [
       "Jet"
     ],

@@ -28,10 +28,7 @@ INPUT_FORMAT = "{{INPUT_FORMAT}}"
 OBJECTS = {{OBJECTS}}
 
 JET_LINK_ALIASES = {
-    "constLinks": (
-        "AntiKt4EMPFlowJetsAuxDyn."
-        "constituentLinks"
-    ),
+    "constLinks": "AnalysisJetsAuxDyn.constituentLinks",
     "trackLinks": "AnalysisJetsAuxDyn.GhostTrack",
 }
 
@@ -108,30 +105,60 @@ INDEX_FILE_BITS = 16
 INDEX_LOCAL_BITS = 64 - INDEX_FILE_BITS
 MAX_FILE_NUMBER = (1 << INDEX_FILE_BITS) - 1
 MAX_LOCAL_INDEX = (1 << INDEX_LOCAL_BITS) - 1
+UINT64_MODULUS = 1 << 64
+INT64_SIGN_BIT = 1 << 63
 
 
-def partition_from_filename(input_path):
+def as_signed_int64(value):
+    return value if value < INT64_SIGN_BIT else value - UINT64_MODULUS
+
+
+def partition_from_input(input_path, root_uuid):
     pattern = re.compile(
-        r"^DAOD_[^.]+\.(?P<tid>\d+)\._(?P<file_number>\d+)"
+        r"(?:^|\.)DAOD_[^.]+\.(?P<tid>\d+)\._(?P<file_number>\d+)"
         r"\.pool\.root(?:\.\d+)?$"
     )
-    match = pattern.match(input_path.name)
-    if not match:
+    match = pattern.search(input_path.name)
+    if match:
+        file_number = int(match.group("file_number"))
+        if file_number > MAX_FILE_NUMBER:
+            raise click.ClickException(
+                f"File number {file_number} exceeds the {MAX_FILE_NUMBER} "
+                "maximum that can be encoded in 16 index bits"
+            )
+        return {
+            "parts": (
+                f"tid={match.group('tid')}",
+                f"fileNumber={file_number}",
+            ),
+            "indexPrefix": file_number,
+        }
+
+    # Names without embedded ATLAS identifiers provide no genuine task ID or
+    # file number.
+    # Use the file's actual ROOT UUID as its partition identity rather than
+    # inventing values for those ATLAS-specific fields.
+    uuid_value = getattr(root_uuid, "int", None)
+    if not isinstance(uuid_value, int) or not 0 <= uuid_value < (1 << 128):
         raise click.ClickException(
-            "Input filename must look like "
-            "DAOD_PHYSLITE.37620644._000244.pool.root[.N] "
-            "so tid and fileNumber partitions can be derived"
+            f"Cannot derive a stable partition identity for {input_path}"
         )
-    file_number = int(match.group("file_number"))
-    if file_number > MAX_FILE_NUMBER:
-        raise click.ClickException(
-            f"File number {file_number} exceeds the {MAX_FILE_NUMBER} "
-            "maximum that can be encoded in 16 index bits"
-        )
-    return {
-        "tid": match.group("tid"),
-        "fileNumber": file_number,
+    uuid_high = as_signed_int64(uuid_value >> 64)
+    uuid_low = as_signed_int64(uuid_value & (UINT64_MODULUS - 1))
+    partition = {
+        "parts": (
+            f"fileUUIDHigh={uuid_high}",
+            f"fileUUIDLow={uuid_low}",
+        ),
+        "indexPrefix": 0,
     }
+    click.echo(
+        "INFO: input filename has no ATLAS tid/file number; "
+        "using numeric ROOT UUID partitions "
+        f"fileUUIDHigh={uuid_high}, fileUUIDLow={uuid_low} for {input_path}",
+        err=True,
+    )
+    return partition
 
 
 def encode_global_index(local_index, file_number, label):
@@ -151,10 +178,8 @@ def make_global_idx(arr, file_number, label):
 
 
 def selected_output_partition_paths(output, partition):
-    tid_dir = f"tid={partition['tid']}"
-    file_dir = f"fileNumber={partition['fileNumber']}"
     return [
-        output / config["folder"] / tid_dir / file_dir
+        (output / config["folder"]).joinpath(*partition["parts"])
         for config in OBJECTS.values()
     ]
 
@@ -171,26 +196,21 @@ def all_selected_output_partitions_exist(output, partition):
 
 
 def cleanup_output_partitions(output, partition):
-    tid_dir = f"tid={partition['tid']}"
-    file_dir = f"fileNumber={partition['fileNumber']}"
     if not output.exists():
         return
     for target in selected_output_partition_paths(output, partition):
         if target.exists():
             shutil.rmtree(target)
-        tid_path = target.parent
-        try:
-            tid_path.rmdir()
-        except OSError:
-            pass
+        parent = target.parent
+        for _ in range(len(partition["parts"]) - 1):
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
 
 def write_object(output, folder, partition, payload, flatten=True):
-    path = (
-        output
-        / folder
-        / f"tid={partition['tid']}"
-        / f"fileNumber={partition['fileNumber']}"
-    )
+    path = (output / folder).joinpath(*partition["parts"])
     if path.exists():
         raise click.ClickException(f"Output partition exists: {path}")
     path.mkdir(parents=True)
@@ -233,19 +253,19 @@ def write_object(output, folder, partition, payload, flatten=True):
     help="Skip inputs whose selected output partitions already exist, allowing safe job reruns.",
 )
 def ntuple_maker(input, output, skip_unreadable, skip_existing):
-    partition = partition_from_filename(input)
-    existing_partitions = existing_output_partitions(output, partition)
-    if existing_partitions:
-        paths = ", ".join(str(path) for path in existing_partitions[:3])
-        suffix = "" if len(existing_partitions) <= 3 else f", and {len(existing_partitions) - 3} more"
-        message = f"Output partition exists for {input}: {paths}{suffix}"
-        if skip_existing and all_selected_output_partitions_exist(output, partition):
-            click.echo(f"WARNING: skipping complete existing output partitions: {message}", err=True)
-            return
-        raise click.ClickException("Incomplete or conflicting output partitions: " + message)
-
     try:
         with up.open(input) as file:
+            partition = partition_from_input(input, file.file.uuid)
+            existing_partitions = existing_output_partitions(output, partition)
+            if existing_partitions:
+                paths = ", ".join(str(path) for path in existing_partitions[:3])
+                suffix = "" if len(existing_partitions) <= 3 else f", and {len(existing_partitions) - 3} more"
+                message = f"Output partition exists for {input}: {paths}{suffix}"
+                if skip_existing and all_selected_output_partitions_exist(output, partition):
+                    click.echo(f"WARNING: skipping complete existing output partitions: {message}", err=True)
+                    return
+                raise click.ClickException("Incomplete or conflicting output partitions: " + message)
+
             tree = file["CollectionTree"]
             aliases = {
                 name: selected_aliases(name)
@@ -291,7 +311,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
     print(f"{POINT} Read {len(event)} events")
     event_index = make_global_idx(
         first_field(event),
-        partition["fileNumber"],
+        partition["indexPrefix"],
         "eventIndex",
     )
     output.mkdir(parents=True, exist_ok=True)
@@ -317,7 +337,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
         )
         jet_index = make_global_idx(
             jet_index_source,
-            partition["fileNumber"],
+            partition["indexPrefix"],
             "jetIndex",
         )
         if "Jet" in OBJECTS:
@@ -392,7 +412,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
         )
         const_index = make_global_idx(
             first_field(constituents),
-            partition["fileNumber"],
+            partition["indexPrefix"],
             "constIndex",
         )
         const_payload = {
@@ -420,7 +440,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
         )
         track_index = make_global_idx(
             first_field(tracks),
-            partition["fileNumber"],
+            partition["indexPrefix"],
             "trackIndex",
         )
         track_payload = {
@@ -449,7 +469,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
         record = arrays[name]
         object_index = make_global_idx(
             first_field(record),
-            partition["fileNumber"],
+            partition["indexPrefix"],
             OBJECTS[name]["index_name"],
         )
         payload = {

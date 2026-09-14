@@ -5,7 +5,7 @@
 
     const state = {
       step: 0,
-      inputFormat: "TREASURE",
+      inputFormat: "JETM16",
       sampleType: "MC",
       selectedObjects: new Set(),
       selectedVariables: {},
@@ -15,7 +15,7 @@
         qos: "regular",
         nodes: 1,
         time: "00:30:00",
-        pythonPath: generatedPythonName("TREASURE"),
+        pythonPath: generatedPythonName("JETM16"),
         inputManifest: "$SCRATCH/pcdf-inputs.txt",
         outputBase: "$SCRATCH/pcdf-output"
       }
@@ -135,7 +135,7 @@
     }
 
     function isObjectAvailable(key) {
-      return !(OBJECTS[key].requiresTreasure && state.inputFormat === "PHYSLITE");
+      return !(OBJECTS[key].requiresJetm16 && state.inputFormat === "PHYSLITE");
     }
 
     function dependenciesFor(key) {
@@ -402,7 +402,7 @@
       const objectConfig = formatPythonLiteral(config.objects);
       const formatNote = config.inputFormat === "PHYSLITE"
         ? "PHYSLITE selected: jet constituents are disabled."
-        : "TREASURE selected: jet constituents can be read.";
+        : "JETM16 selected: jet constituents can be read.";
       const sampleNote = config.sampleType === "DATA"
         ? "Data selected: MC-only truth/flavor branches are omitted; lumiBlock is included in Events."
         : "MC selected: truth/flavor branches can be included when selected.";
@@ -633,6 +633,7 @@ wizard if you want a Perlmutter submission wrapper.
 `;
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
+        INPUT_FORMAT: state.inputFormat,
         SLURM_FILE_LINE: state.slurm.enabled
           ? "- submit-pcdf-ntuple.slurm: executable NERSC Perlmutter CPU/SLURM wrapper.\n"
           : "",

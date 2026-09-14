@@ -86,7 +86,7 @@ def python_literal(value: Any, indent: int = 0) -> str:
 @dataclass
 class WizardState:
     objects: dict[str, dict[str, Any]] = field(default_factory=load_object_config)
-    input_format: str = "TREASURE"
+    input_format: str = "JETM16"
     sample_type: str = "MC"
     selected_objects: set[str] = field(default_factory=set)
     selected_variables: dict[str, set[str]] = field(default_factory=dict)
@@ -110,7 +110,7 @@ class WizardState:
         return not (self.sample_type == "DATA" and name in self.objects[key].get("mcOnlyVariables", []))
 
     def object_available(self, key: str) -> bool:
-        return not (self.objects[key].get("requiresTreasure") and self.input_format == "PHYSLITE")
+        return not (self.objects[key].get("requiresJetm16") and self.input_format == "PHYSLITE")
 
     def add_dependencies(self, key: str) -> None:
         for dependency in self.objects[key].get("dependsOn", []):
@@ -172,7 +172,7 @@ def build_python(state: WizardState) -> str:
     format_note = (
         "PHYSLITE selected: jet constituents are disabled."
         if config["inputFormat"] == "PHYSLITE"
-        else "TREASURE selected: jet constituents can be read."
+        else "JETM16 selected: jet constituents can be read."
     )
     sample_note = (
         "Data selected: MC-only truth/flavor branches are omitted; lumiBlock is included in Events."

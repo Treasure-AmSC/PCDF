@@ -56,7 +56,7 @@ class NtupleWizardTui(App[None]):
     """Interactive Textual app for PCDF ntuple job generation."""
 
     TITLE = "ATLAS ntuple wizard"
-    SUB_TITLE = "TREASURE → Parquet"
+    SUB_TITLE = "JETM16 → Parquet"
 
     STEPS = ("Input", "Objects", "Variables", "Perlmutter", "Generate", "Status")
 
@@ -98,16 +98,16 @@ class NtupleWizardTui(App[None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="page"):
-            yield Static("✦ ATLAS TREASURE → Parquet script wizard", id="hero")
+            yield Static("✦ ATLAS JETM16 → Parquet script wizard", id="hero")
             with TabbedContent(initial="step-0", id="wizard-tabs", classes="wizard-shell"):
                 with TabPane("1. Input", id="step-0", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Input format and sample type", classes="section-title")
-                        yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables TREASURE-only constituent output; data mode omits MC-only variables.", classes="hint")
+                        yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables JETM16-only constituent output; data mode omits MC-only variables.", classes="hint")
                         yield Label("Input format", classes="field-label")
-                        yield Select([(label, label) for label in ("TREASURE", "PHYSLITE")], value="TREASURE", id="format", classes="hidden-select")
+                        yield Select([(label, label) for label in ("JETM16", "PHYSLITE")], value="JETM16", id="format", classes="hidden-select")
                         with Horizontal(classes="choice-row"):
-                            yield Button("TREASURE", id="set-format-TREASURE", classes="choice-button active-step")
+                            yield Button("JETM16", id="set-format-JETM16", classes="choice-button active-step")
                             yield Button("PHYSLITE", id="set-format-PHYSLITE", classes="choice-button")
                         yield Label("Sample type", classes="field-label")
                         yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample", classes="hidden-select")
@@ -271,7 +271,7 @@ class NtupleWizardTui(App[None]):
         self.refresh_summary()
 
     def refresh_choice_buttons(self) -> None:
-        for value in ("TREASURE", "PHYSLITE"):
+        for value in ("JETM16", "PHYSLITE"):
             self.query_one(f"#set-format-{value}", Button).set_class(self.state_data.input_format == value, "active-step")
         for value in ("MC", "DATA"):
             self.query_one(f"#set-sample-{value}", Button).set_class(self.state_data.sample_type == value, "active-step")

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ATLAS TREASURE Parquet Wizard</title>
+  <title>ATLAS JETM16 Parquet Wizard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Iosevka+Charon:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Franklin:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
     <section class="row justify-content-center">
       <div class="col-12 col-xxl-11 pcdf-page-width">
         <div class="mb-4 text-center text-lg-start">
-          <h1 class="display-5 fw-bold"><i class="bi bi-stars me-2" aria-hidden="true"></i>ATLAS TREASURE → Parquet script wizard</h1>
+          <h1 class="display-5 fw-bold"><i class="bi bi-stars me-2" aria-hidden="true"></i>ATLAS JETM16 → Parquet script wizard</h1>
           <p class="lead text-secondary mb-0">Interactively select DAOD objects and variables, then download a custom Python script that writes each selected object to its own Parquet folder.</p>
         </div>
 
@@ -36,12 +36,12 @@
                   <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
                       <h2 class="h4 card-title">Choose the DAOD input</h2>
-                      <p class="text-secondary">TREASURE includes PHYSLITE-like analysis objects plus additional content from the TREASURE derivation. PHYSLITE can be used directly, but jet constituent Particle Flow containers are not available there.</p>
+                      <p class="text-secondary">JETM16 includes PHYSLITE-like analysis objects plus jet-analysis content. PHYSLITE can be used directly, but jet constituent Particle Flow containers are not available there.</p>
                       <div class="vstack gap-3 mt-4">
                         <label class="form-check p-3 border rounded-3">
-                          <input class="form-check-input" type="radio" name="inputFormat" id="formatTreasure" value="TREASURE" checked required>
-                          <span class="form-check-label fw-semibold"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>DAOD_TREASURE</span>
-                          <span class="d-block small text-secondary">Enable all objects, including jet constituents linked from AntiKt4EMPFlow jets.</span>
+                          <input class="form-check-input" type="radio" name="inputFormat" id="formatJetm16" value="JETM16" checked required>
+                          <span class="form-check-label fw-semibold"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>DAOD_JETM16</span>
+                          <span class="d-block small text-secondary">Enable all objects, including jet constituents linked from AnalysisJets.</span>
                         </label>
                         <label class="form-check p-3 border rounded-3">
                           <input class="form-check-input" type="radio" name="inputFormat" id="formatPhyslite" value="PHYSLITE" required>
@@ -71,6 +71,7 @@
                         <li>For collision data, omits MC-only truth/flavor variables and includes <code>lumiBlock</code> in Events.</li>
                         <li>Writes selected table folders under one output root using <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions.</li>
                         <li>Strips leading zeros from <code>fileNumber</code> so Hive partition readers infer it as an integer.</li>
+                        <li>For nonstandard filenames, partitions by the numeric high/low halves of the file's ROOT UUID without inventing a task ID or file number. Each half is stored as a signed 64-bit integer for broad Hive/Parquet reader compatibility; negative values are the lossless two's-complement representation of the original UUID bits.</li>
                         <li>Encodes the file number into the leading 16 bits of generated indices so <code>eventIndex</code>, <code>jetIndex</code>, and related links are global within each <code>tid</code>.</li>
                       </ul>
                     </div>
@@ -162,7 +163,7 @@
                     </div>
                     <div class="col-12">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmPythonPath" value="./ntuple-maker-treasure.py" required placeholder="Python script path on Perlmutter">
+                        <input class="form-control slurm-input" id="slurmPythonPath" value="./ntuple-maker-jetm16.py" required placeholder="Python script path on Perlmutter">
                         <label for="slurmPythonPath">Python script path on Perlmutter</label>
                         <div class="invalid-feedback">Enter the converter path.</div>
                       </div>
@@ -192,7 +193,7 @@
                     <button class="btn btn-outline-light" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>Download bundle (.tar)</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0">
-                    <p class="mb-2">Local run: <code>uv run ./ntuple-maker-treasure.py DAOD_PHYSLITE.37620644._000244.pool.root -o parquet-output</code> (or <code>ntuple-maker-physlite.py</code> when PHYSLITE is selected). Output is written as table folders with <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions; <code>fileNumber</code> has leading zeros stripped and is encoded into the leading 16 bits of generated indices.</p>
+                    <p class="mb-2">Local run: <code>uv run ./ntuple-maker-jetm16.py DAOD_JETM16.37620644._000244.pool.root -o parquet-output</code> (or <code>ntuple-maker-physlite.py</code> when PHYSLITE is selected). Standard ATLAS filenames produce <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions. Other names split the ROOT UUID losslessly into numeric <code>fileUUIDHigh=...</code>/<code>fileUUIDLow=...</code> partitions.</p>
                     <ol class="submission-steps mb-0 ps-3">
                       <li>Create the input manifest listed on the SLURM page before submitting; the compute job never downloads data.</li>
                       <li>Download the tar bundle, copy it to Perlmutter, and extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
