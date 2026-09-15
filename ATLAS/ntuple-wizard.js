@@ -212,9 +212,19 @@
     async function loadTemplates() {
       await Promise.all(Object.entries(TEMPLATE_SOURCES).map(async ([name, source]) => {
         const element = document.getElementById(source.id);
-        templates[name] = element
-          ? element.textContent.trimStart()
-          : (await fetchText(source.url)).trimStart();
+        if (element) {
+          templates[name] = element.textContent.trimStart();
+          return;
+        }
+        try {
+          templates[name] = (await fetchText(source.url)).trimStart();
+        } catch (error) {
+          if (window.location.pathname === "/" && source.url.startsWith("templates/")) {
+            templates[name] = (await fetchText(`ATLAS/${source.url}`)).trimStart();
+            return;
+          }
+          throw error;
+        }
       }));
     }
 
