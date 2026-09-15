@@ -8,6 +8,7 @@
       inputFormat: "JETM16",
       sampleType: "MC",
       selectedObjects: new Set(),
+      objectSelectionsByFormat: {},
       selectedVariables: {},
       slurm: {
         enabled: true,
@@ -53,6 +54,35 @@
       wizardStatus.textContent = "";
       window.requestAnimationFrame(() => {
         wizardStatus.textContent = message;
+      });
+    }
+
+
+    function initAppearance() {
+      const toggle = document.getElementById("textureToggle");
+      const storageKey = "pcdf-material-textures";
+      let enabled = true;
+
+      try {
+        const saved = window.localStorage.getItem(storageKey);
+        if (saved !== null) enabled = saved === "on";
+      } catch (_error) {
+        // The preference is optional; the page still works if storage is unavailable.
+      }
+
+      const applyPreference = (useTextures) => {
+        document.body.classList.toggle("textures-on", useTextures);
+        toggle.checked = useTextures;
+      };
+
+      applyPreference(enabled);
+      toggle.addEventListener("change", () => {
+        applyPreference(toggle.checked);
+        try {
+          window.localStorage.setItem(storageKey, toggle.checked ? "on" : "off");
+        } catch (_error) {
+          // Keep the setting for this page view when storage is unavailable.
+        }
       });
     }
 
@@ -222,6 +252,15 @@
 
     function selectedSampleType() {
       return document.querySelector("input[name='sampleType']:checked").value;
+    }
+
+    function rememberObjectSelection(format) {
+      state.objectSelectionsByFormat[format] = new Set(state.selectedObjects);
+    }
+
+    function restoreObjectSelection(format) {
+      const saved = state.objectSelectionsByFormat[format];
+      if (saved) state.selectedObjects = new Set(saved);
     }
 
     function variableIsAvailable(key, name) {
@@ -633,7 +672,12 @@
       input.addEventListener("change", () => {
         const previousDefaultPython = generatedPythonName(state.inputFormat);
         const previousInputFormat = state.inputFormat;
-        state.inputFormat = selectedInputFormat();
+        const nextInputFormat = selectedInputFormat();
+        if (nextInputFormat !== previousInputFormat) {
+          rememberObjectSelection(previousInputFormat);
+          state.inputFormat = nextInputFormat;
+          restoreObjectSelection(nextInputFormat);
+        }
         state.sampleType = selectedSampleType();
         const pythonPathInput = document.getElementById("slurmPythonPath");
         if (state.inputFormat !== previousInputFormat &&
@@ -866,6 +910,7 @@ generation in the wizard to include a Perlmutter job script.
 
 
     async function initWizard() {
+      initAppearance();
       initTermHelp();
       initKeyboardShortcuts();
       try {
