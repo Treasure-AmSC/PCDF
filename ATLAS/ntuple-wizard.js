@@ -17,8 +17,8 @@
         nodes: 1,
         time: "00:30:00",
         pythonPath: generatedPythonName("JETM16"),
-        inputManifest: "$SCRATCH/pcdf-inputs.txt",
-        outputBase: "$SCRATCH/pcdf-output"
+        inputManifest: "./pcdf-inputs.txt",
+        outputBase: "./pcdf-output"
       }
     };
 
@@ -43,6 +43,18 @@
       readme: {
         id: "template-readme",
         url: "templates/README_SUBMIT.template.md",
+      },
+      manifest: {
+        id: "template-manifest",
+        url: "templates/make-manifest.template.py",
+      },
+      workflowShell: {
+        id: "template-workflow-shell",
+        url: "templates/run-pcdf.template.sh",
+      },
+      workflowPython: {
+        id: "template-workflow-python",
+        url: "templates/run-pcdf.template.py",
       },
     };
 
@@ -242,8 +254,8 @@
       state.slurm.nodes = numericFieldValue("slurmNodes", 1);
       state.slurm.time = fieldValue("slurmTime") || "00:30:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || generatedPythonName();
-      state.slurm.inputManifest = fieldValue("slurmInputManifest") || "$SCRATCH/pcdf-inputs.txt";
-      state.slurm.outputBase = fieldValue("slurmOutputBase") || "$SCRATCH/pcdf-output";
+      state.slurm.inputManifest = fieldValue("slurmInputManifest") || "./pcdf-inputs.txt";
+      state.slurm.outputBase = fieldValue("slurmOutputBase") || "./pcdf-output";
     }
 
     function selectedInputFormat() {
@@ -840,15 +852,20 @@ Perlmutter run
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
    The Python and SLURM scripts are marked executable.
-2. Create the input manifest named in submit-pcdf-ntuple.slurm. List one local
-   DAOD path per non-empty line. Compute nodes do not download data.
-3. On a login node, check the account, manifest, output directory, and node
+2. On a login node, check the account, manifest, output directory, and node
    count in submit-pcdf-ntuple.slurm. The job writes all tables below the same
    output directory. It runs one file conversion on each physical CPU core.
-4. Submit:
-   sbatch submit-pcdf-ntuple.slurm
-5. Monitor:
-   squeue -u $USER
+3. Start the included workflow:
+   ./run-pcdf.sh
+   It creates the manifest, asks before submitting, then shows the queued,
+   running, and completed job states. It does not cancel the job if you stop
+   monitoring with Ctrl+C.
+   The manifest helper can scan a directory populated by \`rucio download\` or
+   look up a \`scope:name\` dataset at \`NERSC_LOCALGROUPDISK\`. It removes the
+   access proxy's scheme, host, and port from each replica PFN, retaining its
+   local path. The transform does not require Rucio.
+4. To run each step yourself, use make-manifest.py, sbatch
+   submit-pcdf-ntuple.slurm, and squeue -u $USER.
 ` : `
 Perlmutter run
 --------------
@@ -860,6 +877,9 @@ generation in the wizard to include a Perlmutter job script.
         INPUT_FORMAT: state.inputFormat,
         SLURM_FILE_LINE: state.slurm.enabled
           ? "- submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n"
+          : "",
+        WORKFLOW_FILE_LINE: state.slurm.enabled
+          ? "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n"
           : "",
         SLURM_SECTION: slurmSection,
       });
@@ -892,20 +912,40 @@ generation in the wizard to include a Perlmutter job script.
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
       if (!generationReady || !scriptOutput.value || !formIsValid()) return;
-      const pythonName = generatedPythonName().replace(/^\.\//, "");
-      const files = [
-        { name: pythonName, content: scriptOutput.value, mode: 0o755 },
-      ];
-      if (state.slurm.enabled) {
+      try {
+        const pythonName = generatedPythonName().replace(/^\.\//, "");
+        const files = [
+          { name: pythonName, content: scriptOutput.value, mode: 0o755 },
+        ];
+        if (state.slurm.enabled) {
+          files.push({
+            name: "submit-pcdf-ntuple.slurm",
+            content: slurmScriptOutput.value,
+            mode: 0o755,
+          });
+          files.push({
+            name: "run-pcdf.sh",
+            content: requireTemplate("workflowShell"),
+            mode: 0o755,
+          });
+          files.push({
+            name: "run-pcdf.py",
+            content: requireTemplate("workflowPython"),
+            mode: 0o755,
+          });
+        }
         files.push({
-          name: "submit-pcdf-ntuple.slurm",
-          content: slurmScriptOutput.value,
+          name: "make-manifest.py",
+          content: requireTemplate("manifest"),
           mode: 0o755,
         });
+        files.push({ name: "README_SUBMIT.md", content: bundleReadme() });
+        downloadBlob(createTarArchive(files), "pcdf-ntuple-bundle.tar");
+        announce("Bundle download started.");
+      } catch (error) {
+        console.error(error);
+        announce(`Bundle download failed: ${error.message}`);
       }
-      files.push({ name: "README_SUBMIT.md", content: bundleReadme() });
-      downloadBlob(createTarArchive(files), "pcdf-ntuple-bundle.tar");
-      announce("Bundle download started.");
     });
 
 

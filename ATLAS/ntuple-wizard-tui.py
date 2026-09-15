@@ -147,7 +147,7 @@ class NtupleWizardTui(App[None]):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
                             yield Static("Perlmutter job", classes="section-title")
-                            yield Static("Set up the CPU-only job. Use the file picker to make a manifest with one input file path per line.", classes="hint")
+                            yield Static("Set up the CPU-only job. The generated bundle includes a manifest helper for downloaded data and local Rucio copies.", classes="hint")
                             with Collapsible(title="Terms used here", collapsed=True):
                                 yield Static("SLURM: The system that places jobs in a queue and runs them on Perlmutter.\nPerlmutter: The NERSC supercomputer where this job runs.\nManifest: A text file with one input file path on each line.\nQOS: The SLURM queue and its job limits.", classes="hint")
                             yield Label("NERSC account", classes="field-label")
@@ -163,14 +163,15 @@ class NtupleWizardTui(App[None]):
                             yield Label("Wall time", classes="field-label")
                             yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
                             yield Label("Output dataset directory", classes="field-label")
-                            yield Input(value="$SCRATCH/pcdf-output", placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
+                            yield Input(value="./pcdf-output", placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
                             yield Label("Input-file manifest", classes="field-label")
                             yield Input(value=self.state_data.manifest, placeholder="Input-file manifest", id="manifest", validators=[Function(self.non_empty, "Enter an input-file manifest path.")], validate_on=["blur", "submitted"])
                             yield Static("Running on Perlmutter: " + ("Yes" if self.perlmutter else "No"), classes="hint")
                         with VerticalScroll(classes="column"):
-                            yield Static("Choose input files", classes="section-title")
-                            yield Label("Directory to scan", classes="field-label")
-                            yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root", validators=[Function(self.existing_directory, "Scan directory must exist.")], validate_on=["blur", "submitted"])
+                            yield Static("Manifest source", classes="section-title")
+                            yield Static("Choose files below a local data directory. The generated bundle also includes a helper for a Rucio dataset copied to NERSC_LOCALGROUPDISK.", classes="hint")
+                            yield Label("Local data directory", classes="field-label")
+                            yield Input(value="$SCRATCH", placeholder="Directory used with rucio download", id="scan_root", validators=[Function(self.existing_directory, "Data directory must exist.")], validate_on=["blur", "submitted"])
                             with Collapsible(title="Advanced manifest options", collapsed=True):
                                 yield Label("Filename pattern", classes="field-label")
                                 yield Input(value="DAOD_*.pool.root*", placeholder="For example: DAOD_*.pool.root*", id="glob", validators=[Function(self.non_empty, "Enter a filename pattern.")], validate_on=["blur", "submitted"])
@@ -306,7 +307,7 @@ class NtupleWizardTui(App[None]):
         except ValueError:
             state.nodes = 1
         state.time = self.query_one("#time", Input).value.strip() or "00:30:00"
-        state.output_base = self.query_one("#output", Input).value.strip() or "$SCRATCH/pcdf-output"
+        state.output_base = self.query_one("#output", Input).value.strip() or "./pcdf-output"
         state.manifest = self.query_one("#manifest", Input).value.strip() or "$SCRATCH/pcdf-inputs.txt"
         state.scan_root = self.query_one("#scan_root", Input).value.strip() or "$SCRATCH"
         state.glob_pattern = self.query_one("#glob", Input).value.strip() or "DAOD_*.pool.root*"

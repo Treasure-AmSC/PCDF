@@ -4,7 +4,8 @@ PCDF ntuple bundle
 Generated files
 ---------------
 - {{PYTHON_NAME}} is the executable converter.
-{{SLURM_FILE_LINE}}- README_SUBMIT.md contains these instructions.
+- make-manifest.py interactively writes an input manifest from local files or, using the current ATLAS Rucio configuration from CVMFS, from NERSC_LOCALGROUPDISK replica PFNs.
+{{SLURM_FILE_LINE}}{{WORKFLOW_FILE_LINE}}- README_SUBMIT.md contains these instructions.
 
 Local run
 ---------

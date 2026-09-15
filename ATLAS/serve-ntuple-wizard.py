@@ -42,6 +42,21 @@ INJECTIONS = {
         "template-readme",
         ATLAS_DIR / "templates" / "README_SUBMIT.template.md",
     ),
+    "<!-- pcdf-template-manifest -->": (
+        "text/plain",
+        "template-manifest",
+        ATLAS_DIR / "templates" / "make-manifest.template.py",
+    ),
+    "<!-- pcdf-template-workflow-shell -->": (
+        "text/plain",
+        "template-workflow-shell",
+        ATLAS_DIR / "templates" / "run-pcdf.template.sh",
+    ),
+    "<!-- pcdf-template-workflow-python -->": (
+        "text/plain",
+        "template-workflow-python",
+        ATLAS_DIR / "templates" / "run-pcdf.template.py",
+    ),
 }
 
 

@@ -94,8 +94,8 @@ class WizardState:
     qos: str = "regular"
     nodes: int = 1
     time: str = "00:30:00"
-    output_base: str = "$SCRATCH/pcdf-output"
-    manifest: str = "$SCRATCH/pcdf-inputs.txt"
+    output_base: str = "./pcdf-output"
+    manifest: str = "./pcdf-inputs.txt"
     scan_root: str = "$SCRATCH"
     glob_pattern: str = "DAOD_*.pool.root*"
 
@@ -217,20 +217,26 @@ Perlmutter run
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
    The Python and SLURM scripts are marked executable.
-2. Create the input manifest named in submit-pcdf-ntuple.slurm. List one local
-   DAOD path per non-empty line. Compute nodes do not download data.
-3. On a login node, check the account, manifest, output directory, and node
+2. On a login node, check the account, manifest, output directory, and node
    count in submit-pcdf-ntuple.slurm. The job writes all tables below the same
    output directory. It runs one file conversion on each physical CPU core.
-4. Submit:
-   sbatch submit-pcdf-ntuple.slurm
-5. Monitor:
-   squeue -u $USER
+3. Start the included workflow:
+   ./run-pcdf.sh
+   It creates the manifest, asks before submitting, then shows the queued,
+   running, and completed job states. It does not cancel the job if you stop
+   monitoring with Ctrl+C.
+   The manifest helper can scan a directory populated by `rucio download` or
+   look up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`. It removes the
+   access proxy's scheme, host, and port from each replica PFN, retaining its
+   local path. The transform does not require Rucio.
+4. To run each step yourself, use make-manifest.py, sbatch
+   submit-pcdf-ntuple.slurm, and squeue -u $USER.
 """
     return apply_template((TEMPLATE_DIR / "README_SUBMIT.template.md").read_text(), {
         "PYTHON_NAME": python_name,
         "INPUT_FORMAT": state.input_format,
         "SLURM_FILE_LINE": "- submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n",
+        "WORKFLOW_FILE_LINE": "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n",
         "SLURM_SECTION": slurm_section,
     })
 
@@ -240,16 +246,28 @@ def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path
     py_path = output_dir / generated_python_name(state.input_format)
     slurm_path = output_dir / "submit-pcdf-ntuple.slurm"
     readme_path = output_dir / "README_SUBMIT.md"
+    manifest_helper_path = output_dir / "make-manifest.py"
+    workflow_shell_path = output_dir / "run-pcdf.sh"
+    workflow_python_path = output_dir / "run-pcdf.py"
     bundle_path = output_dir / "pcdf-ntuple-bundle.tar"
     py_path.write_text(build_python(state))
     slurm_path.write_text(build_slurm(state, output_dir))
     readme_path.write_text(build_readme(state))
+    manifest_helper_path.write_text((TEMPLATE_DIR / "make-manifest.template.py").read_text())
+    workflow_shell_path.write_text((TEMPLATE_DIR / "run-pcdf.template.sh").read_text())
+    workflow_python_path.write_text((TEMPLATE_DIR / "run-pcdf.template.py").read_text())
     py_path.chmod(0o755)
     slurm_path.chmod(0o755)
+    manifest_helper_path.chmod(0o755)
+    workflow_shell_path.chmod(0o755)
+    workflow_python_path.chmod(0o755)
     with tarfile.open(bundle_path, "w") as archive:
         archive.add(py_path, arcname=py_path.name)
         archive.add(slurm_path, arcname=slurm_path.name)
         archive.add(readme_path, arcname=readme_path.name)
+        archive.add(manifest_helper_path, arcname=manifest_helper_path.name)
+        archive.add(workflow_shell_path, arcname=workflow_shell_path.name)
+        archive.add(workflow_python_path, arcname=workflow_python_path.name)
     return py_path, slurm_path, bundle_path
 
 

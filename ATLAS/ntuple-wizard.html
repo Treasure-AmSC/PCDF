@@ -161,8 +161,9 @@
                     </div>
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmOutputBase" value="$SCRATCH/pcdf-output" required placeholder="Output base directory" data-error-id="slurmOutputBaseError">
+                        <input class="form-control slurm-input" id="slurmOutputBase" value="./pcdf-output" required placeholder="Output base directory" aria-describedby="slurmOutputBaseHelp" data-error-id="slurmOutputBaseError">
                         <label for="slurmOutputBase">Output dataset directory</label>
+                        <div class="form-text text-secondary" id="slurmOutputBaseHelp">By default, results are written beside this bundle in <code>pcdf-output</code>.</div>
                         <div class="invalid-feedback" id="slurmOutputBaseError">Enter an output directory.</div>
                       </div>
                     </div>
@@ -176,11 +177,11 @@
                     </div>
                     <div class="col-12">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt" required placeholder="Input manifest path" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
+                        <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="Input manifest path" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
                         <label for="slurmInputManifest">Input-file manifest path</label>
                         <div class="invalid-feedback" id="slurmInputManifestError">Enter the manifest path.</div>
                       </div>
-                      <div class="form-text text-secondary" id="slurmInputManifestHelp">Add one local DAOD path on each non-empty line. Make this file before you submit. Compute nodes cannot download data.</div>
+                      <div class="form-text text-secondary" id="slurmInputManifestHelp">Create this file before submitting the job. Run the bundle's <code>make-manifest.py</code> from this directory. It prompts for downloaded files or a dataset on <code>NERSC_LOCALGROUPDISK</code>, then writes <code>pcdf-inputs.txt</code> here by default. The job reads only these paths. Compute nodes do not download data.</div>
                     </div>
                   </div>
                 </div>
@@ -200,10 +201,9 @@
                   <div class="alert alert-info mt-4 mb-0">
                     <p class="mb-2">To convert one file on this computer, run <code>uv run ./ntuple-maker-jetm16.py DAOD_JETM16.37620644._000244.pool.root -o parquet-output</code>. Use <code>ntuple-maker-physlite.py</code> for PHYSLITE. The README in the bundle explains the output layout and file IDs.</p>
                     <ol class="submission-steps mb-0 ps-3" id="slurmRunInstructions">
-                      <li>Make the input manifest shown on the Perlmutter page. Compute nodes cannot download data.</li>
                       <li>Download the bundle and copy it to Perlmutter. Extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>On a login node, check that <code>uv</code> and GNU <code>parallel</code> are available. Submit the job with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
-                      <li>Check the job with <code>squeue -u $USER</code>. If it fails, read <code>pcdf-ntuple-&lt;jobid&gt;.out</code> and <code>pcdf-ntuple-&lt;jobid&gt;.err</code>. The bundle README explains how to keep extra logs.</li>
+                      <li>On a login node, review <code>submit-pcdf-ntuple.slurm</code>, then run <code>./run-pcdf.sh</code>. It creates the manifest, asks before submission, and follows the job until it ends.</li>
+                      <li>Keep the terminal open while the workflow monitors the job. If you stop it, the job continues under SLURM. Read <code>pcdf-ntuple-&lt;jobid&gt;.out</code> and <code>pcdf-ntuple-&lt;jobid&gt;.err</code> if the job fails.</li>
                     </ol>
                   </div>
                 </div>
@@ -283,6 +283,9 @@
   <!-- pcdf-template-python -->
   <!-- pcdf-template-slurm -->
   <!-- pcdf-template-readme -->
+  <!-- pcdf-template-manifest -->
+  <!-- pcdf-template-workflow-shell -->
+  <!-- pcdf-template-workflow-python -->
   <!-- The local server can inline the split metadata/templates here; the static page fetches them when absent. -->
   <script src="ntuple-wizard.js"></script>
 </body>
