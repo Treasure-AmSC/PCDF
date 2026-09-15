@@ -104,7 +104,7 @@ Static, Label {
     layout: grid;
     grid-size: 2;
     grid-columns: auto 1fr;
-    grid-gutter: 0 1;
+    grid-gutter: 0 2;
     align-vertical: middle;
 }
 

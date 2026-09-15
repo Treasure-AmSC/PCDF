@@ -3,9 +3,9 @@
     "title": "Events",
     "folder": "Event",
     "indexName": "eventIndex",
-    "description": "Run/event identifiers, luminosity block, and beam spot coordinates from EventInfo.",
+    "description": "Run and event numbers, lumiBlock, and beam-spot coordinates from EventInfo.",
     "recommended": true,
-    "requiredReason": "Event is always included to provide eventIndex links for every output folder.",
+    "requiredReason": "Event is always included. Every other table links to it with eventIndex.",
     "aliases": {
       "runNumber": "EventInfoAuxDyn.runNumber",
       "eventNumber": "EventInfoAuxDyn.eventNumber",
@@ -19,7 +19,7 @@
     "title": "Small-R jets",
     "folder": "Jet",
     "indexName": "jetIndex",
-    "description": "Small-radius jet four-vectors and original parton flavor label. MC-only labels are omitted automatically for data inputs.",
+    "description": "Small-R jet four-vectors and the parton flavor label. The program skips the flavor label for collision data.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -45,7 +45,7 @@
     "title": "Jet constituents",
     "folder": "Const",
     "indexName": "constIndex",
-    "description": "Charged and neutral PFO constituent four-vectors linked from AnalysisJets; JETM16 only.",
+    "description": "Charged and neutral PFO four-vectors for the constituents of each jet. Available only with JETM16 input.",
     "recommended": true,
     "requiresJetm16": true,
     "dependsOn": [
@@ -80,7 +80,7 @@
     "title": "Jet ghost tracks",
     "folder": "Track",
     "indexName": "trackIndex",
-    "description": "Original per-jet track trajectory parameters reached through jet GhostTrack links.",
+    "description": "Track parameters for tracks linked to each jet. ATLAS calls these links GhostTrack.",
     "recommended": true,
     "dependsOn": [
       "Jet"
@@ -97,7 +97,7 @@
     "title": "Large-R jets",
     "folder": "LargeRJet",
     "indexName": "largeRJetIndex",
-    "description": "Large-radius jet four-vectors and original truth label. MC-only labels are omitted automatically for data inputs.",
+    "description": "Large-R jet four-vectors and the truth label. The program skips the truth label for collision data.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -123,7 +123,7 @@
     "title": "Electrons",
     "folder": "Electron",
     "indexName": "electronIndex",
-    "description": "Original electron kinematics, electric charge, and truth type. MC-only labels are omitted automatically for data inputs.",
+    "description": "Electron momentum, direction, charge, and truth type. The program skips truth type for collision data.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -148,7 +148,7 @@
     "title": "Muons",
     "folder": "Muon",
     "indexName": "muonIndex",
-    "description": "Original muon kinematics, electric charge, and truth type. MC-only labels are omitted automatically for data inputs.",
+    "description": "Muon momentum, direction, charge, and truth type. The program skips truth type for collision data.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -173,7 +173,7 @@
     "title": "Photons",
     "folder": "Photon",
     "indexName": "photonIndex",
-    "description": "Original photon kinematics and truth type; charge is intentionally omitted because photons have no charge branch. MC-only labels are omitted automatically for data inputs.",
+    "description": "Photon momentum, direction, and truth type. Photons have no charge field. The program skips truth type for collision data.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -194,9 +194,9 @@
     ]
   },
   "MET": {
-    "title": "Missing ET",
+    "title": "Missing transverse momentum",
     "folder": "MET",
-    "description": "Original missing transverse momentum x/y components.",
+    "description": "The x and y parts of missing transverse momentum.",
     "recommended": true,
     "dependsOn": [
       "Event"

@@ -170,14 +170,16 @@ class WizardState:
 def build_python(state: WizardState) -> str:
     config = state.selected_config()
     format_note = (
-        "PHYSLITE selected: jet constituents are disabled."
+        "PHYSLITE does not contain the data needed for jet constituents, so "
+        "that output is off."
         if config["inputFormat"] == "PHYSLITE"
-        else "JETM16 selected: jet constituents can be read."
+        else "JETM16 contains the data needed for jet constituents."
     )
     sample_note = (
-        "Data selected: MC-only truth/flavor branches are omitted; lumiBlock is included in Events."
+        "For collision data, truth and flavor fields are skipped. Events include "
+        "lumiBlock."
         if config["sampleType"] == "DATA"
-        else "MC selected: truth/flavor branches can be included when selected."
+        else "Simulation input can include the truth and flavor fields you select."
     )
     return apply_template((TEMPLATE_DIR / "ntuple-maker.template.py").read_text(), {
         "INPUT_FORMAT": config["inputFormat"],
@@ -207,18 +209,47 @@ def build_slurm(state: WizardState, output_dir: Path) -> str:
     })
 
 
+def build_readme(state: WizardState) -> str:
+    python_name = generated_python_name(state.input_format)
+    slurm_section = """\
+Perlmutter run
+--------------
+1. Copy this bundle to Perlmutter and extract it:
+   tar -xf pcdf-ntuple-bundle.tar
+   The Python and SLURM scripts are marked executable.
+2. Create the input manifest named in submit-pcdf-ntuple.slurm. List one local
+   DAOD path per non-empty line. Compute nodes do not download data.
+3. On a login node, check the account, manifest, output directory, and node
+   count in submit-pcdf-ntuple.slurm. The job writes all tables below the same
+   output directory. It runs one file conversion on each physical CPU core.
+4. Submit:
+   sbatch submit-pcdf-ntuple.slurm
+5. Monitor:
+   squeue -u $USER
+"""
+    return apply_template((TEMPLATE_DIR / "README_SUBMIT.template.md").read_text(), {
+        "PYTHON_NAME": python_name,
+        "INPUT_FORMAT": state.input_format,
+        "SLURM_FILE_LINE": "- submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n",
+        "SLURM_SECTION": slurm_section,
+    })
+
+
 def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     py_path = output_dir / generated_python_name(state.input_format)
     slurm_path = output_dir / "submit-pcdf-ntuple.slurm"
+    readme_path = output_dir / "README_SUBMIT.md"
     bundle_path = output_dir / "pcdf-ntuple-bundle.tar"
     py_path.write_text(build_python(state))
     slurm_path.write_text(build_slurm(state, output_dir))
+    readme_path.write_text(build_readme(state))
     py_path.chmod(0o755)
     slurm_path.chmod(0o755)
     with tarfile.open(bundle_path, "w") as archive:
         archive.add(py_path, arcname=py_path.name)
         archive.add(slurm_path, arcname=slurm_path.name)
+        archive.add(readme_path, arcname=readme_path.name)
     return py_path, slurm_path, bundle_path
 
 

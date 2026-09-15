@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ATLAS JETM16 Parquet Wizard</title>
+  <title>ATLAS DAOD Parquet Wizard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Iosevka+Charon:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Franklin:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -12,67 +12,72 @@
   <link href="ntuple-wizard.css" rel="stylesheet">
 </head>
 <body>
-  <main class="container-fluid px-3 px-lg-4 py-4 py-lg-5">
+  <a class="skip-link" href="#stepInputHeading">Skip to the wizard</a>
+  <main id="mainContent" class="container-fluid px-3 px-lg-4 py-4 py-lg-5">
     <section class="row justify-content-center">
       <div class="col-12 col-xxl-11 pcdf-page-width">
         <div class="mb-4 text-center text-lg-start">
-          <h1 class="display-5 fw-bold"><i class="bi bi-stars me-2" aria-hidden="true"></i>ATLAS JETM16 → Parquet script wizard</h1>
-          <p class="lead text-secondary mb-0">Interactively select DAOD objects and variables, then download a custom Python script that writes each selected object to its own Parquet folder.</p>
+          <h1 class="display-5 fw-bold"><i class="bi bi-stars me-2" aria-hidden="true"></i>ATLAS DAOD → Parquet wizard</h1>
+          <p class="lead text-secondary mb-0">Choose the data you need from an <span class="term-with-help"><span class="term-label" aria-describedby="tip-daod">ATLAS DAOD</span><span class="term-tooltip" id="tip-daod" role="tooltip">An ATLAS analysis data format stored in a ROOT file.</span></span>. The wizard builds a Python program that writes one Parquet table for each object you select.</p>
         </div>
 
         <div class="wizard-shell rounded-4 p-3 p-md-4">
-          <div class="wizard-progress mb-4" aria-label="Wizard progress">
-            <button class="btn step-pill active flex-fill" type="button" data-step-target="0"><i class="bi bi-file-earmark-binary me-1" aria-hidden="true"></i>1. Input format</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="1"><i class="bi bi-boxes me-1" aria-hidden="true"></i>2. Objects</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="2"><i class="bi bi-list-check me-1" aria-hidden="true"></i>3. Variables</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="3"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>4. SLURM</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="4"><i class="bi bi-code-square me-1" aria-hidden="true"></i>5. Generate</button>
-          </div>
+          <nav class="wizard-progress mb-4" aria-label="Wizard steps">
+            <button class="btn step-pill active flex-fill" type="button" data-step-target="0" aria-controls="stepInput" aria-current="step"><i class="bi bi-file-earmark-binary me-1" aria-hidden="true"></i>1. Input format</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="1" aria-controls="stepObjects"><i class="bi bi-boxes me-1" aria-hidden="true"></i>2. Objects</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="2" aria-controls="stepVariables"><i class="bi bi-list-check me-1" aria-hidden="true"></i>3. Variables</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="3" aria-controls="stepSlurm"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>4. SLURM</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="4" aria-controls="stepGenerate"><i class="bi bi-code-square me-1" aria-hidden="true"></i>5. Generate</button>
+          </nav>
 
           <form id="wizardForm" class="needs-validation" novalidate>
-            <section class="wizard-step" data-step="0">
+            <div id="wizardStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+            <section id="stepInput" class="wizard-step" data-step="0" aria-labelledby="stepInputHeading">
               <div class="row g-4 align-items-stretch">
                 <div class="col-lg-6">
                   <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
-                      <h2 class="h4 card-title">Choose the DAOD input</h2>
-                      <p class="text-secondary">JETM16 includes PHYSLITE-like analysis objects plus jet-analysis content. PHYSLITE can be used directly, but jet constituent Particle Flow containers are not available there.</p>
-                      <div class="vstack gap-3 mt-4">
-                        <label class="form-check p-3 border rounded-3">
-                          <input class="form-check-input" type="radio" name="inputFormat" id="formatJetm16" value="JETM16" checked required>
-                          <span class="form-check-label fw-semibold"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>DAOD_JETM16</span>
-                          <span class="d-block small text-secondary">Enable all objects, including jet constituents linked from AnalysisJets.</span>
-                        </label>
-                        <label class="form-check p-3 border rounded-3">
-                          <input class="form-check-input" type="radio" name="inputFormat" id="formatPhyslite" value="PHYSLITE" required>
-                          <span class="form-check-label fw-semibold"><i class="bi bi-file-earmark me-1" aria-hidden="true"></i>DAOD_PHYSLITE</span>
-                          <span class="d-block small text-secondary">Disable the jet constituent object because charged and neutral PFO constituent containers are unavailable.</span>
-                        </label>
-                      </div>
+                      <h2 id="stepInputHeading" class="h4 card-title" tabindex="-1">Choose the DAOD input</h2>
+                      <p id="inputFormatHelp" class="text-secondary"><span class="term-with-help"><span class="term-label" aria-describedby="tip-jetm16">JETM16</span><span class="term-tooltip" id="tip-jetm16" role="tooltip">An ATLAS DAOD made for jet studies. It includes detailed jet content.</span></span> has extra data for jet studies. <span class="term-with-help"><span class="term-label" aria-describedby="tip-physlite">PHYSLITE</span><span class="term-tooltip" id="tip-physlite" role="tooltip">A compact ATLAS DAOD with objects used in many analyses.</span></span> is smaller and lacks the particle-flow data used to build jet constituents.</p>
+                      <fieldset aria-describedby="inputFormatHelp">
+                        <legend class="visually-hidden">DAOD input format</legend>
+                        <div class="vstack gap-3 mt-4">
+                          <label class="form-check p-3 border rounded-3">
+                            <input class="form-check-input" type="radio" name="inputFormat" id="formatJetm16" value="JETM16" checked required>
+                            <span class="form-check-label fw-semibold"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>DAOD_JETM16</span>
+                            <span class="d-block small text-secondary">Includes every object offered by this wizard, including jet constituents.</span>
+                          </label>
+                          <label class="form-check p-3 border rounded-3">
+                            <input class="form-check-input" type="radio" name="inputFormat" id="formatPhyslite" value="PHYSLITE" required>
+                            <span class="form-check-label fw-semibold"><i class="bi bi-file-earmark me-1" aria-hidden="true"></i>DAOD_PHYSLITE</span>
+                            <span class="d-block small text-secondary">Includes common analysis objects, but not jet constituents.</span>
+                          </label>
+                        </div>
+                      </fieldset>
                       <hr class="border-secondary-subtle my-4">
-                      <h3 class="h5">Sample type</h3>
-                      <p class="text-secondary small mb-3">Choose data to omit MC-only truth/flavor branches and keep luminosity-block information in the Event table.</p>
-                      <div class="btn-group w-100 sample-toggle" role="group" aria-label="Sample type">
-                        <input class="btn-check" type="radio" name="sampleType" id="sampleMc" value="MC" checked required>
-                        <label class="btn btn-outline-light" for="sampleMc"><i class="bi bi-cpu me-1" aria-hidden="true"></i>Simulation / MC</label>
-                        <input class="btn-check" type="radio" name="sampleType" id="sampleData" value="DATA" required>
-                        <label class="btn btn-outline-light" for="sampleData"><i class="bi bi-database me-1" aria-hidden="true"></i>Collision data</label>
-                      </div>
+                      <fieldset aria-describedby="sampleTypeHelp">
+                        <legend class="h5">Sample type</legend>
+                        <p id="sampleTypeHelp" class="text-secondary small mb-3">For collision data, the program skips truth and flavor fields. It adds <code>lumiBlock</code> to the Event table.</p>
+                        <div class="btn-group w-100 sample-toggle">
+                          <input class="btn-check" type="radio" name="sampleType" id="sampleMc" value="MC" checked required>
+                          <label class="btn btn-outline-light" for="sampleMc"><i class="bi bi-cpu me-1" aria-hidden="true"></i>Simulation / MC</label>
+                          <input class="btn-check" type="radio" name="sampleType" id="sampleData" value="DATA" required>
+                          <label class="btn btn-outline-light" for="sampleData"><i class="bi bi-database me-1" aria-hidden="true"></i>Collision data</label>
+                        </div>
+                      </fieldset>
                     </div>
                   </div>
                 </div>
                 <div class="col-lg-6">
                   <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
-                      <h2 class="h4 card-title">Generated script behavior</h2>
+                      <h2 class="h4 card-title">What the program does</h2>
                       <ul class="text-secondary mb-0">
-                        <li>Uses <code>uproot</code>, <code>awkward</code>, <code>numba</code>, <code>pyarrow</code>, <code>rich</code>, and <code>click</code>, matching <code>ATLAS/ntuple-maker.py</code>.</li>
-                        <li>Reads the selected branches from <code>CollectionTree</code>.</li>
-                        <li>For collision data, omits MC-only truth/flavor variables and includes <code>lumiBlock</code> in Events.</li>
-                        <li>Writes selected table folders under one output root using <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions.</li>
-                        <li>Strips leading zeros from <code>fileNumber</code> so Hive partition readers infer it as an integer.</li>
-                        <li>For nonstandard filenames, partitions by the numeric high/low halves of the file's ROOT UUID without inventing a task ID or file number. Each half is stored as a signed 64-bit integer for broad Hive/Parquet reader compatibility; negative values are the lossless two's-complement representation of the original UUID bits.</li>
-                        <li>Encodes the file number into the leading 16 bits of generated indices so <code>eventIndex</code>, <code>jetIndex</code>, and related links are global within each <code>tid</code>.</li>
+                        <li>Reads the fields you choose from <span class="term-with-help"><span class="term-label" aria-describedby="tip-collection-tree"><code>CollectionTree</code></span><span class="term-tooltip" id="tip-collection-tree" role="tooltip">The ROOT tree that stores events and physics objects in an ATLAS DAOD.</span></span>.</li>
+                        <li>Writes one Parquet table for each object you select.</li>
+                        <li>Uses the task and file numbers from a standard ATLAS filename. For other names, it uses the <span class="term-with-help"><span class="term-label" aria-describedby="tip-root-id">ROOT file ID</span><span class="term-tooltip" id="tip-root-id" role="tooltip">A 128-bit UUID stored inside a ROOT file. It stays the same if the file is renamed.</span></span>.</li>
+                        <li>Keeps the generated table links unique within each task or file.</li>
+                        <li>For collision data, skips truth and flavor fields and adds <code>lumiBlock</code> to Events.</li>
                       </ul>
                     </div>
                   </div>
@@ -80,156 +85,197 @@
               </div>
             </section>
 
-            <section class="wizard-step d-none" data-step="1">
+            <section id="stepObjects" class="wizard-step d-none" data-step="1" aria-labelledby="stepObjectsHeading" hidden>
               <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
                 <div>
-                  <h2 class="h4 mb-1">Select output objects</h2>
-                  <p class="text-secondary mb-0">Each checked object becomes a top-level table folder containing <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions. Deselecting an object also deselects any objects that depend on it.</p>
+                  <h2 id="stepObjectsHeading" class="h4 mb-1" tabindex="-1">Select output objects</h2>
+                  <p class="text-secondary mb-0">Each object you select becomes a Parquet table. The program gets file IDs from the ATLAS filename when it can. Otherwise, it reads the ID stored in the ROOT file. Turning off an object also turns off tables that need it.</p>
                 </div>
                 <div class="d-flex flex-wrap gap-2 align-self-start" role="group" aria-label="Object selection shortcuts">
                   <button class="btn btn-outline-light" type="button" id="selectRecommended">Recommended</button>
                   <button class="btn btn-outline-light" type="button" id="selectAll">All available</button>
-                  <button class="btn btn-outline-light" type="button" id="selectNone">None</button>
+                  <button class="btn btn-outline-light" type="button" id="selectNone">Event only</button>
                 </div>
               </div>
               <div class="row g-3" id="objectList"></div>
             </section>
 
-            <section class="wizard-step d-none" data-step="2">
+            <section id="stepVariables" class="wizard-step d-none" data-step="2" aria-labelledby="stepVariablesHeading" hidden>
               <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
                 <div>
-                  <h2 class="h4 mb-1">Choose variables</h2>
-                  <p class="text-secondary mb-0">Variables are grouped by object. Four-vector components are required and cannot be deselected.</p>
+                  <h2 id="stepVariablesHeading" class="h4 mb-1" tabindex="-1">Choose variables</h2>
+                  <p class="text-secondary mb-0">Variables are grouped by object. The four-vector fields must stay selected.</p>
                 </div>
-                <button class="btn btn-outline-info align-self-start" type="button" id="restoreDefaults">Restore selected defaults</button>
+                <button class="btn btn-outline-info align-self-start" type="button" id="restoreDefaults">Restore all available variables</button>
               </div>
               <div class="accordion" id="variableAccordion"></div>
             </section>
 
-            <section class="wizard-step d-none" data-step="3">
+            <section id="stepSlurm" class="wizard-step d-none" data-step="3" aria-labelledby="stepSlurmHeading" hidden>
               <div class="card border-secondary-subtle slurm-settings">
                 <div class="card-body">
                   <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
                     <div>
-                      <h2 class="h4 mb-1">SLURM / NERSC Perlmutter</h2>
-                      <p class="text-secondary mb-0">Generate a CPU-only <code>sbatch</code> wrapper for the Python converter. Input files must already be listed in the manifest before the compute job starts.</p>
+                      <h2 id="stepSlurmHeading" class="h4 mb-1" tabindex="-1">Perlmutter job</h2>
+                      <p class="text-secondary mb-0">Build a <span class="term-with-help"><span class="term-label" aria-describedby="tip-slurm">SLURM</span><span class="term-tooltip" id="tip-slurm" role="tooltip">The system that places jobs in a queue and runs them on Perlmutter.</span></span> job script for <span class="term-with-help"><span class="term-label" aria-describedby="tip-perlmutter">NERSC Perlmutter</span><span class="term-tooltip" id="tip-perlmutter" role="tooltip">The NERSC supercomputer where this job script runs.</span></span>. Before you submit the job, make a <span class="term-with-help"><span class="term-label" aria-describedby="tip-manifest">manifest</span><span class="term-tooltip" id="tip-manifest" role="tooltip">A text file with one input file path on each line.</span></span>.</p>
                     </div>
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
-                      <label class="form-check-label" for="enableSlurm">On</label>
+                      <label class="form-check-label" for="enableSlurm">Generate script</label>
                     </div>
                   </div>
                   <div class="row g-3">
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmAccount" value="" required placeholder="NERSC project account">
+                        <input class="form-control slurm-input" id="slurmAccount" value="" required placeholder="NERSC project account" data-error-id="slurmAccountError">
                         <label for="slurmAccount">NERSC project account</label>
-                        <div class="invalid-feedback">Enter your NERSC project account before downloading or submitting.</div>
+                        <div class="invalid-feedback" id="slurmAccountError">Enter your NERSC project account before downloading or submitting.</div>
                       </div>
                     </div>
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmQos" value="regular" required placeholder="QOS">
-                        <label for="slurmQos">QOS</label>
-                        <div class="invalid-feedback">Enter a QOS such as regular.</div>
+                        <input class="form-control slurm-input" id="slurmQos" value="regular" required placeholder="QOS" data-error-id="slurmQosError">
+                        <label for="slurmQos">Queue (QOS)</label>
+                        <div class="invalid-feedback" id="slurmQosError">Enter a queue name, such as regular.</div>
                       </div>
                     </div>
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1" required placeholder="CPU nodes">
+                        <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1" required placeholder="CPU nodes" data-error-id="slurmNodesError">
                         <label for="slurmNodes">CPU nodes</label>
-                        <div class="invalid-feedback">Request at least one CPU node.</div>
+                        <div class="invalid-feedback" id="slurmNodesError">Request at least one CPU node.</div>
                       </div>
                     </div>
                     <div class="col-md-6">
                       <div class="alert alert-secondary h-100 mb-0">
-                        The generated job requests exclusive CPU nodes, discovers physical cores at runtime, counts the manifest entries, and fills the available cores with one conversion per core.
+                        The job uses whole CPU nodes. It starts one file conversion on each physical CPU core. It continues until all files are done.
                       </div>
                     </div>
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmTime" value="00:30:00" required pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="Wall time">
+                        <input class="form-control slurm-input" id="slurmTime" value="00:30:00" required pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="Wall time" aria-describedby="slurmTimeHelp" data-error-id="slurmTimeError">
                         <label for="slurmTime">Wall time</label>
-                        <div class="form-text text-secondary">Default is 30 minutes based on observed conversion throughput.</div>
-                        <div class="invalid-feedback">Use HH:MM:SS, for example 00:30:00.</div>
+                        <div class="form-text text-secondary" id="slurmTimeHelp">The 30-minute default is based on test runs.</div>
+                        <div class="invalid-feedback" id="slurmTimeError">Use HH:MM:SS, for example 00:30:00.</div>
                       </div>
                     </div>
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmOutputBase" value="$SCRATCH/pcdf-output" required placeholder="Output base directory">
-                        <label for="slurmOutputBase">Output base directory</label>
-                        <div class="invalid-feedback">Enter an output directory.</div>
+                        <input class="form-control slurm-input" id="slurmOutputBase" value="$SCRATCH/pcdf-output" required placeholder="Output base directory" data-error-id="slurmOutputBaseError">
+                        <label for="slurmOutputBase">Output dataset directory</label>
+                        <div class="invalid-feedback" id="slurmOutputBaseError">Enter an output directory.</div>
                       </div>
                     </div>
                     <div class="col-12">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmPythonPath" value="./ntuple-maker-jetm16.py" required placeholder="Python script path on Perlmutter">
-                        <label for="slurmPythonPath">Python script path on Perlmutter</label>
-                        <div class="invalid-feedback">Enter the converter path.</div>
+                        <input class="form-control slurm-input" id="slurmPythonPath" value="./ntuple-maker-jetm16.py" required placeholder="Converter path on Perlmutter" aria-describedby="slurmPythonPathHelp" data-error-id="slurmPythonPathError">
+                        <label for="slurmPythonPath">Converter path on Perlmutter</label>
+                        <div class="invalid-feedback" id="slurmPythonPathError">Enter the converter path.</div>
                       </div>
-                      <div class="form-text text-secondary">Defaults to the converter filename included in the downloaded bundle.</div>
+                      <div class="form-text text-secondary" id="slurmPythonPathHelp">The default is the converter included in the bundle.</div>
                     </div>
                     <div class="col-12">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt" required placeholder="Input manifest path">
-                        <label for="slurmInputManifest">Input manifest path</label>
-                        <div class="invalid-feedback">Enter the manifest path.</div>
+                        <input class="form-control slurm-input" id="slurmInputManifest" value="$SCRATCH/pcdf-inputs.txt" required placeholder="Input manifest path" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
+                        <label for="slurmInputManifest">Input-file manifest path</label>
+                        <div class="invalid-feedback" id="slurmInputManifestError">Enter the manifest path.</div>
                       </div>
-                      <div class="form-text text-secondary">One local DAOD path per non-empty line. Create this manifest before submitting the compute job; the wrapper will not download data on compute nodes.</div>
+                      <div class="form-text text-secondary" id="slurmInputManifestHelp">Add one local DAOD path on each non-empty line. Make this file before you submit. Compute nodes cannot download data.</div>
                     </div>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section class="wizard-step d-none" data-step="4">
+            <section id="stepGenerate" class="wizard-step d-none" data-step="4" aria-labelledby="stepGenerateHeading" hidden>
               <div class="row g-4 generate-grid">
                 <div class="col-xl-5 summary-column">
-                  <h2 class="h4 generate-heading">Review configuration</h2>
+                  <h2 id="stepGenerateHeading" class="h4 generate-heading" tabindex="-1">Review configuration</h2>
                   <div id="summary" class="vstack gap-3 mb-4"></div>
                   <div class="action-bar">
-                    <button class="btn btn-outline-light" type="button" id="downloadScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download Python</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download SLURM</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download converter</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download SLURM script</button>
                     <button class="btn btn-outline-light" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>Download bundle (.tar)</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0">
-                    <p class="mb-2">Local run: <code>uv run ./ntuple-maker-jetm16.py DAOD_JETM16.37620644._000244.pool.root -o parquet-output</code> (or <code>ntuple-maker-physlite.py</code> when PHYSLITE is selected). Standard ATLAS filenames produce <code>tid=...</code>/<code>fileNumber=...</code> Hive partitions. Other names split the ROOT UUID losslessly into numeric <code>fileUUIDHigh=...</code>/<code>fileUUIDLow=...</code> partitions.</p>
-                    <ol class="submission-steps mb-0 ps-3">
-                      <li>Create the input manifest listed on the SLURM page before submitting; the compute job never downloads data.</li>
-                      <li>Download the tar bundle, copy it to Perlmutter, and extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>Return to a login node, ensure <code>uv</code> and GNU <code>parallel</code> are available, then submit with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
-                      <li>Monitor with <code>squeue -u $USER</code>; inspect <code>pcdf-ntuple-&lt;jobid&gt;.out</code>, <code>.err</code>, and per-node GNU parallel logs in the generated run-helper directory if <code>PCDF_KEEP_RUN_DIR=1</code> was set.</li>
+                    <p class="mb-2">To convert one file on this computer, run <code>uv run ./ntuple-maker-jetm16.py DAOD_JETM16.37620644._000244.pool.root -o parquet-output</code>. Use <code>ntuple-maker-physlite.py</code> for PHYSLITE. The README in the bundle explains the output layout and file IDs.</p>
+                    <ol class="submission-steps mb-0 ps-3" id="slurmRunInstructions">
+                      <li>Make the input manifest shown on the Perlmutter page. Compute nodes cannot download data.</li>
+                      <li>Download the bundle and copy it to Perlmutter. Extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
+                      <li>On a login node, check that <code>uv</code> and GNU <code>parallel</code> are available. Submit the job with <code>sbatch submit-pcdf-ntuple.slurm</code>.</li>
+                      <li>Check the job with <code>squeue -u $USER</code>. If it fails, read <code>pcdf-ntuple-&lt;jobid&gt;.out</code> and <code>pcdf-ntuple-&lt;jobid&gt;.err</code>. The bundle README explains how to keep extra logs.</li>
                     </ol>
                   </div>
                 </div>
                 <div class="col-xl-7 script-column">
                   <h2 class="h4 generate-heading">Generated scripts</h2>
-                  <label for="scriptHighlight" class="form-label fw-semibold">Generated Python script</label>
-                  <pre id="scriptHighlight" class="form-control code-output python-preview mb-4" tabindex="0" aria-live="polite"><code></code></pre>
+                  <h3 id="scriptHighlightHeading" class="h6 form-label fw-semibold">Generated Python script</h3>
+                  <pre id="scriptHighlight" class="form-control code-output python-preview mb-4" tabindex="0" role="region" aria-labelledby="scriptHighlightHeading"><code></code></pre>
                   <textarea id="scriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
 
-                  <label for="slurmScriptHighlight" class="form-label fw-semibold">Generated SLURM submission script</label>
-                  <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" aria-live="polite"><code></code></pre>
+                  <h3 id="slurmScriptHighlightHeading" class="h6 form-label fw-semibold">Generated SLURM submission script</h3>
+                  <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" role="region" aria-labelledby="slurmScriptHighlightHeading"><code></code></pre>
                   <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
                 </div>
               </div>
             </section>
 
-            <div class="d-flex justify-content-between gap-3 mt-4 pt-4 border-top border-secondary-subtle">
-              <button class="btn btn-outline-light" type="button" id="prevStep">Back</button>
-              <button class="btn btn-primary" type="button" id="nextStep">Next</button>
+            <p class="keyboard-help text-secondary small mt-4 mb-2"><span class="fw-semibold">Keyboard:</span> <kbd>F8</kbd> Back · <kbd>F9</kbd> Next · <kbd>F2</kbd> <button class="glossary-link" id="glossaryOpen" type="button" aria-haspopup="dialog" aria-controls="glossaryModal" aria-keyshortcuts="F2">Help</button></p>
+            <div class="d-flex justify-content-between gap-3 pt-4 border-top border-secondary-subtle">
+              <button class="btn btn-outline-light" type="button" id="prevStep" aria-keyshortcuts="F8">Back</button>
+              <button class="btn btn-primary" type="button" id="nextStep" aria-keyshortcuts="F9">Next</button>
             </div>
           </form>
         </div>
       </div>
     </section>
   </main>
+  <dialog class="modal pcdf-modal" id="glossaryModal" aria-labelledby="glossaryTitle" aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h4" id="glossaryTitle" tabindex="-1">Help and glossary</h2>
+          <button class="btn-close btn-close-white" type="button" data-glossary-close aria-label="Close help"></button>
+        </div>
+        <div class="modal-body">
+          <section aria-labelledby="wizardHelpTitle">
+            <h3 class="h5" id="wizardHelpTitle">Using the wizard</h3>
+            <ol>
+              <li>Choose the DAOD format and whether the sample contains simulation or collision data.</li>
+              <li>Choose the physics objects and variables you need.</li>
+              <li>Review the Perlmutter settings if you want a SLURM job script.</li>
+              <li>Download the bundle. Its README explains how to run it.</li>
+            </ol>
+            <p>The generated Python program writes one Parquet table for each selected object. Standard ATLAS filenames provide the task and file numbers. For other filenames, the program uses the ID stored in the ROOT file.</p>
+          </section>
+          <section aria-labelledby="glossaryTermsTitle">
+            <h3 class="h5" id="glossaryTermsTitle">Terms</h3>
+            <dl class="glossary-list mb-0">
+              <dt>ATLAS DAOD</dt><dd>An ATLAS analysis data format stored in a ROOT file.</dd>
+              <dt>JETM16</dt><dd>An ATLAS DAOD made for jet studies. It includes detailed jet content.</dd>
+              <dt>PHYSLITE</dt><dd>A compact ATLAS DAOD with objects used in many analyses.</dd>
+              <dt>Object</dt><dd>A group of related event data, such as jets or electrons. Each selected object becomes a Parquet table.</dd>
+              <dt>Variable</dt><dd>One value stored for an object. It becomes a column in the Parquet table.</dd>
+              <dt>Parquet</dt><dd>A column-based data format that works well with tools such as Pandas.</dd>
+              <dt><code>CollectionTree</code></dt><dd>The ROOT tree that stores events and physics objects in an ATLAS DAOD.</dd>
+              <dt>ROOT file ID</dt><dd>A 128-bit UUID stored inside a ROOT file. It stays the same if the file is renamed.</dd>
+              <dt>SLURM</dt><dd>The system that places jobs in a queue and runs them on Perlmutter.</dd>
+              <dt>NERSC Perlmutter</dt><dd>The NERSC supercomputer where this job script runs.</dd>
+              <dt>Input manifest</dt><dd>A text file with one input file path on each line.</dd>
+            </dl>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" type="button" data-glossary-close>Close</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
   <!-- pcdf-object-config -->
   <!-- pcdf-template-python -->
   <!-- pcdf-template-slurm -->
   <!-- pcdf-template-readme -->
   <!-- The local server can inline the split metadata/templates here; the static page fetches them when absent. -->
   <script src="ntuple-wizard.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -134,10 +134,9 @@ def partition_from_input(input_path, root_uuid):
             "indexPrefix": file_number,
         }
 
-    # Names without embedded ATLAS identifiers provide no genuine task ID or
-    # file number.
-    # Use the file's actual ROOT UUID as its partition identity rather than
-    # inventing values for those ATLAS-specific fields.
+    # A filename without embedded ATLAS identifiers provides no genuine task ID
+    # or file number. Use the file's ROOT UUID instead of inventing values for
+    # those ATLAS-specific fields.
     uuid_value = getattr(root_uuid, "int", None)
     if not isinstance(uuid_value, int) or not 0 <= uuid_value < (1 << 128):
         raise click.ClickException(
@@ -153,8 +152,8 @@ def partition_from_input(input_path, root_uuid):
         "indexPrefix": 0,
     }
     click.echo(
-        "INFO: input filename has no ATLAS tid/file number; "
-        "using numeric ROOT UUID partitions "
+        "INFO: The input filename has no ATLAS task ID or file number. "
+        "Using numeric ROOT UUID partitions "
         f"fileUUIDHigh={uuid_high}, fileUUIDLow={uuid_low} for {input_path}",
         err=True,
     )
@@ -165,8 +164,8 @@ def encode_global_index(local_index, file_number, label):
     flattened = ak.flatten(local_index, axis=None)
     if len(flattened) > 0 and int(ak.max(flattened)) > MAX_LOCAL_INDEX:
         raise click.ClickException(
-            f"{label} local index exceeds {MAX_LOCAL_INDEX}; cannot reserve "
-            "the leading 16 bits for the file number"
+            f"{label} local index exceeds {MAX_LOCAL_INDEX}. The leading "
+            "16 bits cannot be reserved for the file number"
         )
     prefix = np.uint64(file_number << INDEX_LOCAL_BITS)
     return ak.values_astype(local_index, np.uint64) + prefix
@@ -262,7 +261,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
                 suffix = "" if len(existing_partitions) <= 3 else f", and {len(existing_partitions) - 3} more"
                 message = f"Output partition exists for {input}: {paths}{suffix}"
                 if skip_existing and all_selected_output_partitions_exist(output, partition):
-                    click.echo(f"WARNING: skipping complete existing output partitions: {message}", err=True)
+                    click.echo(f"WARNING: Skipping complete existing output partitions. {message}", err=True)
                     return
                 raise click.ClickException("Incomplete or conflicting output partitions: " + message)
 
@@ -297,16 +296,16 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
                 if object_aliases
             }
     except up.exceptions.KeyInFileError as error:
-        raise click.ClickException(f"Selected branch is missing from {input}: {error}") from error
+        raise click.ClickException(f"The input does not contain a selected branch: {input}: {error}") from error
     except OSError as error:
         if skip_unreadable:
-            click.echo(f"WARNING: skipping unreadable input {input}: {error}", err=True)
+            click.echo(f"WARNING: Skipping unreadable input {input}: {error}", err=True)
             return
         raise click.ClickException(f"Cannot read input ROOT file {input}: {error}") from error
 
     event = arrays["Event"]
     if len(event) == 0:
-        raise click.ClickException("No events found")
+        raise click.ClickException("The input contains no events")
 
     print(f"{POINT} Read {len(event)} events")
     event_index = make_global_idx(
@@ -360,7 +359,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
             )
 
     if "Const" in OBJECTS:
-        print(f"  {POINT} Following constituent links")
+        print(f"  {POINT} Reading jet constituents")
         hashes, counts = np.unique(
             ak.flatten(
                 jet.constLinks.m_persKey[0],
@@ -378,7 +377,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
         )
         if len(hashes) < 2:
             raise click.ClickException(
-                "Cannot identify charged/neutral hashes"
+                "The converter could not identify the charged and neutral constituent containers"
             )
         charged_first = charged_count == counts[0]
         neutral_second = neutral_count == counts[1]
@@ -392,7 +391,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
             neutral_hash = hashes[0]
         else:
             raise click.ClickException(
-                "Constituent counts do not match hashes"
+                "The charged and neutral constituent counts do not match the container links"
             )
         charged = select_per_jet(
             arrays["c_const"],
@@ -431,7 +430,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
         )
 
     if "Track" in OBJECTS:
-        print(f"  {POINT} Following track ElementLinks")
+        print(f"  {POINT} Reading tracks linked to jets")
         tracks = select_per_jet(
             arrays["Track"],
             jet.trackLinks.m_persIndex[
@@ -498,7 +497,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
             flatten=False,
         )
 
-    print(f"{POINT} DONE")
+    print(f"{POINT} Conversion complete")
 
 
 if __name__ == "__main__":

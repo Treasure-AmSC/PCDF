@@ -28,6 +28,7 @@
     const slurmScriptOutput = document.getElementById("slurmScriptOutput");
     const slurmScriptHighlight = document.getElementById("slurmScriptHighlight").querySelector("code");
     const summary = document.getElementById("summary");
+    const wizardStatus = document.getElementById("wizardStatus");
 
     const TEMPLATE_SOURCES = {
       python: {
@@ -46,6 +47,103 @@
 
     const templates = {};
     let generationReady = false;
+
+
+    function announce(message) {
+      wizardStatus.textContent = "";
+      window.requestAnimationFrame(() => {
+        wizardStatus.textContent = message;
+      });
+    }
+
+
+    function initTermHelp() {
+      const placeTooltip = (wrapper) => {
+        const termRect = wrapper.querySelector(".term-label").getBoundingClientRect();
+        const tooltip = wrapper.querySelector(".term-tooltip");
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const margin = 8;
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = document.documentElement.clientHeight;
+        const left = Math.max(margin, Math.min(termRect.left, viewportWidth - tooltipRect.width - margin));
+        const below = termRect.bottom - 2;
+        const above = termRect.top - tooltipRect.height + 2;
+        const top = below + tooltipRect.height <= viewportHeight - margin ? below : Math.max(margin, above);
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+      };
+      const closeTooltip = (wrapper, dismissed = false) => {
+        wrapper.classList.toggle("tooltip-dismissed", dismissed);
+      };
+
+      document.querySelectorAll(".term-with-help").forEach((wrapper) => {
+        wrapper.addEventListener("pointerenter", () => placeTooltip(wrapper));
+        wrapper.addEventListener("mouseleave", () => closeTooltip(wrapper));
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        document.querySelectorAll(".term-with-help").forEach((wrapper) => closeTooltip(wrapper, true));
+      });
+    }
+
+
+    function initKeyboardShortcuts() {
+      const glossary = document.getElementById("glossaryModal");
+      const glossaryOpen = document.getElementById("glossaryOpen");
+      const glossaryTitle = document.getElementById("glossaryTitle");
+      const previous = document.getElementById("prevStep");
+      const next = document.getElementById("nextStep");
+
+      const openGlossary = () => {
+        if (glossary.open) return;
+        glossary.showModal();
+        document.body.classList.add("modal-open");
+        glossaryTitle.focus();
+      };
+      const closeGlossary = () => {
+        if (glossary.open) glossary.close();
+      };
+
+      glossaryOpen.addEventListener("click", openGlossary);
+      glossary.querySelectorAll("[data-glossary-close]").forEach((button) => {
+        button.addEventListener("click", closeGlossary);
+      });
+      glossary.addEventListener("click", (event) => {
+        if (event.target === glossary) closeGlossary();
+      });
+      glossary.addEventListener("close", () => {
+        document.body.classList.remove("modal-open");
+        glossaryOpen.focus();
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (glossary.open && event.key === "Tab") {
+          const controls = [...glossary.querySelectorAll("button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+            .filter((control) => !control.hidden);
+          if (!controls.length) return;
+          const current = controls.indexOf(document.activeElement);
+          const next = current < 0
+            ? (event.shiftKey ? controls.length - 1 : 0)
+            : (current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+          event.preventDefault();
+          controls[next].focus();
+          return;
+        }
+        if (event.altKey || event.shiftKey || event.ctrlKey || event.metaKey || event.repeat) return;
+        if (event.key === "F2") {
+          event.preventDefault();
+          if (glossary.open) closeGlossary();
+          else openGlossary();
+        } else if (event.key === "F8" && !glossary.open) {
+          event.preventDefault();
+          if (!previous.disabled) previous.click();
+        } else if (event.key === "F9" && !glossary.open) {
+          event.preventDefault();
+          if (!next.disabled && !next.hidden) next.click();
+        }
+      });
+    }
 
 
     async function fetchText(url) {
@@ -176,40 +274,40 @@
       const dependencies = dependenciesFor(key).filter((dependency) => state.selectedObjects.has(dependency));
       const badges = [];
       if (dependencies.length) {
-        const dependencyNames = dependencies.map((dependency) => OBJECTS[dependency].title).join(", ");
-        badges.push(`<span class="badge text-bg-info" title="Uses ${dependencyNames}">Requires ${dependencies.length === 1 ? OBJECTS[dependencies[0]].title : `${dependencies.length} objects`}</span>`);
+        badges.push(`<span class="badge text-bg-info">Requires ${dependencies.length === 1 ? OBJECTS[dependencies[0]].title : `${dependencies.length} other objects`}</span>`);
       }
       if (dependents.length) {
-        const dependentNames = dependents.map((dependent) => OBJECTS[dependent].title).join(", ");
-        badges.push(`<span class="badge text-bg-warning" title="Deselecting this also removes ${dependentNames}">${dependents.length} dependent${dependents.length === 1 ? "" : "s"}</span>`);
+        badges.push(`<span class="badge text-bg-warning">Used by ${dependents.length} selected object${dependents.length === 1 ? "" : "s"}</span>`);
       }
       return badges.join("");
     }
 
     function renderObjects() {
       objectList.innerHTML = Object.entries(OBJECTS).map(([key, object]) => {
-        const disabled = !isObjectAvailable(key);
-        const checked = state.selectedObjects.has(key) && !disabled;
+        const unavailable = !isObjectAvailable(key);
+        const checked = state.selectedObjects.has(key) && !unavailable;
         const dependents = dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
         const deselectHint = checked && dependents.length
-          ? `Turning this off also removes ${dependents.map((dependent) => OBJECTS[dependent].title).join(", ")}.`
+          ? `Turning this off also turns off ${dependents.map((dependent) => OBJECTS[dependent].title).join(", ")}.`
           : object.requiredReason || "";
+        const descriptionIds = [`obj-desc-${key}`, `obj-meta-${key}`];
+        if (deselectHint) descriptionIds.push(`obj-note-${key}`);
         return `
           <div class="col-md-6 col-xl-4">
-            <label class="card object-card h-100 border-secondary-subtle ${disabled ? "opacity-50" : ""}">
+            <label class="card object-card h-100 border-secondary-subtle ${unavailable ? "opacity-50" : ""}" for="obj-${key}">
               <div class="card-body">
                 <div class="form-check form-switch mb-2">
-                  <input class="form-check-input object-toggle" type="checkbox" value="${key}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}>
-                  <span class="form-check-label fw-semibold">${object.title}</span>
+                  <input class="form-check-input object-toggle" type="checkbox" value="${key}" id="obj-${key}" aria-labelledby="obj-label-${key}" aria-describedby="${descriptionIds.join(" ")}" ${checked ? "checked" : ""} ${unavailable || key === "Event" ? "disabled" : ""}>
+                  <span class="form-check-label fw-semibold" id="obj-label-${key}">${object.title}</span>
                 </div>
-                <p class="small text-secondary mb-2">${object.description}</p>
-                <div class="object-meta">
-                  <span class="badge text-bg-secondary">${availableVariableEntries(key).length} variables</span>
+                <p class="small text-secondary mb-2" id="obj-desc-${key}">${object.description}</p>
+                <div class="object-meta" id="obj-meta-${key}">
+                  <span class="badge text-bg-secondary">${availableVariableEntries(key).length} ${availableVariableEntries(key).length === 1 ? "variable" : "variables"}</span>
                   ${dependencyBadges(key)}
-                  ${disabled ? '<span class="badge text-bg-warning">Unavailable in PHYSLITE</span>' : ""}
-                  ${state.sampleType === "DATA" && (object.mcOnlyVariables || []).length ? '<span class="badge text-bg-info">MC-only labels omitted</span>' : ""}
+                  ${unavailable ? '<span class="badge text-bg-warning">Not available for PHYSLITE</span>' : ""}
+                  ${state.sampleType === "DATA" && (object.mcOnlyVariables || []).length ? '<span class="badge text-bg-info">Simulation-only labels omitted</span>' : ""}
                 </div>
-                ${deselectHint ? `<span class="d-block small dependency-note mt-2">${deselectHint}</span>` : ""}
+                ${deselectHint ? `<span class="d-block small dependency-note mt-2" id="obj-note-${key}">${deselectHint}</span>` : ""}
               </div>
             </label>
           </div>`;
@@ -217,6 +315,8 @@
 
       objectList.querySelectorAll(".object-toggle").forEach((input) => {
         input.addEventListener("change", () => {
+          const objectTitle = OBJECTS[input.value].title;
+          const previouslySelected = new Set(state.selectedObjects);
           if (input.checked) {
             state.selectedObjects.add(input.value);
             addDependencies(input.value);
@@ -227,9 +327,17 @@
             removeDependents(input.value);
           }
           ensureDependencies();
+          const relatedChanges = input.checked
+            ? Array.from(state.selectedObjects).filter((key) => key !== input.value && !previouslySelected.has(key))
+            : Array.from(previouslySelected).filter((key) => key !== input.value && !state.selectedObjects.has(key));
+          const relatedTitles = relatedChanges.map((key) => OBJECTS[key].title).join(", ");
+          announce(input.checked
+            ? `${objectTitle} selected.${relatedTitles ? ` Also selected: ${relatedTitles}.` : ""}`
+            : `${objectTitle} turned off.${relatedTitles ? ` Also turned off: ${relatedTitles}.` : ""}`);
           renderObjects();
           renderVariables();
           updateGeneratedScript();
+          document.getElementById(`obj-${input.value}`)?.focus();
         });
       });
     }
@@ -244,25 +352,28 @@
           const available = variableIsAvailable(key, name);
           if (required && available) state.selectedVariables[key].add(name);
           const checked = available && state.selectedVariables[key].has(name);
+          const detailIds = [`var-branch-${key}-${name}`];
+          if (required && available) detailIds.push(`var-required-${key}-${name}`);
+          if (!available) detailIds.push(`var-unavailable-${key}-${name}`);
           return `
             <div class="form-check mb-2 ${available ? "" : "opacity-50"}">
-              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${key}" id="var-${key}-${name}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
+              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${key}" id="var-${key}-${name}" aria-labelledby="var-label-${key}-${name}" aria-describedby="${detailIds.join(" ")}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
               <label class="form-check-label" for="var-${key}-${name}">
-                <span class="fw-semibold">${name}</span>
-                ${required && available ? '<span class="badge text-bg-warning ms-1">required vector component</span>' : ""}
-                ${!available ? '<span class="badge text-bg-info ms-1">MC only; omitted for data</span>' : ""}
-                <span class="d-block small text-secondary">${branchText}</span>
+                <code class="variable-name" id="var-label-${key}-${name}">${name}</code>
+                ${required && available ? `<span class="badge text-bg-warning ms-1" id="var-required-${key}-${name}">Required vector component</span>` : ""}
+                ${!available ? `<span class="badge text-bg-info ms-1" id="var-unavailable-${key}-${name}">Not written for collision data</span>` : ""}
+                <span class="d-block small text-secondary" id="var-branch-${key}-${name}">${branchText}</span>
               </label>
             </div>`;
         }).join("");
         return `
           <div class="accordion-item">
             <h3 class="accordion-header">
-              <button class="accordion-button ${index ? "collapsed" : ""}" type="button" data-bs-toggle="collapse" data-bs-target="#panel-${key}">
+              <button class="accordion-button variable-group-toggle ${index ? "collapsed" : ""}" id="accordion-${key}" type="button" data-panel="panel-${key}" aria-expanded="${index ? "false" : "true"}" aria-controls="panel-${key}">
                 ${object.title}
               </button>
             </h3>
-            <div id="panel-${key}" class="accordion-collapse collapse ${index ? "" : "show"}" data-bs-parent="#variableAccordion">
+            <div id="panel-${key}" class="accordion-collapse collapse ${index ? "" : "show"}" role="region" aria-labelledby="accordion-${key}">
               <div class="accordion-body variable-grid">${variables}</div>
             </div>
           </div>`;
@@ -282,6 +393,19 @@
             }
           }
           updateGeneratedScript();
+        });
+      });
+
+      variableAccordion.querySelectorAll(".variable-group-toggle").forEach((button) => {
+        button.addEventListener("click", () => {
+          const willOpen = button.getAttribute("aria-expanded") !== "true";
+          variableAccordion.querySelectorAll(".variable-group-toggle").forEach((otherButton) => {
+            const panel = document.getElementById(otherButton.dataset.panel);
+            const expanded = otherButton === button && willOpen;
+            otherButton.setAttribute("aria-expanded", String(expanded));
+            otherButton.classList.toggle("collapsed", !expanded);
+            panel.classList.toggle("show", expanded);
+          });
         });
       });
     }
@@ -304,17 +428,26 @@
       });
     }
 
-    function setStep(step) {
-      state.step = Math.max(0, Math.min(5, step));
+    function setStep(step, moveFocus = true) {
+      state.step = Math.max(0, Math.min(4, step));
       document.querySelectorAll(".wizard-step").forEach((section) => {
-        section.classList.toggle("d-none", Number(section.dataset.step) !== state.step);
+        const active = Number(section.dataset.step) === state.step;
+        section.classList.toggle("d-none", !active);
+        section.hidden = !active;
       });
       document.querySelectorAll("[data-step-target]").forEach((button) => {
-        button.classList.toggle("active", Number(button.dataset.stepTarget) === state.step);
+        const active = Number(button.dataset.stepTarget) === state.step;
+        button.classList.toggle("active", active);
+        if (active) button.setAttribute("aria-current", "step");
+        else button.removeAttribute("aria-current");
       });
       document.getElementById("prevStep").disabled = state.step === 0;
-      document.getElementById("nextStep").textContent = state.step === 5 ? "Regenerate" : "Next";
-      if (state.step === 5) updateGeneratedScript();
+      const nextButton = document.getElementById("nextStep");
+      nextButton.hidden = state.step === 4;
+      nextButton.textContent = state.step === 3 ? "Review" : "Next";
+      const activeSection = document.querySelector(`.wizard-step[data-step="${state.step}"]`);
+      const heading = activeSection.querySelector("h2");
+      if (moveFocus) heading.focus();
     }
 
     function selectedVariables(key) {
@@ -401,11 +534,11 @@
       const config = selectedConfig();
       const objectConfig = formatPythonLiteral(config.objects);
       const formatNote = config.inputFormat === "PHYSLITE"
-        ? "PHYSLITE selected: jet constituents are disabled."
-        : "JETM16 selected: jet constituents can be read.";
+        ? "PHYSLITE does not contain the data needed for jet constituents, so that output is off."
+        : "JETM16 contains the data needed for jet constituents.";
       const sampleNote = config.sampleType === "DATA"
-        ? "Data selected: MC-only truth/flavor branches are omitted; lumiBlock is included in Events."
-        : "MC selected: truth/flavor branches can be included when selected.";
+        ? "For collision data, truth and flavor fields are skipped. Events include lumiBlock."
+        : "Simulation input can include the truth and flavor fields you select.";
       const inputNote = `${formatNote} ${sampleNote}`;
       return applyTemplate(requireTemplate("python"), {
         INPUT_FORMAT: config.inputFormat,
@@ -452,6 +585,9 @@
 
     function updateGeneratedScript() {
       syncSlurmSettings();
+      document.querySelectorAll(".slurm-input").forEach((input) => {
+        input.disabled = !state.slurm.enabled;
+      });
       ensureDependencies();
       const config = selectedConfig();
       const generatedScript = buildScript();
@@ -459,18 +595,21 @@
       scriptOutput.value = generatedScript;
       scriptHighlight.innerHTML = highlightPython(generatedScript);
       slurmScriptOutput.value = slurmScript;
-      slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM wrapper disabled.";
+      slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM script generation is turned off.";
+      document.getElementById("slurmRunInstructions").hidden = !state.slurm.enabled;
       generationReady = true;
       setDownloadButtonsEnabled(true);
       const slurmSummary = state.slurm.enabled
-        ? `Perlmutter CPU job, ${state.slurm.nodes} exclusive node(s); runtime core discovery fills physical cores with one conversion per core.`
-        : "Disabled";
+        ? `The job uses ${state.slurm.nodes} whole CPU node${state.slurm.nodes === 1 ? "" : "s"}. It runs one file conversion on each physical CPU core.`
+        : "No SLURM script will be generated.";
       const objectSummary = Object.keys(config.objects).map((key) => {
         const title = escapeHtml(OBJECTS[key].title);
         const variableCount = Object.keys(config.objects[key].aliases).length;
-        return `<li>${title}: ${variableCount} variables</li>`;
+        return `<li>${title}: ${variableCount} ${variableCount === 1 ? "variable" : "variables"}</li>`;
       }).join("");
-      const manifestSummary = `Use manifest ${escapeHtml(state.slurm.inputManifest)}; create it before submitting because the compute job does not download data.`;
+      const manifestSummary = state.slurm.enabled
+        ? `The job reads input paths from ${escapeHtml(state.slurm.inputManifest)}. Make this file before you submit. Compute nodes cannot download data.`
+        : "You do not need a manifest when SLURM script generation is off.";
       summary.innerHTML = `
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Input</h3>
@@ -481,7 +620,7 @@
           <ul class="mb-0">${objectSummary}</ul>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">SLURM</h3>
+          <h3 class="h6 text-uppercase text-secondary">Perlmutter job</h3>
           <p class="mb-0">${escapeHtml(slurmSummary)}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
@@ -505,6 +644,7 @@
         renderObjects();
         renderVariables();
         updateGeneratedScript();
+        announce(`Input set to ${state.inputFormat}, ${state.sampleType === "MC" ? "simulation" : "collision data"}.`);
       });
     });
 
@@ -514,6 +654,7 @@
       renderObjects();
       renderVariables();
       updateGeneratedScript();
+      announce("Recommended output objects selected.");
     });
 
     document.getElementById("selectAll").addEventListener("click", () => {
@@ -522,6 +663,7 @@
       renderObjects();
       renderVariables();
       updateGeneratedScript();
+      announce("All available output objects selected.");
     });
 
     document.getElementById("selectNone").addEventListener("click", () => {
@@ -529,6 +671,7 @@
       renderObjects();
       renderVariables();
       updateGeneratedScript();
+      announce("Only the required Event object is selected.");
     });
 
     document.getElementById("restoreDefaults").addEventListener("click", () => {
@@ -537,6 +680,7 @@
       });
       renderVariables();
       updateGeneratedScript();
+      announce("All available variables were restored for the objects you selected.");
     });
 
     document.querySelectorAll(".slurm-input, #enableSlurm").forEach((input) => {
@@ -544,24 +688,62 @@
       input.addEventListener("change", updateGeneratedScript);
     });
 
+    document.getElementById("enableSlurm").addEventListener("change", (event) => {
+      announce(event.target.checked
+        ? "SLURM script generation is on."
+        : "SLURM script generation is off. Perlmutter settings are no longer needed.");
+    });
+
+    document.querySelectorAll(".slurm-input").forEach((input) => {
+      input.addEventListener("input", () => {
+        if (input.checkValidity()) setControlValidity(input, true);
+      });
+    });
+
+    function setControlValidity(control, valid) {
+      const errorId = control.dataset.errorId;
+      const descriptionIds = new Set((control.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+      if (errorId) {
+        if (valid) descriptionIds.delete(errorId);
+        else descriptionIds.add(errorId);
+      }
+      if (descriptionIds.size) control.setAttribute("aria-describedby", Array.from(descriptionIds).join(" "));
+      else control.removeAttribute("aria-describedby");
+      if (valid) control.removeAttribute("aria-invalid");
+      else control.setAttribute("aria-invalid", "true");
+    }
+
     function formIsValid() {
       const form = document.getElementById("wizardForm");
       form.classList.add("was-validated");
-      return form.checkValidity();
+      const controls = Array.from(form.querySelectorAll("input, select, textarea"));
+      controls.forEach((control) => {
+        setControlValidity(control, control.disabled || control.checkValidity());
+      });
+      if (form.checkValidity()) return true;
+
+      const firstInvalid = form.querySelector(":invalid");
+      if (!firstInvalid) {
+        announce("Check the form before you continue.");
+        return false;
+      }
+      const invalidStep = firstInvalid.closest(".wizard-step");
+      if (invalidStep) setStep(Number(invalidStep.dataset.step), false);
+      const error = document.getElementById(firstInvalid.dataset.errorId);
+      window.requestAnimationFrame(() => firstInvalid.focus());
+      announce(`Cannot continue. ${error ? error.textContent.trim() : firstInvalid.validationMessage}`);
+      return false;
     }
 
     document.getElementById("prevStep").addEventListener("click", () => setStep(state.step - 1));
     document.getElementById("nextStep").addEventListener("click", () => {
       if (state.step === 3 && !formIsValid()) return;
-      setStep(state.step === 4 ? 4 : state.step + 1);
+      setStep(state.step + 1);
     });
     document.querySelectorAll("[data-step-target]").forEach((button) => {
       button.addEventListener("click", () => {
         const target = Number(button.dataset.stepTarget);
-        if (target >= 4 && !formIsValid()) {
-          setStep(3);
-          return;
-        }
+        if (target >= 4 && !formIsValid()) return;
         setStep(target);
       });
     });
@@ -614,12 +796,11 @@ Perlmutter run
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
    The Python and SLURM scripts are marked executable.
-2. Create the input manifest listed in submit-pcdf-ntuple.slurm. Do not download data on compute nodes.
-3. Return to a login node and edit submit-pcdf-ntuple.slurm if needed:
-   account, manifest, output base, and nodes. The output base is a single
-   Hive-partitioned dataset root. The generated wrapper requests
-   exclusive nodes, discovers physical cores at runtime, counts the manifest,
-   and fills the available cores with one conversion per core.
+2. Create the input manifest named in submit-pcdf-ntuple.slurm. List one local
+   DAOD path per non-empty line. Compute nodes do not download data.
+3. On a login node, check the account, manifest, output directory, and node
+   count in submit-pcdf-ntuple.slurm. The job writes all tables below the same
+   output directory. It runs one file conversion on each physical CPU core.
 4. Submit:
    sbatch submit-pcdf-ntuple.slurm
 5. Monitor:
@@ -627,15 +808,14 @@ Perlmutter run
 ` : `
 Perlmutter run
 --------------
-SLURM generation was disabled in the wizard, so this bundle contains the
-Python converter and this README. Re-enable SLURM in the
-wizard if you want a Perlmutter submission wrapper.
+This bundle has only the Python converter and this README. Turn on SLURM script
+generation in the wizard to include a Perlmutter job script.
 `;
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
         INPUT_FORMAT: state.inputFormat,
         SLURM_FILE_LINE: state.slurm.enabled
-          ? "- submit-pcdf-ntuple.slurm: executable NERSC Perlmutter CPU/SLURM wrapper.\n"
+          ? "- submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n"
           : "",
         SLURM_SECTION: slurmSection,
       });
@@ -646,20 +826,24 @@ wizard if you want a Perlmutter submission wrapper.
       const link = document.createElement("a");
       link.href = url;
       link.download = filename;
+      document.body.append(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
     }
 
     document.getElementById("downloadScript").addEventListener("click", () => {
       if (!generationReady || !scriptOutput.value || !formIsValid()) return;
       const blob = new Blob([scriptOutput.value], { type: "text/x-python" });
       downloadBlob(blob, generatedPythonName().replace(/^\.\//, ""));
+      announce("Converter download started.");
     });
 
     document.getElementById("downloadSlurmScript").addEventListener("click", () => {
       if (!generationReady || !state.slurm.enabled || !slurmScriptOutput.value || !formIsValid()) return;
       const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
       downloadBlob(blob, "submit-pcdf-ntuple.slurm");
+      announce("SLURM script download started.");
     });
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
@@ -677,10 +861,13 @@ wizard if you want a Perlmutter submission wrapper.
       }
       files.push({ name: "README_SUBMIT.md", content: bundleReadme() });
       downloadBlob(createTarArchive(files), "pcdf-ntuple-bundle.tar");
+      announce("Bundle download started.");
     });
 
 
     async function initWizard() {
+      initTermHelp();
+      initKeyboardShortcuts();
       try {
         await loadObjectConfig();
         await loadTemplates();
@@ -691,13 +878,14 @@ wizard if you want a Perlmutter submission wrapper.
         renderObjects();
         renderVariables();
         updateGeneratedScript();
-        setStep(0);
+        setStep(0, false);
       } catch (error) {
         generationReady = false;
         setDownloadButtonsEnabled(false);
-        const message = `Wizard resource loading failed: ${error.message}`;
+        const message = `The wizard could not load the files it needs: ${error.message}`;
         scriptHighlight.textContent = message;
         slurmScriptHighlight.textContent = message;
+        announce(message);
         console.error(error);
       }
     }

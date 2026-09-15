@@ -10,9 +10,9 @@ Run with::
 
     uv run ATLAS/ntuple-wizard-tui.py
 
-On NERSC Perlmutter login nodes the TUI enables a seamless workflow: pick or
-scan input files, write a manifest on scratch, generate the converter and SLURM
-wrapper, and optionally submit the job with ``sbatch``.
+On a NERSC Perlmutter login node, the TUI can find input files, write a manifest
+on scratch, generate the converter and SLURM script, and submit the job with
+``sbatch``.
 """
 
 from __future__ import annotations
@@ -98,12 +98,14 @@ class NtupleWizardTui(App[None]):
 
     def compose(self) -> ComposeResult:
         with Container(id="page"):
-            yield Static("✦ ATLAS JETM16 → Parquet script wizard", id="hero")
+            yield Static("ATLAS DAOD → Parquet wizard", id="hero")
             with TabbedContent(initial="step-0", id="wizard-tabs", classes="wizard-shell"):
                 with TabPane("1. Input", id="step-0", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Input format and sample type", classes="section-title")
-                        yield Static("Choose the same core inputs as the HTML wizard. PHYSLITE disables JETM16-only constituent output; data mode omits MC-only variables.", classes="hint")
+                        yield Static("Choose a DAOD format and sample type. PHYSLITE lacks the data needed for jet constituents. For collision data, the program skips truth and flavor fields.", classes="hint")
+                        with Collapsible(title="Terms used here", collapsed=True):
+                            yield Static("DAOD: An ATLAS analysis data format stored in a ROOT file.\nJETM16: An ATLAS DAOD made for jet studies. It includes detailed jet content.\nPHYSLITE: A compact ATLAS DAOD with objects used in many analyses.", classes="hint")
                         yield Label("Input format", classes="field-label")
                         yield Select([(label, label) for label in ("JETM16", "PHYSLITE")], value="JETM16", id="format", classes="hidden-select")
                         with Horizontal(classes="choice-row"):
@@ -112,13 +114,13 @@ class NtupleWizardTui(App[None]):
                         yield Label("Sample type", classes="field-label")
                         yield Select([(label, label) for label in ("MC", "DATA")], value="MC", id="sample", classes="hidden-select")
                         with Horizontal(classes="choice-row"):
-                            yield Button("MC", id="set-sample-MC", classes="choice-button active-step")
-                            yield Button("DATA", id="set-sample-DATA", classes="choice-button")
+                            yield Button("Simulation / MC", id="set-sample-MC", classes="choice-button active-step")
+                            yield Button("Collision data", id="set-sample-DATA", classes="choice-button")
 
                 with TabPane("2. Objects", id="step-1", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output objects", classes="section-title")
-                        yield Static("Toggle objects interactively. Dependencies are selected automatically; turning off an object also turns off selected objects that depend on it.", classes="hint")
+                        yield Static("Choose the tables to write. Required tables are selected for you. Turning off one table also turns off tables that need it.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
                                 selected = key in self.state_data.selected_objects
@@ -129,7 +131,7 @@ class NtupleWizardTui(App[None]):
                 with TabPane("3. Variables", id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output variables", classes="section-title")
-                        yield Static("Required vector components stay locked on; MC-only labels are disabled for collision data.", classes="hint")
+                        yield Static("The four-vector fields stay selected. Truth labels are not available for collision data.", classes="hint")
                         for key, obj in self.state_data.objects.items():
                             yield Static(obj["title"], classes="section-title")
                             required = set(obj.get("requiredVariables", []))
@@ -144,47 +146,49 @@ class NtupleWizardTui(App[None]):
                 with TabPane("4. Perlmutter", id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
-                            yield Static("SLURM / NERSC Perlmutter", classes="section-title")
-                            yield Static("Configure the CPU-only Perlmutter wrapper and, on Perlmutter, use the picker to build the manifest before submitting.", classes="hint")
+                            yield Static("Perlmutter job", classes="section-title")
+                            yield Static("Set up the CPU-only job. Use the file picker to make a manifest with one input file path per line.", classes="hint")
+                            with Collapsible(title="Terms used here", collapsed=True):
+                                yield Static("SLURM: The system that places jobs in a queue and runs them on Perlmutter.\nPerlmutter: The NERSC supercomputer where this job runs.\nManifest: A text file with one input file path on each line.\nQOS: The SLURM queue and its job limits.", classes="hint")
                             yield Label("NERSC account", classes="field-label")
                             if self.perlmutter:
                                 yield Select([("Loading accounts from iris…", "")], value="", allow_blank=False, disabled=True, id="account_select")
                                 yield Input(placeholder="Manual NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
                             else:
                                 yield Input(placeholder="NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
-                            yield Label("Queue / QOS", classes="field-label")
+                            yield Label("Queue (QOS)", classes="field-label")
                             yield Select([(label, label) for label in ("regular", "debug", "premium")], value="regular", allow_blank=False, id="qos")
                             yield Label("Nodes", classes="field-label")
                             yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Function(self.positive_integer, "Nodes must be a positive integer.")], validate_on=["blur", "submitted"])
                             yield Label("Wall time", classes="field-label")
                             yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
-                            yield Label("Output base", classes="field-label")
-                            yield Input(value="$SCRATCH/pcdf-output", placeholder="Output base", id="output", validators=[Function(self.non_empty, "Output base may not be empty.")], validate_on=["blur", "submitted"])
-                            yield Label("Input manifest", classes="field-label")
-                            yield Input(value=self.state_data.manifest, placeholder="Input manifest", id="manifest", validators=[Function(self.non_empty, "Input manifest may not be empty.")], validate_on=["blur", "submitted"])
-                            yield Static("Perlmutter detected: " + ("yes" if self.perlmutter else "no"), classes="hint")
+                            yield Label("Output dataset directory", classes="field-label")
+                            yield Input(value="$SCRATCH/pcdf-output", placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
+                            yield Label("Input-file manifest", classes="field-label")
+                            yield Input(value=self.state_data.manifest, placeholder="Input-file manifest", id="manifest", validators=[Function(self.non_empty, "Enter an input-file manifest path.")], validate_on=["blur", "submitted"])
+                            yield Static("Running on Perlmutter: " + ("Yes" if self.perlmutter else "No"), classes="hint")
                         with VerticalScroll(classes="column"):
-                            yield Static("Interactive file and folder picker", classes="section-title")
+                            yield Static("Choose input files", classes="section-title")
                             yield Label("Directory to scan", classes="field-label")
                             yield Input(value="$SCRATCH", placeholder="Directory to scan", id="scan_root", validators=[Function(self.existing_directory, "Scan directory must exist.")], validate_on=["blur", "submitted"])
                             with Collapsible(title="Advanced manifest options", collapsed=True):
-                                yield Label("File glob", classes="field-label")
-                                yield Input(value="DAOD_*.pool.root*", placeholder="Glob, e.g. DAOD_*.pool.root*", id="glob", validators=[Function(self.non_empty, "Glob pattern may not be empty.")], validate_on=["blur", "submitted"])
+                                yield Label("Filename pattern", classes="field-label")
+                                yield Input(value="DAOD_*.pool.root*", placeholder="For example: DAOD_*.pool.root*", id="glob", validators=[Function(self.non_empty, "Enter a filename pattern.")], validate_on=["blur", "submitted"])
                             tree_root = Path(os.path.expandvars(os.environ.get("SCRATCH", ""))).expanduser()
                             if not tree_root.exists():
                                 tree_root = Path.cwd()
                             yield VisibleDirectoryTree(tree_root, id="tree")
                             yield Static("Discovered files", classes="section-title")
                             yield SelectionList[str](id="files")
-                            yield Button("Write selected manifest", id="manifest_write")
+                            yield Button("Save selected files to manifest", id="manifest_write")
 
                 with TabPane("5. Generate", id="step-4", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
                             yield Static("Generate", classes="section-title")
-                            yield Static("Generate the converter, SLURM wrapper, and tar bundle. On Perlmutter, submit directly after reviewing the settings.", classes="hint")
+                            yield Static("Build the converter, job script, and bundle. On Perlmutter, review the scripts before you submit the job.", classes="hint")
                             yield Static("", id="summary_panel")
-                            yield Static("Review generated scripts before submitting", classes="section-title")
+                            yield Static("Review the generated scripts", classes="section-title")
                             with TabbedContent(initial="preview-python", id="review-tabs"):
                                 with TabPane("Python", id="preview-python"):
                                     yield TextArea("", language="python", read_only=True, show_line_numbers=True, id="python_preview", classes="script-preview")
@@ -192,7 +196,7 @@ class NtupleWizardTui(App[None]):
                                     yield TextArea("", language="bash", read_only=True, show_line_numbers=True, id="slurm_preview", classes="script-preview")
                             with Horizontal(id="generate-actions"):
                                 yield Button("Generate scripts", id="generate", variant="primary")
-                                yield Button("I reviewed scripts", id="confirm_review")
+                                yield Button("Confirm review", id="confirm_review")
                                 yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
                 with TabPane("6. Status", id="step-5", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
@@ -201,11 +205,11 @@ class NtupleWizardTui(App[None]):
                         yield Static("", id="log_paths", classes="hint")
                         yield Button("Refresh now", id="refresh_job")
                         with Grid(classes="job-log-grid"):
-                            yield Static("stdout", classes="section-title")
-                            yield Static("stderr", classes="section-title")
+                            yield Static("Standard output", classes="section-title")
+                            yield Static("Standard error", classes="section-title")
                             yield Log(id="stdout_log", classes="job-log")
                             yield Log(id="stderr_log", classes="job-log")
-                        yield Static("TUI log", classes="section-title")
+                        yield Static("Wizard activity", classes="section-title")
                         yield RichLog(id="log", wrap=True, highlight=True)
             with Horizontal(id="wizard-nav"):
                 yield Button("Previous", id="prev_step")
@@ -215,13 +219,13 @@ class NtupleWizardTui(App[None]):
     def on_mount(self) -> None:
         self.refresh_dependency_widgets()
         self.refresh_step()
-        self.log_message("PCDF ntuple Textual wizard ready.")
-        self.log_message(f"Generated files will be written under {self.output_dir}.")
+        self.log_message("The ATLAS ntuple wizard is ready.")
+        self.log_message(f"Generated files will be saved in {self.output_dir}.")
         if self.perlmutter:
-            self.log_message("Perlmutter detected: scan input files, generate scripts, then press submit.")
+            self.log_message("This is a Perlmutter login node. Choose input files, build the scripts, and then submit the job.")
             self.load_accounts_with_iris(notify_user=False)
         else:
-            self.log_message("Not on Perlmutter: generation is enabled; sbatch submission is disabled.")
+            self.log_message("This host can generate the files but cannot submit the job. Submission is available on Perlmutter.")
         self.refresh_log_locations()
 
     def log_message(self, message: str) -> None:
@@ -231,13 +235,15 @@ class NtupleWizardTui(App[None]):
         state = self.state_data
         config = state.selected_config()
         object_lines = [
-            f"• {state.objects[key]['title']}: {len(value['aliases'])} variable(s)"
+            f"• {state.objects[key]['title']}: {len(value['aliases'])} "
+            f"{'variable' if len(value['aliases']) == 1 else 'variables'}"
             for key, value in config["objects"].items()
         ]
         slurm_status = (
-            f"Perlmutter CPU job: {state.nodes} exclusive node(s), QOS {state.qos}, wall time {state.time}."
+            f"Perlmutter job: {state.nodes} exclusive CPU "
+            f"{'node' if state.nodes == 1 else 'nodes'}, queue {state.qos}, wall time {state.time}."
             if self.perlmutter
-            else "Generation only on this host; submission is enabled automatically on Perlmutter."
+            else "This host can generate files but cannot submit the job. Submission is available on Perlmutter."
         )
         summary = "\n".join([
             f"Input: {state.input_format} · {state.sample_type}",
@@ -357,7 +363,8 @@ class NtupleWizardTui(App[None]):
         files = self.query_one("#files", SelectionList)
         files.clear_options()
         files.add_options((str(path), str(path), True) for path in self.discovered_files)
-        self.log_message(f"Found {len(self.discovered_files)} file(s) under {self.state_data.scan_root}")
+        count = len(self.discovered_files)
+        self.log_message(f"Found {count} {'file' if count == 1 else 'files'} under {self.state_data.scan_root}.")
 
     def selected_discovered_files(self) -> list[Path]:
         files = self.query_one("#files", SelectionList)
@@ -378,24 +385,25 @@ class NtupleWizardTui(App[None]):
         selected = self.selected_discovered_files()
         if not selected:
             if self.discovered_files:
-                self.log_message("No discovered files are selected; manifest was not changed.")
-                self.notify("Select at least one discovered file before writing the manifest.", title="Manifest unchanged", severity="warning", timeout=8)
+                self.log_message("No discovered files are selected. The manifest was not changed.")
+                self.notify("Select one or more discovered files, then save the manifest.", title="Manifest unchanged", severity="warning", timeout=8)
                 return None
-            self.log_message("No discovery list is loaded; writing a manifest from the current scan instead.")
+            self.log_message("No file list is loaded. Scanning the selected directory before writing the manifest.")
             manifest, count = scan_manifest(self.state_data)
         else:
             manifest, count = write_manifest(selected, self.state_data.manifest)
         if count == 0:
-            self.log_message(f"No input files matched {self.state_data.glob_pattern} under {self.state_data.scan_root}; manifest was not usable.")
-            self.notify("No input files were found for the manifest.", title="Manifest empty", severity="warning", timeout=8)
+            self.log_message(f"No files matched {self.state_data.glob_pattern} under {self.state_data.scan_root}. The manifest was not written.")
+            self.notify("No matching input files were found.", title="Manifest not written", severity="warning", timeout=8)
             return None
-        self.log_message(f"Wrote {count} input file(s) to {manifest}")
-        self.notify(f"Wrote {count} file(s) to {manifest}", title="Manifest written", severity="information", timeout=6)
+        count_text = f"{count} {'file' if count == 1 else 'files'}"
+        self.log_message(f"Wrote {count_text} to {manifest}.")
+        self.notify(f"Wrote {count_text} to {manifest}.", title="Manifest written", severity="information", timeout=6)
         return manifest
 
     def ensure_manifest_for_submit(self) -> bool:
         if self.discovered_files:
-            self.log_message("Refreshing the manifest from the current discovered-file selection before submission.")
+            self.log_message("Updating the manifest from the files selected here before submission.")
             manifest = self.write_selected_manifest()
             if manifest is None or not self.manifest_has_work():
                 self.notify("Create a non-empty input manifest before submitting.", title="Submission blocked", severity="error", timeout=8)
@@ -404,7 +412,7 @@ class NtupleWizardTui(App[None]):
             return True
         if self.manifest_has_work():
             return True
-        self.log_message("Input manifest is missing or empty; writing it before submission.")
+        self.log_message("The input manifest is missing or empty. Writing it before submission.")
         manifest = self.write_selected_manifest()
         if manifest is None or not self.manifest_has_work():
             self.notify("Create a non-empty input manifest before submitting.", title="Submission blocked", severity="error", timeout=8)
@@ -429,21 +437,21 @@ class NtupleWizardTui(App[None]):
             result = subprocess.run(["iris"], check=False, text=True, capture_output=True, timeout=15)
         except FileNotFoundError:
             if notify_user:
-                self.notify("The iris command is not available on this host.", title="Iris unavailable", severity="warning", timeout=8)
+                self.notify("This host does not provide the iris command. Enter an account manually.", title="Iris unavailable", severity="warning", timeout=8)
             account_select = self.query_one("#account_select", Select)
-            account_select.set_options([("iris command not found", "")])
+            account_select.set_options([("Enter an account manually", "")])
             account_select.value = ""
             account_select.disabled = True
-            self.log_message("iris command not found; enter an account manually.")
+            self.log_message("The iris command was not found. Enter a NERSC account manually.")
             self._loading_accounts = False
             return
         except subprocess.TimeoutExpired:
             account_select = self.query_one("#account_select", Select)
-            account_select.set_options([("iris timed out", "")])
+            account_select.set_options([("Enter an account manually", "")])
             account_select.value = ""
             account_select.disabled = True
             if notify_user:
-                self.notify("iris did not finish within 15 seconds; enter an account manually.", title="Iris timeout", severity="warning", timeout=8)
+                self.notify("The iris command did not finish within 15 seconds. Enter an account manually.", title="Iris timeout", severity="warning", timeout=8)
             self._loading_accounts = False
             return
         try:
@@ -456,15 +464,16 @@ class NtupleWizardTui(App[None]):
                 account_select.value = accounts[0]
                 account_select.disabled = False
                 if notify_user:
-                    self.notify(f"Found {len(accounts)} account(s) with iris.", title="Iris accounts loaded", severity="information", timeout=6)
-                self.log_message("Iris accounts: " + ", ".join(accounts))
+                    count = len(accounts)
+                    self.notify(f"Loaded {count} NERSC {'account' if count == 1 else 'accounts'} from iris.", title="NERSC accounts loaded", severity="information", timeout=6)
+                self.log_message("NERSC accounts loaded from iris: " + ", ".join(accounts))
             else:
                 account_select.set_options([("No iris accounts found", "")])
                 account_select.value = ""
                 account_select.disabled = True
                 if notify_user:
-                    self.notify("iris ran, but no account names were recognized.", title="No Iris accounts found", severity="warning", timeout=8)
-                self.log_message("iris output did not contain recognizable accounts.")
+                    self.notify("The iris command returned no account names that the wizard could read.", title="No NERSC accounts found", severity="warning", timeout=8)
+                self.log_message("The iris command returned no account names that the wizard could read.")
         finally:
             self._loading_accounts = False
 
@@ -495,7 +504,7 @@ class NtupleWizardTui(App[None]):
             failures.extend(self.invalid_inputs(("account_input",)))
         if failures:
             self.notify("\n".join(failures), title="Fix SLURM settings", severity="error", timeout=8)
-            self.log_message("Validation failed: " + "; ".join(failures))
+            self.log_message("Validation failed:\n" + "\n".join(f"• {failure}" for failure in failures))
             return False
         return True
 
@@ -503,7 +512,7 @@ class NtupleWizardTui(App[None]):
         failures = self.invalid_inputs(("scan_root", "glob"))
         if failures:
             self.notify("\n".join(failures), title="Fix file discovery settings", severity="error", timeout=8)
-            self.log_message("Validation failed: " + "; ".join(failures))
+            self.log_message("Validation failed:\n" + "\n".join(f"• {failure}" for failure in failures))
             return False
         return True
 
@@ -511,7 +520,7 @@ class NtupleWizardTui(App[None]):
         failures = self.invalid_inputs(("scan_root", "glob", "manifest"))
         if failures:
             self.notify("\n".join(failures), title="Fix manifest settings", severity="error", timeout=8)
-            self.log_message("Validation failed: " + "; ".join(failures))
+            self.log_message("Validation failed:\n" + "\n".join(f"• {failure}" for failure in failures))
             return False
         return True
 
@@ -528,10 +537,10 @@ class NtupleWizardTui(App[None]):
             return None
         self.sync_state()
         py_path, slurm_path, bundle_path = write_bundle(self.state_data, self.output_dir)
-        self.log_message(f"Generated {py_path}")
-        self.log_message(f"Generated {slurm_path}")
-        self.log_message(f"Generated {bundle_path}")
-        self.notify(f"Generated bundle in {self.output_dir}", title="Generation complete", severity="information", timeout=6)
+        self.log_message(f"Created converter: {py_path}")
+        self.log_message(f"Created SLURM script: {slurm_path}")
+        self.log_message(f"Created bundle: {bundle_path}")
+        self.notify(f"Saved the converter, SLURM script, README, and bundle in {self.output_dir}.", title="Generation complete", severity="information", timeout=6)
         return py_path, slurm_path, bundle_path
 
     def scan_manifest(self) -> Path:
@@ -540,10 +549,11 @@ class NtupleWizardTui(App[None]):
 
     def submit(self) -> None:
         if not self.perlmutter:
-            self.log_message("Refusing to submit: this does not look like Perlmutter.")
+            self.notify("Run this action on a Perlmutter login node.", title="Submission unavailable", severity="warning", timeout=8)
+            self.log_message("The job was not submitted because this host is not a Perlmutter login node.")
             return
         if not self.review_confirmed:
-            self.notify("Review and confirm the generated Python and SLURM scripts before submitting.", title="Review required", severity="warning", timeout=8)
+            self.notify("Review and confirm the Python and SLURM scripts before you submit.", title="Review required", severity="warning", timeout=8)
             self.log_message("Submission blocked: generated scripts have not been reviewed.")
             return
         if not self.ensure_manifest_for_submit():
@@ -558,7 +568,7 @@ class NtupleWizardTui(App[None]):
         if result.stderr:
             self.log_message(result.stderr.strip())
         if result.returncode:
-            self.log_message(f"sbatch failed with exit code {result.returncode}")
+            self.log_message(f"The sbatch command failed with exit code {result.returncode}.")
             return
         self.job_id = self.parse_sbatch_job_id(result.stdout)
         if self.job_id:
@@ -592,7 +602,7 @@ class NtupleWizardTui(App[None]):
             log.write_line("No job submitted yet.")
             return
         if not path.exists():
-            log.write_line(f"Waiting for {path}")
+            log.write_line(f"Waiting for {path}.")
             return
         try:
             lines = path.read_text(errors="replace").splitlines()
@@ -603,9 +613,9 @@ class NtupleWizardTui(App[None]):
 
     def refresh_log_locations(self) -> None:
         if self.stdout_path is not None and self.stderr_path is not None:
-            text = f"SLURM stdout: {self.stdout_path}\nSLURM stderr: {self.stderr_path}"
+            text = f"Standard output log: {self.stdout_path}\nStandard error log: {self.stderr_path}"
         else:
-            text = f"Generated files directory: {self.output_dir}\nSLURM logs will be written here as pcdf-ntuple-<jobid>.out/.err after submission."
+            text = f"Generated files directory: {self.output_dir}\nAfter submission, SLURM logs will be saved here as pcdf-ntuple-<jobid>.out and pcdf-ntuple-<jobid>.err."
         self.query_one("#log_paths", Static).update(text)
 
     def refresh_job_logs(self) -> None:
@@ -625,7 +635,7 @@ class NtupleWizardTui(App[None]):
 
     def refresh_job_status(self) -> None:
         if not self.job_id:
-            self.notify("Submit a job before refreshing status.", title="No job", severity="warning", timeout=5)
+            self.notify("Submit a job before refreshing its status.", title="No submitted job", severity="warning", timeout=5)
             self.refresh_job_logs()
             return
         try:
@@ -636,7 +646,7 @@ class NtupleWizardTui(App[None]):
                 capture_output=True,
             )
         except FileNotFoundError:
-            self.query_one("#job_status", Static).update("squeue is not available on this host; showing log files only.")
+            self.query_one("#job_status", Static).update("The squeue command is not available on this host. Only the log files are shown.")
             self.stop_job_auto_refresh()
             self.refresh_job_logs()
             return
@@ -645,7 +655,7 @@ class NtupleWizardTui(App[None]):
             self.query_one("#job_status", Static).update(status)
             self.log_message(status)
         else:
-            message = result.stderr.strip() or f"Job {self.job_id} is no longer in squeue."
+            message = result.stderr.strip() or f"Job {self.job_id} is not listed by squeue."
             self.query_one("#job_status", Static).update(message)
             self.log_message(message)
             self.stop_job_auto_refresh()
@@ -664,7 +674,7 @@ class NtupleWizardTui(App[None]):
                 return
             if event.value not in (Select.NULL, "") and not self._loading_accounts:
                 self.mark_unreviewed()
-                self.notify(f"Using account {event.value}", title="Account selected", severity="information", timeout=4)
+                self.notify(f"Using NERSC account {event.value}.", title="Account selected", severity="information", timeout=4)
             return
         if event.select.id == "qos":
             self.mark_unreviewed()
@@ -728,8 +738,8 @@ class NtupleWizardTui(App[None]):
                     if dependents:
                         dependent_titles = ", ".join(self.state_data.objects[dependent]["title"] for dependent in dependents)
                         self.notify(
-                            f"Also turned off dependent object(s): {dependent_titles}",
-                            title=f"{self.state_data.objects[key]['title']} disabled",
+                            f"Also turned off the objects that require it: {dependent_titles}.",
+                            title=f"{self.state_data.objects[key]['title']} turned off",
                             severity="information",
                             timeout=6,
                         )
@@ -767,7 +777,7 @@ class NtupleWizardTui(App[None]):
             self.refresh_summary()
             self.review_confirmed = True
             self.query_one("#submit", Button).disabled = not self.perlmutter
-            self.notify("Generated Python and SLURM previews marked reviewed.", title="Review confirmed", severity="information", timeout=5)
+            self.notify("The Python and SLURM scripts are ready to submit.", title="Review confirmed", severity="information", timeout=5)
         elif event.button.id == "manifest_write":
             self.write_selected_manifest()
         elif event.button.id == "submit":
@@ -793,13 +803,13 @@ def default_output_dir() -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the PCDF ATLAS ntuple Textual wizard.")
-    parser.add_argument("--output-dir", type=Path, default=None, help="Directory for generated scripts and bundle. Defaults to a temporary directory under $SCRATCH when available, otherwise under the current directory.")
+    parser = argparse.ArgumentParser(description="Run the PCDF ATLAS ntuple wizard in a terminal.")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Save scripts and the bundle in this directory. By default, the wizard makes a temporary directory under $SCRATCH. If $SCRATCH is not available, it uses the current directory.")
     args = parser.parse_args()
     output_dir = args.output_dir or default_output_dir()
-    print(f"PCDF ntuple wizard generated files/log directory: {output_dir}", file=sys.stderr)
+    print(f"Generated files and logs will be saved in: {output_dir}", file=sys.stderr)
     NtupleWizardTui(output_dir=output_dir).run()
-    print(f"PCDF ntuple wizard generated files/log directory: {output_dir}", file=sys.stderr)
+    print(f"Generated files and logs were saved in: {output_dir}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -32,12 +32,12 @@ needs_edit=0
 [[ "$INPUT_MANIFEST" == *"<"* ]] && needs_edit=1
 [[ "$OUTPUT_BASE" == *"<"* ]] && needs_edit=1
 if (( needs_edit )); then
-    echo "ERROR: edit account/output/input settings." >&2
+    echo "ERROR: replace the placeholder values for the account, input manifest, and output directory." >&2
     exit 2
 fi
 
 if [[ -n "${PCDF_ALLOW_COMPUTE_DOWNLOAD:-}" ]]; then
-    echo "WARNING: PCDF_ALLOW_COMPUTE_DOWNLOAD is ignored." >&2
+    echo "WARNING: PCDF_ALLOW_COMPUTE_DOWNLOAD is ignored because compute-node downloads are disabled." >&2
 fi
 
 mkdir -p "$OUTPUT_BASE" "$RUN_DIR"
@@ -57,7 +57,7 @@ if [[ ! -s "$INPUT_MANIFEST" ]]; then
 fi
 
 if ! command -v uv >/dev/null 2>&1; then
-    echo "ERROR: uv is not on PATH; load it first." >&2
+    echo "ERROR: uv is not on PATH. Load it before submitting the job." >&2
     exit 2
 fi
 
@@ -67,7 +67,7 @@ if ! command -v parallel >/dev/null 2>&1; then
 fi
 
 if (( CONVERTER_CPUS_PER_CONVERSION < 1 )); then
-    echo "ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1" >&2
+    echo "ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1." >&2
     exit 2
 fi
 
@@ -95,7 +95,7 @@ physical_cores_on_node() {
 }
 
 export UV_CACHE_DIR="${SCRATCH:-$HOME}/.cache/uv"
-echo "Preparing uv environment once."
+echo "Preparing the Python environment."
 uv run "$PYTHON_SCRIPT" --help >/dev/null
 
 PAYLOAD_SCRIPT="$RUN_DIR/convert-${SLURM_JOB_ID}.sh"
@@ -136,20 +136,20 @@ awk \
 
 NODE_WORK=$(wc -l < "$NODE_MANIFEST")
 if (( NODE_WORK == 0 )); then
-    echo "Node ${SLURM_NODEID}: no input files assigned; exiting."
+    echo "Node ${SLURM_NODEID}: no input files were assigned. This node has no work to do."
     exit 0
 fi
 
 PHYSICAL_CORES=$(physical_cores_on_node)
 if (( PHYSICAL_CORES < 1 )); then
-    echo "ERROR: could not determine physical CPU cores on this node" >&2
+    echo "ERROR: could not determine the number of physical CPU cores on this node." >&2
     exit 2
 fi
 
 JOBS_ON_NODE=$((PHYSICAL_CORES / CPUS_PER_CONVERSION))
 if (( JOBS_ON_NODE < 1 )); then
-    echo "ERROR: ${CPUS_PER_CONVERSION} CPU(s) per conversion exceeds" >&2
-    echo "available physical cores (${PHYSICAL_CORES}) on this node." >&2
+    echo "ERROR: the requested ${CPUS_PER_CONVERSION} CPUs per conversion exceed" >&2
+    echo "the ${PHYSICAL_CORES} physical cores available on this node." >&2
     exit 2
 fi
 if (( JOBS_ON_NODE > NODE_WORK )); then
@@ -163,8 +163,8 @@ export MKL_NUM_THREADS="$CPUS_PER_CONVERSION"
 export NUMEXPR_NUM_THREADS="$CPUS_PER_CONVERSION"
 export VECLIB_MAXIMUM_THREADS="$CPUS_PER_CONVERSION"
 
-echo "Node ${SLURM_NODEID}: ${NODE_WORK} file(s), ${PHYSICAL_CORES}" \
-     "physical core(s), ${JOBS_ON_NODE} concurrent conversion(s)."
+echo "Node ${SLURM_NODEID}: assigned files: ${NODE_WORK}, physical cores:" \
+     "${PHYSICAL_CORES}, concurrent conversions: ${JOBS_ON_NODE}."
 
 parallel \
     --colsep "	" \
@@ -192,16 +192,16 @@ if (( MAX_CONCURRENT > TOTAL_WORK )); then
     MAX_CONCURRENT="$TOTAL_WORK"
 fi
 
-echo "Running on ${SLURM_NNODES} exclusive CPU node(s)"
+echo "Exclusive CPU nodes: ${SLURM_NNODES}"
 echo "Node list:      ${SLURM_JOB_NODELIST:-unknown}"
 echo "Input manifest: $INPUT_MANIFEST"
-echo "Work items:     $TOTAL_WORK input file(s)"
-echo "Output base:    $OUTPUT_BASE"
+echo "Input files:    $TOTAL_WORK"
+echo "Output dataset: $OUTPUT_BASE"
 echo "Run helpers:    $RUN_DIR"
-echo "CPU model:      ${PERLMUTTER_PHYSICAL_CORES} physical core(s) /" \
-     "${PERLMUTTER_LOGICAL_CPUS} logical CPU(s) per Perlmutter CPU node"
-echo "Parallelism:    up to ${MAX_CONCURRENT} concurrent conversion(s)," \
-     "${CPUS_PER_CONVERSION} physical core(s) each"
+echo "CPU topology:   ${PERLMUTTER_PHYSICAL_CORES} physical cores /" \
+     "${PERLMUTTER_LOGICAL_CPUS} logical CPUs per Perlmutter CPU node"
+echo "Conversions:    up to ${MAX_CONCURRENT} at once, using" \
+     "${CPUS_PER_CONVERSION} physical cores each"
 
 srun \
     --no-kill \
