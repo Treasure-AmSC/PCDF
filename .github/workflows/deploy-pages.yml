@@ -1,0 +1,50 @@
+name: Deploy ATLAS wizard to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ATLAS/**
+      - .github/workflows/deploy-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Prepare the static site
+        run: |
+          mkdir -p _site/templates _site/assets
+          cp ATLAS/ntuple-wizard.html _site/index.html
+          cp ATLAS/ntuple-wizard.css ATLAS/ntuple-wizard.js _site/
+          cp ATLAS/ntuple-wizard.objects.json _site/
+          cp -R ATLAS/templates/. _site/templates/
+          cp -R ATLAS/assets/. _site/assets/
+          touch _site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the static site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy the static site
+        id: deployment
+        uses: actions/deploy-pages@v4

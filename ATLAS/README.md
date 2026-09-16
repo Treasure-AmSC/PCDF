@@ -41,3 +41,16 @@ path type `Prefix`, path `/`, and the workload's port-8080 ClusterIP service as
 the target. NERSC documents the current Rancher steps in
 [Running Your App in Spin](https://docs.nersc.gov/services/spin/running/) and
 [Connecting to a Spin App](https://docs.nersc.gov/services/spin/connecting/).
+
+GitHub Pages deployment
+-----------------------
+
+The browser wizard can also be published as a static GitHub Pages site. The
+workflow in `.github/workflows/deploy-pages.yml` copies only the browser
+assets, object configuration, templates, and textures into the Pages artifact.
+It does not publish the Python server or run Rucio, SLURM, or data conversion.
+Those actions still happen when a user runs a generated bundle on Perlmutter.
+
+In the repository's GitHub Pages settings, select **GitHub Actions** as the
+publishing source. Pushes to `main` that change `ATLAS/` then deploy the site.
+SPIN remains available for the container-based deployment with `/healthz`.
