@@ -3,7 +3,7 @@
 
 The wizard is stored as inspectable static assets plus separate generated-script
 templates.  This helper combines those pieces in memory for the browser and
-serves them over HTTP. The default listener remains local-only; container
+serves them over HTTP. The default listener remains local-only. Container
 deployments can select another bind address explicitly.
 """
 
@@ -36,6 +36,16 @@ INJECTIONS = {
         "text/plain",
         "template-slurm",
         ATLAS_DIR / "templates" / "submit-pcdf-ntuple.template.slurm",
+    ),
+    "<!-- pcdf-template-condor -->": (
+        "text/plain",
+        "template-condor",
+        ATLAS_DIR / "templates" / "submit-pcdf-ntuple.template.condor",
+    ),
+    "<!-- pcdf-template-condor-job -->": (
+        "text/plain",
+        "template-condor-job",
+        ATLAS_DIR / "templates" / "run-pcdf-condor-job.template.sh",
     ),
     "<!-- pcdf-template-readme -->": (
         "text/plain",
@@ -149,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     server = ThreadingHTTPServer((args.host, args.port), handler)
     url = f"http://{args.host}:{args.port}/"
     print(f"Serving ATLAS ntuple wizard at {url}")
-    print(f"Listening on {args.host}; press Ctrl-C to stop.")
+    print(f"Listening on {args.host}. Press Ctrl-C to stop.")
     if not args.no_browser:
         webbrowser.open(url)
     try:

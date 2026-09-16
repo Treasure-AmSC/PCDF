@@ -5,7 +5,6 @@
     "indexName": "eventIndex",
     "description": "Run and event numbers, lumiBlock, and beam-spot coordinates from EventInfo.",
     "recommended": true,
-    "requiredReason": "Event is always included. Every other table links to it with eventIndex.",
     "aliases": {
       "runNumber": "EventInfoAuxDyn.runNumber",
       "eventNumber": "EventInfoAuxDyn.eventNumber",
@@ -13,13 +12,24 @@
       "beamX": "EventInfoAuxDyn.beamPosX",
       "beamY": "EventInfoAuxDyn.beamPosY",
       "beamZ": "EventInfoAuxDyn.beamPosZ"
+    },
+    "sizeEstimate": {
+      "baseBytesPerEvent": 7.129,
+      "variables": {
+        "runNumber": 0.058,
+        "eventNumber": 1.192,
+        "lumiBlock": 0.367,
+        "beamX": 0.070,
+        "beamY": 0.070,
+        "beamZ": 0.068
+      }
     }
   },
   "Jet": {
     "title": "Small-R jets",
     "folder": "Jet",
     "indexName": "jetIndex",
-    "description": "Small-R jet four-vectors and the parton flavor label. The program skips the flavor label for collision data.",
+    "description": "Small-R jet four-vectors and parton flavor.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -39,7 +49,17 @@
     },
     "mcOnlyVariables": [
       "flavor"
-    ]
+    ],
+    "sizeEstimate": {
+      "baseBytesPerEvent": 21.091,
+      "variables": {
+        "pt": 35.118,
+        "eta": 36.647,
+        "phi": 36.445,
+        "m": 35.235,
+        "flavor": 6.448
+      }
+    }
   },
   "Const": {
     "title": "Jet constituents",
@@ -74,6 +94,15 @@
         "CHSGChargedParticleFlowObjectsAuxDyn.m",
         "CHSGNeutralParticleFlowObjectsAuxDyn.m"
       ]
+    },
+    "sizeEstimate": {
+      "baseBytesPerEvent": 164.003,
+      "variables": {
+        "pt": 443.935,
+        "eta": 470.197,
+        "phi": 461.293,
+        "m": 151.897
+      }
     }
   },
   "Track": {
@@ -91,13 +120,23 @@
       "phi": "InDetTrackParticlesAuxDyn.phi",
       "d0": "InDetTrackParticlesAuxDyn.d0",
       "z0": "InDetTrackParticlesAuxDyn.z0"
+    },
+    "sizeEstimate": {
+      "baseBytesPerEvent": 158.182,
+      "variables": {
+        "q_p": 485.956,
+        "theta": 435.142,
+        "phi": 465.929,
+        "d0": 501.997,
+        "z0": 470.773
+      }
     }
   },
   "LargeRJet": {
     "title": "Large-R jets",
     "folder": "LargeRJet",
     "indexName": "largeRJetIndex",
-    "description": "Large-R jet four-vectors and the truth label. The program skips the truth label for collision data.",
+    "description": "Large-R jet four-vectors and truth labels.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -117,13 +156,23 @@
     },
     "mcOnlyVariables": [
       "truth"
-    ]
+    ],
+    "sizeEstimate": {
+      "baseBytesPerEvent": 8.328,
+      "variables": {
+        "pt": 3.792,
+        "eta": 3.972,
+        "phi": 3.950,
+        "m": 3.871,
+        "truth": 0.573
+      }
+    }
   },
   "Electron": {
     "title": "Electrons",
     "folder": "Electron",
     "indexName": "electronIndex",
-    "description": "Electron momentum, direction, charge, and truth type. The program skips truth type for collision data.",
+    "description": "Electron momentum, direction, charge, and truth type.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -142,13 +191,23 @@
     },
     "mcOnlyVariables": [
       "truth"
-    ]
+    ],
+    "sizeEstimate": {
+      "baseBytesPerEvent": 7.842,
+      "variables": {
+        "pt": 2.961,
+        "eta": 3.029,
+        "phi": 3.034,
+        "charge": 0.383,
+        "truth": 0.629
+      }
+    }
   },
   "Muon": {
     "title": "Muons",
     "folder": "Muon",
     "indexName": "muonIndex",
-    "description": "Muon momentum, direction, charge, and truth type. The program skips truth type for collision data.",
+    "description": "Muon momentum, direction, charge, and truth type.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -167,13 +226,23 @@
     },
     "mcOnlyVariables": [
       "truth"
-    ]
+    ],
+    "sizeEstimate": {
+      "baseBytesPerEvent": 7.666,
+      "variables": {
+        "pt": 2.692,
+        "eta": 2.765,
+        "phi": 2.766,
+        "charge": 0.355,
+        "truth": 0.444
+      }
+    }
   },
   "Photon": {
     "title": "Photons",
     "folder": "Photon",
     "indexName": "photonIndex",
-    "description": "Photon momentum, direction, and truth type. Photons have no charge field. The program skips truth type for collision data.",
+    "description": "Photon momentum, direction, and truth type. Photons have no charge field.",
     "recommended": true,
     "dependsOn": [
       "Event"
@@ -191,7 +260,16 @@
     },
     "mcOnlyVariables": [
       "truth"
-    ]
+    ],
+    "sizeEstimate": {
+      "baseBytesPerEvent": 10.298,
+      "variables": {
+        "pt": 9.636,
+        "eta": 10.196,
+        "phi": 10.180,
+        "truth": 1.325
+      }
+    }
   },
   "MET": {
     "title": "Missing transverse momentum",
@@ -208,6 +286,13 @@
     "aliases": {
       "px": "MET_Core_AnalysisMETAuxDyn.mpx",
       "py": "MET_Core_AnalysisMETAuxDyn.mpy"
+    },
+    "sizeEstimate": {
+      "baseBytesPerEvent": 5.738,
+      "variables": {
+        "px": 7.574,
+        "py": 7.547
+      }
     }
   }
 }

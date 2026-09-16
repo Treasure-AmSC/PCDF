@@ -17,6 +17,8 @@ OBJECT_CONFIG_PATH = ATLAS_DIR / "ntuple-wizard.objects.json"
 TEMPLATE_DIR = ATLAS_DIR / "templates"
 PERLMUTTER_PHYSICAL_CORES = 128
 PERLMUTTER_LOGICAL_CPUS = 256
+BUNDLE_ROOT_NAME = "pcdf-ntuple"
+CODE_DIR_NAME = "code"
 
 
 def load_object_config() -> dict[str, dict[str, Any]]:
@@ -90,16 +92,23 @@ class WizardState:
     sample_type: str = "MC"
     selected_objects: set[str] = field(default_factory=set)
     selected_variables: dict[str, set[str]] = field(default_factory=dict)
+    scheduler: str = "slurm"
     account: str = ""
     qos: str = "regular"
     nodes: int = 1
     time: str = "00:30:00"
-    output_base: str = "./pcdf-output"
+    condor_cpus: int = 1
+    condor_memory_mb: int = 4096
+    condor_disk_mb: int = 4096
+    condor_requirements: str = ""
+    output_base: str = "./output"
     manifest: str = "./pcdf-inputs.txt"
     scan_root: str = "$SCRATCH"
     glob_pattern: str = "DAOD_*.pool.root*"
 
     def __post_init__(self) -> None:
+        if self.scheduler not in {"slurm", "condor"}:
+            raise ValueError(f"Unsupported scheduler: {self.scheduler}")
         if not self.selected_objects:
             self.selected_objects = {key for key, obj in self.objects.items() if obj.get("recommended")}
         if not self.selected_variables:
@@ -198,9 +207,9 @@ def build_slurm(state: WizardState, output_dir: Path) -> str:
         "QOS": state.qos,
         "NODES": str(state.nodes),
         "TIME": state.time,
-        "LOG_OUT": json.dumps("pcdf-ntuple-%j.out"),
-        "LOG_ERR": json.dumps("pcdf-ntuple-%j.err"),
-        "PYTHON_PATH": json.dumps("./" + generated_python_name(state.input_format)),
+        "LOG_OUT": json.dumps("logs/pcdf-ntuple-%j.out"),
+        "LOG_ERR": json.dumps("logs/pcdf-ntuple-%j.err"),
+        "PYTHON_PATH": json.dumps(f"./{CODE_DIR_NAME}/" + generated_python_name(state.input_format)),
         "INPUT_MANIFEST": json.dumps(expanded_path(state.manifest)),
         "OUTPUT_BASE": json.dumps(expanded_path(state.output_base)),
         "CONVERTER_CPUS_PER_CONVERSION": "1",
@@ -209,16 +218,57 @@ def build_slurm(state: WizardState, output_dir: Path) -> str:
     })
 
 
+def condor_value(value: str) -> str:
+    """Quote a string for use as one HTCondor argument or path value."""
+    return '"' + value.replace('"', '\\"') + '"'
+
+
+def build_condor(state: WizardState, output_dir: Path) -> str:
+    del output_dir
+    requirements_line = f"requirements = {state.condor_requirements}" if state.condor_requirements else ""
+    return apply_template((TEMPLATE_DIR / "submit-pcdf-ntuple.template.condor").read_text(), {
+        "PYTHON_PATH": condor_value(f"./{CODE_DIR_NAME}/" + generated_python_name(state.input_format)),
+        "INPUT_MANIFEST": condor_value(expanded_path(state.manifest)),
+        "OUTPUT_BASE": condor_value(expanded_path(state.output_base)),
+        "REQUEST_CPUS": str(state.condor_cpus),
+        "REQUEST_MEMORY_MB": str(state.condor_memory_mb),
+        "REQUEST_DISK_MB": str(state.condor_disk_mb),
+        "REQUIREMENTS_LINE": requirements_line,
+    })
+
+
 def build_readme(state: WizardState) -> str:
     python_name = generated_python_name(state.input_format)
-    slurm_section = """\
+    if state.scheduler == "condor":
+        batch_file_line = "- code/submit-pcdf-ntuple.condor describes one HTCondor job for each manifest entry.\n- code/run-pcdf-condor-job.sh runs one file conversion on an execute node.\n"
+        batch_section = """\
+HTCondor run
+------------
+1. Extract the bundle on a filesystem shared by the access point and execute
+   nodes:
+   tar -xf pcdf-ntuple-bundle.tar
+   cd pcdf-ntuple
+2. Check code/submit-pcdf-ntuple.condor. Its input manifest, converter, and output
+   directory must be visible at the same paths on every execute node. The
+   submit file does not copy DAOD inputs through HTCondor file transfer.
+3. Start the included workflow:
+   ./run-pcdf.sh
+   It creates the manifest, asks before submitting, then follows all jobs in
+   the cluster until they finish. Stopping the monitor does not remove jobs.
+4. To run each step yourself, use code/make-manifest.py, condor_submit
+   code/submit-pcdf-ntuple.condor, and condor_q.
+"""
+    else:
+        batch_file_line = "- code/submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n"
+        batch_section = """\
 Perlmutter run
 --------------
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
+   cd pcdf-ntuple
    The Python and SLURM scripts are marked executable.
 2. On a login node, check the account, manifest, output directory, and node
-   count in submit-pcdf-ntuple.slurm. The job writes all tables below the same
+   count in code/submit-pcdf-ntuple.slurm. The job writes all tables below the same
    output directory. It runs one file conversion on each physical CPU core.
 3. Start the included workflow:
    ./run-pcdf.sh
@@ -229,46 +279,65 @@ Perlmutter run
    look up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`. It removes the
    access proxy's scheme, host, and port from each replica PFN, retaining its
    local path. The transform does not require Rucio.
-4. To run each step yourself, use make-manifest.py, sbatch
-   submit-pcdf-ntuple.slurm, and squeue -u $USER.
+4. To run each step yourself, use code/make-manifest.py, sbatch
+   code/submit-pcdf-ntuple.slurm, and squeue -u $USER.
 """
     return apply_template((TEMPLATE_DIR / "README_SUBMIT.template.md").read_text(), {
         "PYTHON_NAME": python_name,
         "INPUT_FORMAT": state.input_format,
-        "SLURM_FILE_LINE": "- submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n",
+        "SLURM_FILE_LINE": batch_file_line,
         "WORKFLOW_FILE_LINE": "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n",
-        "SLURM_SECTION": slurm_section,
+        "SLURM_SECTION": batch_section,
     })
 
 
 def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    py_path = output_dir / generated_python_name(state.input_format)
-    slurm_path = output_dir / "submit-pcdf-ntuple.slurm"
-    readme_path = output_dir / "README_SUBMIT.md"
-    manifest_helper_path = output_dir / "make-manifest.py"
-    workflow_shell_path = output_dir / "run-pcdf.sh"
-    workflow_python_path = output_dir / "run-pcdf.py"
+    bundle_root = output_dir / BUNDLE_ROOT_NAME
+    code_dir = bundle_root / CODE_DIR_NAME
+    runtime_output_dir = bundle_root / "output"
+    logs_dir = bundle_root / "logs"
+    for directory in (code_dir, runtime_output_dir, logs_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+    py_path = code_dir / generated_python_name(state.input_format)
+    if state.scheduler == "condor":
+        submit_path = code_dir / "submit-pcdf-ntuple.condor"
+        submit_text = build_condor(state, output_dir)
+    else:
+        submit_path = code_dir / "submit-pcdf-ntuple.slurm"
+        submit_text = build_slurm(state, output_dir)
+    readme_path = bundle_root / "README_SUBMIT.md"
+    manifest_helper_path = code_dir / "make-manifest.py"
+    workflow_shell_path = bundle_root / "run-pcdf.sh"
+    workflow_python_path = code_dir / "run-pcdf.py"
+    condor_job_path = code_dir / "run-pcdf-condor-job.sh"
     bundle_path = output_dir / "pcdf-ntuple-bundle.tar"
     py_path.write_text(build_python(state))
-    slurm_path.write_text(build_slurm(state, output_dir))
+    submit_path.write_text(submit_text)
     readme_path.write_text(build_readme(state))
     manifest_helper_path.write_text((TEMPLATE_DIR / "make-manifest.template.py").read_text())
     workflow_shell_path.write_text((TEMPLATE_DIR / "run-pcdf.template.sh").read_text())
     workflow_python_path.write_text((TEMPLATE_DIR / "run-pcdf.template.py").read_text())
+    if state.scheduler == "condor":
+        condor_job_path.write_text((TEMPLATE_DIR / "run-pcdf-condor-job.template.sh").read_text())
     py_path.chmod(0o755)
-    slurm_path.chmod(0o755)
+    submit_path.chmod(0o755)
     manifest_helper_path.chmod(0o755)
     workflow_shell_path.chmod(0o755)
     workflow_python_path.chmod(0o755)
+    if state.scheduler == "condor":
+        condor_job_path.chmod(0o755)
     with tarfile.open(bundle_path, "w") as archive:
-        archive.add(py_path, arcname=py_path.name)
-        archive.add(slurm_path, arcname=slurm_path.name)
-        archive.add(readme_path, arcname=readme_path.name)
-        archive.add(manifest_helper_path, arcname=manifest_helper_path.name)
-        archive.add(workflow_shell_path, arcname=workflow_shell_path.name)
-        archive.add(workflow_python_path, arcname=workflow_python_path.name)
-    return py_path, slurm_path, bundle_path
+        for directory in (bundle_root, code_dir, runtime_output_dir, logs_dir):
+            info = tarfile.TarInfo(str(directory.relative_to(output_dir)) + "/")
+            info.type = tarfile.DIRTYPE
+            info.mode = 0o755
+            archive.addfile(info)
+        for path in (py_path, submit_path, readme_path, manifest_helper_path, workflow_shell_path, workflow_python_path):
+            archive.add(path, arcname=path.relative_to(output_dir))
+        if state.scheduler == "condor":
+            archive.add(condor_job_path, arcname=condor_job_path.relative_to(output_dir))
+    return py_path, submit_path, bundle_path
 
 
 def discover_files(scan_root: str, glob_pattern: str) -> list[Path]:

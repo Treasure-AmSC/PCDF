@@ -26,7 +26,7 @@
             <button class="btn step-pill active flex-fill" type="button" data-step-target="0" aria-controls="stepInput" aria-current="step"><i class="bi bi-file-earmark-binary me-1" aria-hidden="true"></i>1. Input format</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="1" aria-controls="stepObjects"><i class="bi bi-boxes me-1" aria-hidden="true"></i>2. Objects</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="2" aria-controls="stepVariables"><i class="bi bi-list-check me-1" aria-hidden="true"></i>3. Variables</button>
-            <button class="btn step-pill flex-fill" type="button" data-step-target="3" aria-controls="stepSlurm"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>4. SLURM</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="3" aria-controls="stepSlurm"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>4. Batch system</button>
             <button class="btn step-pill flex-fill" type="button" data-step-target="4" aria-controls="stepGenerate"><i class="bi bi-code-square me-1" aria-hidden="true"></i>5. Generate</button>
           </nav>
 
@@ -34,12 +34,11 @@
             <div id="wizardStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
             <section id="stepInput" class="wizard-step" data-step="0" aria-labelledby="stepInputHeading">
               <div class="row g-4 align-items-stretch">
-                <div class="col-lg-6">
+                <div class="col-12">
                   <div class="card h-100 border-secondary-subtle">
                     <div class="card-body">
                       <h2 id="stepInputHeading" class="h4 card-title" tabindex="-1">Choose the DAOD input</h2>
-                      <p id="inputFormatHelp" class="text-secondary"><span class="term-with-help"><span class="term-label" aria-describedby="tip-jetm16">JETM16</span><span class="term-tooltip" id="tip-jetm16" role="tooltip">An ATLAS DAOD made for jet studies. It includes detailed jet content.</span></span> has extra data for jet studies. <span class="term-with-help"><span class="term-label" aria-describedby="tip-physlite">PHYSLITE</span><span class="term-tooltip" id="tip-physlite" role="tooltip">A compact ATLAS DAOD with objects used in many analyses.</span></span> is smaller and lacks the particle-flow data used to build jet constituents.</p>
-                      <fieldset aria-describedby="inputFormatHelp">
+                      <fieldset>
                         <legend class="visually-hidden">DAOD input format</legend>
                         <div class="vstack gap-3 mt-4">
                           <label class="form-check p-3 border rounded-3">
@@ -68,20 +67,6 @@
                     </div>
                   </div>
                 </div>
-                <div class="col-lg-6">
-                  <div class="card h-100 border-secondary-subtle">
-                    <div class="card-body">
-                      <h2 class="h4 card-title">What the program does</h2>
-                      <ul class="text-secondary mb-0">
-                        <li>Reads the fields you choose from <span class="term-with-help"><span class="term-label" aria-describedby="tip-collection-tree"><code>CollectionTree</code></span><span class="term-tooltip" id="tip-collection-tree" role="tooltip">The ROOT tree that stores events and physics objects in an ATLAS DAOD.</span></span>.</li>
-                        <li>Writes one Parquet table for each object you select.</li>
-                        <li>Uses the task and file numbers from a standard ATLAS filename. For other names, it uses the <span class="term-with-help"><span class="term-label" aria-describedby="tip-root-id">ROOT file ID</span><span class="term-tooltip" id="tip-root-id" role="tooltip">A 128-bit UUID stored inside a ROOT file. It stays the same if the file is renamed.</span></span>.</li>
-                        <li>Keeps the generated table links unique within each task or file.</li>
-                        <li>For collision data, skips truth and flavor fields and adds <code>lumiBlock</code> to Events.</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -89,12 +74,14 @@
               <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
                 <div>
                   <h2 id="stepObjectsHeading" class="h4 mb-1" tabindex="-1">Select output objects</h2>
-                  <p class="text-secondary mb-0">Each object you select becomes a Parquet table. The program gets file IDs from the ATLAS filename when it can. Otherwise, it reads the ID stored in the ROOT file. Turning off an object also turns off tables that need it.</p>
+                  <p class="text-secondary mb-0">Turning off an object also turns off tables that depend on it.</p>
                 </div>
-                <div class="d-flex flex-wrap gap-2 align-self-start" role="group" aria-label="Object selection shortcuts">
-                  <button class="btn btn-outline-light" type="button" id="selectRecommended">Recommended</button>
-                  <button class="btn btn-outline-light" type="button" id="selectAll">All available</button>
-                  <button class="btn btn-outline-light" type="button" id="selectNone">Event only</button>
+                <div class="selection-actions align-self-start">
+                  <p class="size-estimate mb-0">Estimated Parquet size: <strong id="objectSizeEstimate"></strong></p>
+                  <div class="d-flex flex-wrap gap-2" role="group" aria-label="Object selection shortcuts">
+                    <button class="btn btn-outline-light" type="button" id="selectRecommended">Recommended</button>
+                    <button class="btn btn-outline-light" type="button" id="selectAll">All available</button>
+                  </div>
                 </div>
               </div>
               <div class="row g-3" id="objectList"></div>
@@ -104,9 +91,12 @@
               <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
                 <div>
                   <h2 id="stepVariablesHeading" class="h4 mb-1" tabindex="-1">Choose variables</h2>
-                  <p class="text-secondary mb-0">Variables are grouped by object. The four-vector fields must stay selected.</p>
+                  <p class="text-secondary mb-0">Four-vector fields are required and remain selected.</p>
                 </div>
-                <button class="btn btn-outline-info align-self-start" type="button" id="restoreDefaults">Restore all available variables</button>
+                <div class="selection-actions align-self-start">
+                  <p class="size-estimate mb-0">Estimated Parquet size: <strong id="variableSizeEstimate"></strong></p>
+                  <button class="btn btn-outline-info" type="button" id="restoreDefaults">Restore all available variables</button>
+                </div>
               </div>
               <div class="accordion" id="variableAccordion"></div>
             </section>
@@ -116,16 +106,26 @@
                 <div class="card-body">
                   <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
                     <div>
-                      <h2 id="stepSlurmHeading" class="h4 mb-1" tabindex="-1">Perlmutter job</h2>
-                      <p class="text-secondary mb-0">Build a <span class="term-with-help"><span class="term-label" aria-describedby="tip-slurm">SLURM</span><span class="term-tooltip" id="tip-slurm" role="tooltip">The system that places jobs in a queue and runs them on Perlmutter.</span></span> job script for <span class="term-with-help"><span class="term-label" aria-describedby="tip-perlmutter">NERSC Perlmutter</span><span class="term-tooltip" id="tip-perlmutter" role="tooltip">The NERSC supercomputer where this job script runs.</span></span>. Before you submit the job, make a <span class="term-with-help"><span class="term-label" aria-describedby="tip-manifest">manifest</span><span class="term-tooltip" id="tip-manifest" role="tooltip">A text file with one input file path on each line.</span></span>.</p>
+                      <h2 id="stepSlurmHeading" class="h4 mb-1" tabindex="-1">Batch job</h2>
+                      <p class="text-secondary mb-0">The workflow submits one conversion for each path in the <span class="term-with-help"><span class="term-label" aria-describedby="tip-manifest">input manifest</span><span class="term-tooltip" id="tip-manifest" role="tooltip">A text file with one input file path on each line.</span></span>.</p>
                     </div>
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
-                      <label class="form-check-label" for="enableSlurm">Generate script</label>
+                      <label class="form-check-label" for="enableSlurm">Generate batch files</label>
                     </div>
                   </div>
                   <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="col-12">
+                      <div class="form-floating">
+                        <select class="form-select slurm-input" id="scheduler" aria-describedby="schedulerHelp">
+                          <option value="slurm" selected>SLURM on NERSC Perlmutter</option>
+                          <option value="condor">HTCondor with a shared filesystem</option>
+                        </select>
+                        <label for="scheduler">Batch system</label>
+                      </div>
+                      <div class="form-text text-secondary" id="schedulerHelp">HTCondor workers must see the input files, converter, and output directory at the same paths as the submit host.</div>
+                    </div>
+                    <div class="col-md-6 slurm-only">
                       <div class="form-floating">
                         <input class="form-control slurm-input" id="slurmAccount" value="" required placeholder="NERSC project account" data-error-id="slurmAccountError">
                         <label for="slurmAccount">NERSC project account</label>
@@ -134,55 +134,80 @@
                     </div>
                     <div class="col-md-6">
                       <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmQos" value="regular" required placeholder="QOS" data-error-id="slurmQosError">
-                        <label for="slurmQos">Queue (QOS)</label>
-                        <div class="invalid-feedback" id="slurmQosError">Enter a queue name, such as regular.</div>
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1" required placeholder="CPU nodes" data-error-id="slurmNodesError">
-                        <label for="slurmNodes">CPU nodes</label>
-                        <div class="invalid-feedback" id="slurmNodesError">Request at least one CPU node.</div>
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div class="alert alert-secondary h-100 mb-0">
-                        The job uses whole CPU nodes. It starts one file conversion on each physical CPU core. It continues until all files are done.
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmTime" value="00:30:00" required pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="Wall time" aria-describedby="slurmTimeHelp" data-error-id="slurmTimeError">
-                        <label for="slurmTime">Wall time</label>
-                        <div class="form-text text-secondary" id="slurmTimeHelp">The 30-minute default is based on test runs.</div>
-                        <div class="invalid-feedback" id="slurmTimeError">Use HH:MM:SS, for example 00:30:00.</div>
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmOutputBase" value="./pcdf-output" required placeholder="Output base directory" aria-describedby="slurmOutputBaseHelp" data-error-id="slurmOutputBaseError">
+                        <input class="form-control slurm-input" id="slurmOutputBase" value="./output" required placeholder="Output base directory" data-error-id="slurmOutputBaseError">
                         <label for="slurmOutputBase">Output dataset directory</label>
-                        <div class="form-text text-secondary" id="slurmOutputBaseHelp">By default, results are written beside this bundle in <code>pcdf-output</code>.</div>
                         <div class="invalid-feedback" id="slurmOutputBaseError">Enter an output directory.</div>
                       </div>
                     </div>
-                    <div class="col-12">
-                      <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmPythonPath" value="./ntuple-maker-jetm16.py" required placeholder="Converter path on Perlmutter" aria-describedby="slurmPythonPathHelp" data-error-id="slurmPythonPathError">
-                        <label for="slurmPythonPath">Converter path on Perlmutter</label>
-                        <div class="invalid-feedback" id="slurmPythonPathError">Enter the converter path.</div>
-                      </div>
-                      <div class="form-text text-secondary" id="slurmPythonPathHelp">The default is the converter included in the bundle.</div>
-                    </div>
-                    <div class="col-12">
+                    <div class="col-md-6">
                       <div class="form-floating">
                         <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="Input manifest path" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
                         <label for="slurmInputManifest">Input-file manifest path</label>
                         <div class="invalid-feedback" id="slurmInputManifestError">Enter the manifest path.</div>
                       </div>
-                      <div class="form-text text-secondary" id="slurmInputManifestHelp">Create this file before submitting the job. Run the bundle's <code>make-manifest.py</code> from this directory. It prompts for downloaded files or a dataset on <code>NERSC_LOCALGROUPDISK</code>, then writes <code>pcdf-inputs.txt</code> here by default. The job reads only these paths. Compute nodes do not download data.</div>
+                      <div class="form-text text-secondary" id="slurmInputManifestHelp">The workflow creates this file before submission. Compute nodes do not download data.</div>
                     </div>
+                    <p class="col-12 text-secondary small mb-0" id="advancedBatchHelp">Most users can leave the advanced settings unchanged. They control resource requests and the converter path.</p>
+                    <details class="col-12 border rounded-3 p-3" id="advancedBatchSettings">
+                      <summary class="fw-semibold">Advanced scheduler settings</summary>
+                      <div class="row g-3 mt-1">
+                        <div class="col-md-6 slurm-only">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmQos" value="regular" required placeholder="QOS" data-error-id="slurmQosError">
+                            <label for="slurmQos">Queue (QOS)</label>
+                            <div class="invalid-feedback" id="slurmQosError">Enter a queue name, such as regular.</div>
+                          </div>
+                        </div>
+                        <div class="col-md-6 slurm-only">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1" required placeholder="CPU nodes" data-error-id="slurmNodesError">
+                            <label for="slurmNodes">CPU nodes</label>
+                            <div class="invalid-feedback" id="slurmNodesError">Request at least one CPU node.</div>
+                          </div>
+                        </div>
+                        <div class="col-md-6 slurm-only">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmTime" value="00:30:00" required pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="Wall time" data-error-id="slurmTimeError">
+                            <label for="slurmTime">Wall time</label>
+                            <div class="invalid-feedback" id="slurmTimeError">Use HH:MM:SS, for example 00:30:00.</div>
+                          </div>
+                        </div>
+                        <div class="col-md-4 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorCpus" type="number" min="1" value="1" required placeholder="CPU cores" data-error-id="condorCpusError">
+                            <label for="condorCpus">CPU cores per file</label>
+                            <div class="invalid-feedback" id="condorCpusError">Request at least one CPU core.</div>
+                          </div>
+                        </div>
+                        <div class="col-md-4 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorMemory" type="number" min="1" value="4096" required placeholder="Memory in MiB" data-error-id="condorMemoryError">
+                            <label for="condorMemory">Memory per file (MiB)</label>
+                            <div class="invalid-feedback" id="condorMemoryError">Request at least 1 MiB of memory.</div>
+                          </div>
+                        </div>
+                        <div class="col-md-4 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorDisk" type="number" min="1" value="4096" required placeholder="Disk in MiB" data-error-id="condorDiskError">
+                            <label for="condorDisk">Scratch disk per file (MiB)</label>
+                            <div class="invalid-feedback" id="condorDiskError">Request at least 1 MiB of scratch disk.</div>
+                          </div>
+                        </div>
+                        <div class="col-12 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorRequirements" placeholder="Optional ClassAd expression">
+                            <label for="condorRequirements">Worker requirements (optional)</label>
+                          </div>
+                        </div>
+                        <div class="col-12">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmPythonPath" value="./code/ntuple-maker-jetm16.py" required placeholder="Converter path" data-error-id="slurmPythonPathError">
+                            <label for="slurmPythonPath">Converter path</label>
+                            <div class="invalid-feedback" id="slurmPythonPathError">Enter the converter path.</div>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
                   </div>
                 </div>
               </div>
@@ -194,35 +219,33 @@
                   <h2 id="stepGenerateHeading" class="h4 generate-heading" tabindex="-1">Review configuration</h2>
                   <div id="summary" class="vstack gap-3 mb-4"></div>
                   <div class="action-bar">
+                    <button class="btn btn-primary fw-bold" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>Download bundle (.tar)</button>
                     <button class="btn btn-outline-light" type="button" id="downloadScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download converter</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download SLURM script</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>Download bundle (.tar)</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>Download batch file</button>
                   </div>
-                  <div class="alert alert-info mt-4 mb-0">
-                    <p class="mb-2">To convert one file on this computer, run <code>uv run ./ntuple-maker-jetm16.py DAOD_JETM16.37620644._000244.pool.root -o parquet-output</code>. Use <code>ntuple-maker-physlite.py</code> for PHYSLITE. The README in the bundle explains the output layout and file IDs.</p>
-                    <ol class="submission-steps mb-0 ps-3" id="slurmRunInstructions">
-                      <li>Download the bundle and copy it to Perlmutter. Extract it with <code>tar -xf pcdf-ntuple-bundle.tar</code>.</li>
-                      <li>On a login node, review <code>submit-pcdf-ntuple.slurm</code>, then run <code>./run-pcdf.sh</code>. It creates the manifest, asks before submission, and follows the job until it ends.</li>
-                      <li>Keep the terminal open while the workflow monitors the job. If you stop it, the job continues under SLURM. Read <code>pcdf-ntuple-&lt;jobid&gt;.out</code> and <code>pcdf-ntuple-&lt;jobid&gt;.err</code> if the job fails.</li>
-                    </ol>
+                  <div class="alert alert-info mt-4 mb-0" id="runInstructions">
+                    <h3 class="h6">Run the bundle</h3>
+                    <ol class="submission-steps mb-0 ps-3" id="slurmRunInstructions"></ol>
                   </div>
                 </div>
-                <div class="col-xl-7 script-column">
-                  <h2 class="h4 generate-heading">Generated scripts</h2>
-                  <h3 id="scriptHighlightHeading" class="h6 form-label fw-semibold">Generated Python script</h3>
-                  <pre id="scriptHighlight" class="form-control code-output python-preview mb-4" tabindex="0" role="region" aria-labelledby="scriptHighlightHeading"><code></code></pre>
-                  <textarea id="scriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+                <details class="col-xl-7 script-details">
+                  <summary><h2 class="h4 generate-heading">Generated scripts</h2></summary>
+                  <div class="script-column mt-2">
+                    <h3 id="scriptHighlightHeading" class="h6 form-label fw-semibold">Generated Python script</h3>
+                    <pre id="scriptHighlight" class="form-control code-output python-preview mb-4" tabindex="0" role="region" aria-labelledby="scriptHighlightHeading"><code></code></pre>
+                    <textarea id="scriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
 
-                  <h3 id="slurmScriptHighlightHeading" class="h6 form-label fw-semibold">Generated SLURM submission script</h3>
-                  <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" role="region" aria-labelledby="slurmScriptHighlightHeading"><code></code></pre>
-                  <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
-                </div>
+                    <h3 id="slurmScriptHighlightHeading" class="h6 form-label fw-semibold">Generated batch submission file</h3>
+                    <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" role="region" aria-labelledby="slurmScriptHighlightHeading"><code></code></pre>
+                    <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+                  </div>
+                </details>
               </div>
             </section>
 
-            <p class="keyboard-help text-secondary small mt-4 mb-2"><span class="fw-semibold">Keyboard:</span> <kbd>F8</kbd> Back · <kbd>F9</kbd> Next · <kbd>F2</kbd> <button class="glossary-link" id="glossaryOpen" type="button" aria-haspopup="dialog" aria-controls="glossaryModal" aria-keyshortcuts="F2">Help</button></p>
-            <div class="d-flex justify-content-between gap-3 pt-4 border-top border-secondary-subtle">
+            <div class="wizard-footer d-flex justify-content-between gap-3 pt-4 border-top border-secondary-subtle">
               <button class="btn btn-outline-light" type="button" id="prevStep" aria-keyshortcuts="F8">Back</button>
+              <p class="keyboard-help text-secondary small mb-0"><span class="fw-semibold">Keyboard:</span> <kbd>F8</kbd> Back · <kbd>F9</kbd> Next · <kbd>F2</kbd> <button class="glossary-link" id="glossaryOpen" type="button" aria-haspopup="dialog" aria-controls="glossaryModal" aria-keyshortcuts="F2">Help</button></p>
               <button class="btn btn-primary" type="button" id="nextStep" aria-keyshortcuts="F9">Next</button>
             </div>
           </form>
@@ -238,16 +261,6 @@
           <button class="btn-close btn-close-white" type="button" data-glossary-close aria-label="Close help"></button>
         </div>
         <div class="modal-body">
-          <section aria-labelledby="wizardHelpTitle">
-            <h3 class="h5" id="wizardHelpTitle">Using the wizard</h3>
-            <ol>
-              <li>Choose the DAOD format and whether the sample contains simulation or collision data.</li>
-              <li>Choose the physics objects and variables you need.</li>
-              <li>Review the Perlmutter settings if you want a SLURM job script.</li>
-              <li>Download the bundle. Its README explains how to run it.</li>
-            </ol>
-            <p>The generated Python program writes one Parquet table for each selected object. Standard ATLAS filenames provide the task and file numbers. For other filenames, the program uses the ID stored in the ROOT file.</p>
-          </section>
           <section aria-labelledby="glossaryTermsTitle">
             <h3 class="h5" id="glossaryTermsTitle">Terms</h3>
             <dl class="glossary-list mb-0">
@@ -260,6 +273,7 @@
               <dt><code>CollectionTree</code></dt><dd>The ROOT tree that stores events and physics objects in an ATLAS DAOD.</dd>
               <dt>ROOT file ID</dt><dd>A 128-bit UUID stored inside a ROOT file. It stays the same if the file is renamed.</dd>
               <dt>SLURM</dt><dd>The system that places jobs in a queue and runs them on Perlmutter.</dd>
+              <dt>HTCondor</dt><dd>A workload manager that queues independent jobs. This wizard expects a filesystem shared by its access point and execute nodes.</dd>
               <dt>NERSC Perlmutter</dt><dd>The NERSC supercomputer where this job script runs.</dd>
               <dt>Input manifest</dt><dd>A text file with one input file path on each line.</dd>
             </dl>
@@ -282,11 +296,13 @@
   <!-- pcdf-object-config -->
   <!-- pcdf-template-python -->
   <!-- pcdf-template-slurm -->
+  <!-- pcdf-template-condor -->
+  <!-- pcdf-template-condor-job -->
   <!-- pcdf-template-readme -->
   <!-- pcdf-template-manifest -->
   <!-- pcdf-template-workflow-shell -->
   <!-- pcdf-template-workflow-python -->
-  <!-- The local server can inline the split metadata/templates here; the static page fetches them when absent. -->
+  <!-- The local server can inline the split metadata and templates here. The static page fetches them when absent. -->
   <script src="ntuple-wizard.js"></script>
 </body>
 </html>

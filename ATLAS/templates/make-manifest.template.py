@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -140,7 +139,7 @@ def rucio_replica_paths(did: str) -> list[Path]:
     try:
         from rucio.client import Client
     except ImportError as error:
-        raise RuntimeError("the Rucio Python client is unavailable; run this bundled script with uv") from error
+        raise RuntimeError("the Rucio Python client is unavailable. Run this bundled script with uv") from error
 
     paths: list[Path] = []
     scope, name = did.split(":", 1)
@@ -167,7 +166,7 @@ def rucio_replica_paths(did: str) -> list[Path]:
 
 def write_manifest(paths: list[Path], output: Path) -> None:
     if not paths:
-        raise RuntimeError("no usable local ROOT files were found; manifest was not written")
+        raise RuntimeError("no usable local ROOT files were found. The manifest was not written")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile("w", delete=False, dir=output.parent) as temporary:
         temporary.writelines(f"{path}\n" for path in paths)

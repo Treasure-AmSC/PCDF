@@ -3,13 +3,12 @@ PCDF ntuple bundle
 
 Generated files
 ---------------
-- {{PYTHON_NAME}} is the executable converter.
-- make-manifest.py interactively writes an input manifest from local files or, using the current ATLAS Rucio configuration from CVMFS, from NERSC_LOCALGROUPDISK replica PFNs.
+- code/{{PYTHON_NAME}} is the executable converter.
+- code/make-manifest.py interactively writes an input manifest from local files or, using the current ATLAS Rucio configuration from CVMFS, from NERSC_LOCALGROUPDISK replica PFNs.
 {{SLURM_FILE_LINE}}{{WORKFLOW_FILE_LINE}}- README_SUBMIT.md contains these instructions.
-
-Local run
----------
-./{{PYTHON_NAME}} DAOD_{{INPUT_FORMAT}}.37620644._000244.pool.root -o parquet-output
+- pcdf-inputs.txt is the default generated file manifest.
+- output/ contains generated Parquet datasets.
+- logs/ contains scheduler output and error logs.
 
 Output layout
 -------------

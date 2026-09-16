@@ -253,7 +253,7 @@ def write_object(output, folder, partition, payload, flatten=True):
 )
 def ntuple_maker(input, output, skip_unreadable, skip_existing):
     try:
-        with up.open(input) as file:
+        with up.open(input, handler=up.source.file.MemmapSource) as file:
             partition = partition_from_input(input, file.file.uuid)
             existing_partitions = existing_output_partitions(output, partition)
             if existing_partitions:
@@ -273,6 +273,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
 
             if "Const" in OBJECTS:
                 const_aliases = split_constituent_aliases()
+                aliases.pop("Const", None)
                 aliases["c_const"] = const_aliases[0]
                 aliases["n_const"] = const_aliases[1]
                 aliases["Jet"] = {

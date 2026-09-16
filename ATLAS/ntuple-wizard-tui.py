@@ -10,18 +10,18 @@ Run with::
 
     uv run ATLAS/ntuple-wizard-tui.py
 
-On a NERSC Perlmutter login node, the TUI can find input files, write a manifest
-on scratch, generate the converter and SLURM script, and submit the job with
-``sbatch``.
+The TUI can generate and submit either a NERSC Perlmutter SLURM job or an
+HTCondor cluster that uses a shared filesystem.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
+import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -34,11 +34,13 @@ from textual.timer import Timer
 from textual.widgets import Button, Collapsible, DirectoryTree, Footer, Input, Label, Log, RichLog, Select, SelectionList, Static, Switch, TabbedContent, TabPane, TextArea
 
 from ntuple_wizard_core import (
+    BUNDLE_ROOT_NAME,
     WizardState,
+    build_condor,
     build_python,
     build_slurm,
-    on_perlmutter,
     discover_files,
+    on_perlmutter,
     scan_manifest,
     write_bundle,
     write_manifest,
@@ -58,11 +60,11 @@ class NtupleWizardTui(App[None]):
     TITLE = "ATLAS ntuple wizard"
     SUB_TITLE = "JETM16 → Parquet"
 
-    STEPS = ("Input", "Objects", "Variables", "Perlmutter", "Generate", "Status")
+    STEPS = ("Input", "Objects", "Variables", "Batch system", "Generate", "Status")
 
     CSS_PATH = Path(__file__).with_name("ntuple-wizard-tui.tcss")
 
-    BINDINGS = [("q", "quit", "Quit"), ("g", "generate", "Generate"), ("s", "submit", "Submit on Perlmutter")]
+    BINDINGS = [("q", "quit", "Quit"), ("g", "generate", "Generate"), ("s", "submit", "Submit batch job")]
     JOB_REFRESH_INTERVAL = 10.0
 
     def __init__(self, output_dir: Path, **kwargs: Any) -> None:
@@ -71,13 +73,16 @@ class NtupleWizardTui(App[None]):
         self.perlmutter = on_perlmutter()
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.state_data.manifest = str(self.output_dir / "pcdf-inputs.txt")
+        self.bundle_root = self.output_dir / BUNDLE_ROOT_NAME
+        self.state_data.manifest = str(self.bundle_root / "pcdf-inputs.txt")
+        self.state_data.output_base = str(self.bundle_root / "output")
         self.current_step = 0
         self._syncing = False
         self._loading_accounts = False
         self._suppress_account_select_notice = False
         self.review_confirmed = False
         self.job_id = ""
+        self.job_scheduler = ""
         self.stdout_path: Path | None = None
         self.stderr_path: Path | None = None
         self.job_refresh_timer: Timer | None = None
@@ -103,7 +108,7 @@ class NtupleWizardTui(App[None]):
                 with TabPane("1. Input", id="step-0", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Input format and sample type", classes="section-title")
-                        yield Static("Choose a DAOD format and sample type. PHYSLITE lacks the data needed for jet constituents. For collision data, the program skips truth and flavor fields.", classes="hint")
+                        yield Static("PHYSLITE lacks jet-constituent inputs. Collision data excludes truth and flavor fields.", classes="hint")
                         with Collapsible(title="Terms used here", collapsed=True):
                             yield Static("DAOD: An ATLAS analysis data format stored in a ROOT file.\nJETM16: An ATLAS DAOD made for jet studies. It includes detailed jet content.\nPHYSLITE: A compact ATLAS DAOD with objects used in many analyses.", classes="hint")
                         yield Label("Input format", classes="field-label")
@@ -120,7 +125,7 @@ class NtupleWizardTui(App[None]):
                 with TabPane("2. Objects", id="step-1", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output objects", classes="section-title")
-                        yield Static("Choose the tables to write. Required tables are selected for you. Turning off one table also turns off tables that need it.", classes="hint")
+                        yield Static("Required tables remain selected. Turning off a table also turns off tables that depend on it.", classes="hint")
                         with Grid(classes="object-grid"):
                             for key, obj in self.state_data.objects.items():
                                 selected = key in self.state_data.selected_objects
@@ -131,7 +136,7 @@ class NtupleWizardTui(App[None]):
                 with TabPane("3. Variables", id="step-2", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Output variables", classes="section-title")
-                        yield Static("The four-vector fields stay selected. Truth labels are not available for collision data.", classes="hint")
+                        yield Static("Four-vector fields are required. Truth labels are unavailable for collision data.", classes="hint")
                         for key, obj in self.state_data.objects.items():
                             yield Static(obj["title"], classes="section-title")
                             required = set(obj.get("requiredVariables", []))
@@ -143,33 +148,48 @@ class NtupleWizardTui(App[None]):
                                         suffix = " (required)" if name in required else ""
                                         yield Label(f"{name}{suffix}", id=f"var-label-{key}-{name}", classes="toggle-label")
 
-                with TabPane("4. Perlmutter", id="step-3", classes="wizard-step"):
+                with TabPane("4. Batch system", id="step-3", classes="wizard-step"):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
-                            yield Static("Perlmutter job", classes="section-title")
-                            yield Static("Set up the CPU-only job. The generated bundle includes a manifest helper for downloaded data and local Rucio copies.", classes="hint")
+                            yield Static("Batch job", classes="section-title")
                             with Collapsible(title="Terms used here", collapsed=True):
-                                yield Static("SLURM: The system that places jobs in a queue and runs them on Perlmutter.\nPerlmutter: The NERSC supercomputer where this job runs.\nManifest: A text file with one input file path on each line.\nQOS: The SLURM queue and its job limits.", classes="hint")
-                            yield Label("NERSC account", classes="field-label")
-                            if self.perlmutter:
-                                yield Select([("Loading accounts from iris…", "")], value="", allow_blank=False, disabled=True, id="account_select")
-                                yield Input(placeholder="Manual NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
-                            else:
-                                yield Input(placeholder="NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
-                            yield Label("Queue (QOS)", classes="field-label")
-                            yield Select([(label, label) for label in ("regular", "debug", "premium")], value="regular", allow_blank=False, id="qos")
-                            yield Label("Nodes", classes="field-label")
-                            yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Function(self.positive_integer, "Nodes must be a positive integer.")], validate_on=["blur", "submitted"])
-                            yield Label("Wall time", classes="field-label")
-                            yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
+                                yield Static("SLURM: The workload manager used on Perlmutter.\nHTCondor: A workload manager that queues independent jobs.\nManifest: A text file with one input file path on each line.\nShared filesystem: Storage visible at the same path from submit and execute nodes.", classes="hint")
+                            yield Label("Batch system", classes="field-label")
+                            yield Select([("SLURM on NERSC Perlmutter", "slurm"), ("HTCondor with a shared filesystem", "condor")], value="slurm", allow_blank=False, id="scheduler")
+                            with Container(id="slurm_settings"):
+                                yield Label("NERSC account", classes="field-label")
+                                if self.perlmutter:
+                                    yield Select([("Loading accounts from iris…", "")], value="", allow_blank=False, disabled=True, id="account_select")
+                                    yield Input(placeholder="Manual NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
+                                else:
+                                    yield Input(placeholder="NERSC account", id="account_input", validators=[Function(self.non_empty, "Enter a NERSC account before submitting.")], validate_on=["blur", "submitted"])
+                                yield Static("Most users can leave these settings unchanged.", id="advanced_slurm_help", classes="hint")
+                                with Collapsible(title="Advanced Perlmutter settings", collapsed=True, id="advanced_slurm"):
+                                    yield Label("Queue (QOS)", classes="field-label")
+                                    yield Select([(label, label) for label in ("regular", "debug", "premium")], value="regular", allow_blank=False, id="qos")
+                                    yield Label("Nodes", classes="field-label")
+                                    yield Input(value="1", placeholder="Nodes", id="nodes", validators=[Function(self.positive_integer, "Nodes must be a positive integer.")], validate_on=["blur", "submitted"])
+                                    yield Label("Wall time", classes="field-label")
+                                    yield Input(value="00:30:00", placeholder="Wall time", id="time", validators=[Regex(r"^\d{1,2}:\d{2}:\d{2}$", failure_description="Use HH:MM:SS wall time, for example 00:30:00.")], validate_on=["blur", "submitted"])
+                            with Container(id="condor_settings"):
+                                yield Static("Most users can leave these settings unchanged.", id="advanced_condor_help", classes="hint")
+                                with Collapsible(title="Advanced HTCondor settings", collapsed=True, id="advanced_condor"):
+                                    yield Label("CPU cores per file", classes="field-label")
+                                    yield Input(value="1", placeholder="CPU cores", id="condor_cpus", validators=[Function(self.positive_integer, "CPU cores must be a positive integer.")], validate_on=["blur", "submitted"])
+                                    yield Label("Memory per file (MiB)", classes="field-label")
+                                    yield Input(value="4096", placeholder="Memory in MiB", id="condor_memory", validators=[Function(self.positive_integer, "Memory must be a positive integer.")], validate_on=["blur", "submitted"])
+                                    yield Label("Scratch disk per file (MiB)", classes="field-label")
+                                    yield Input(value="4096", placeholder="Disk in MiB", id="condor_disk", validators=[Function(self.positive_integer, "Disk must be a positive integer.")], validate_on=["blur", "submitted"])
+                                    yield Label("Worker requirements (optional)", classes="field-label")
+                                    yield Input(placeholder="ClassAd expression", id="condor_requirements")
                             yield Label("Output dataset directory", classes="field-label")
-                            yield Input(value="./pcdf-output", placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
+                            yield Input(value=self.state_data.output_base, placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
                             yield Label("Input-file manifest", classes="field-label")
                             yield Input(value=self.state_data.manifest, placeholder="Input-file manifest", id="manifest", validators=[Function(self.non_empty, "Enter an input-file manifest path.")], validate_on=["blur", "submitted"])
-                            yield Static("Running on Perlmutter: " + ("Yes" if self.perlmutter else "No"), classes="hint")
+                            yield Static("Perlmutter detected: " + ("Yes" if self.perlmutter else "No") + ". HTCondor submission is available when condor_submit is on PATH.", classes="hint")
                         with VerticalScroll(classes="column"):
                             yield Static("Manifest source", classes="section-title")
-                            yield Static("Choose files below a local data directory. The generated bundle also includes a helper for a Rucio dataset copied to NERSC_LOCALGROUPDISK.", classes="hint")
+                            yield Static("The bundle helper can also find a Rucio dataset copied to NERSC_LOCALGROUPDISK.", classes="hint")
                             yield Label("Local data directory", classes="field-label")
                             yield Input(value="$SCRATCH", placeholder="Directory used with rucio download", id="scan_root", validators=[Function(self.existing_directory, "Data directory must exist.")], validate_on=["blur", "submitted"])
                             with Collapsible(title="Advanced manifest options", collapsed=True):
@@ -187,18 +207,17 @@ class NtupleWizardTui(App[None]):
                     with Horizontal(classes="two-column"):
                         with VerticalScroll(classes="column"):
                             yield Static("Generate", classes="section-title")
-                            yield Static("Build the converter, job script, and bundle. On Perlmutter, review the scripts before you submit the job.", classes="hint")
                             yield Static("", id="summary_panel")
                             yield Static("Review the generated scripts", classes="section-title")
                             with TabbedContent(initial="preview-python", id="review-tabs"):
                                 with TabPane("Python", id="preview-python"):
                                     yield TextArea("", language="python", read_only=True, show_line_numbers=True, id="python_preview", classes="script-preview")
-                                with TabPane("SLURM", id="preview-slurm"):
+                                with TabPane("Batch file", id="preview-slurm"):
                                     yield TextArea("", language="bash", read_only=True, show_line_numbers=True, id="slurm_preview", classes="script-preview")
                             with Horizontal(id="generate-actions"):
                                 yield Button("Generate scripts", id="generate", variant="primary")
                                 yield Button("Confirm review", id="confirm_review")
-                                yield Button("Submit with sbatch", id="submit", variant="success", disabled=not self.perlmutter)
+                                yield Button("Submit batch job", id="submit", variant="success", disabled=True)
                 with TabPane("6. Status", id="step-5", classes="wizard-step"):
                     with VerticalScroll(classes="step-body"):
                         yield Static("Job status", classes="section-title")
@@ -221,12 +240,13 @@ class NtupleWizardTui(App[None]):
         self.refresh_dependency_widgets()
         self.refresh_step()
         self.log_message("The ATLAS ntuple wizard is ready.")
-        self.log_message(f"Generated files will be saved in {self.output_dir}.")
+        self.log_message(f"The bundle will be saved in {self.bundle_root}.")
         if self.perlmutter:
             self.log_message("This is a Perlmutter login node. Choose input files, build the scripts, and then submit the job.")
             self.load_accounts_with_iris(notify_user=False)
         else:
-            self.log_message("This host can generate the files but cannot submit the job. Submission is available on Perlmutter.")
+            self.log_message("This host can generate either batch format. HTCondor submission is available when condor_submit is on PATH.")
+        self.refresh_scheduler_controls()
         self.refresh_log_locations()
 
     def log_message(self, message: str) -> None:
@@ -241,10 +261,10 @@ class NtupleWizardTui(App[None]):
             for key, value in config["objects"].items()
         ]
         slurm_status = (
-            f"Perlmutter job: {state.nodes} exclusive CPU "
-            f"{'node' if state.nodes == 1 else 'nodes'}, queue {state.qos}, wall time {state.time}."
-            if self.perlmutter
-            else "This host can generate files but cannot submit the job. Submission is available on Perlmutter."
+            f"HTCondor: one job per file, {state.condor_cpus} CPU core(s), "
+            f"{state.condor_memory_mb} MiB memory, {state.condor_disk_mb} MiB disk."
+            if state.scheduler == "condor"
+            else f"Perlmutter SLURM: {state.nodes} exclusive CPU node(s), queue {state.qos}, wall time {state.time}."
         )
         summary = "\n".join([
             f"Input: {state.input_format} · {state.sample_type}",
@@ -256,8 +276,8 @@ class NtupleWizardTui(App[None]):
         ])
         self.query_one("#summary_panel", Static).update(summary)
         self.query_one("#python_preview", TextArea).load_text(self.build_python())
-        self.query_one("#slurm_preview", TextArea).load_text(self.build_slurm())
-        self.query_one("#submit", Button).disabled = (not self.perlmutter) or (not self.review_confirmed)
+        self.query_one("#slurm_preview", TextArea).load_text(self.build_batch_file())
+        self.query_one("#submit", Button).disabled = (not self.submission_available()) or (not self.review_confirmed)
 
     def refresh_step(self) -> None:
         self.current_step = max(0, min(len(self.STEPS) - 1, self.current_step))
@@ -293,6 +313,8 @@ class NtupleWizardTui(App[None]):
         state = self.state_data
         state.input_format = str(self.query_one("#format", Select).value)
         state.sample_type = str(self.query_one("#sample", Select).value)
+        scheduler = self.query_one("#scheduler", Select).value
+        state.scheduler = "slurm" if scheduler is Select.NULL else str(scheduler)
         if self.perlmutter:
             account_select = self.query_one("#account_select", Select)
             selected_account = account_select.value
@@ -307,11 +329,39 @@ class NtupleWizardTui(App[None]):
         except ValueError:
             state.nodes = 1
         state.time = self.query_one("#time", Input).value.strip() or "00:30:00"
-        state.output_base = self.query_one("#output", Input).value.strip() or "./pcdf-output"
-        state.manifest = self.query_one("#manifest", Input).value.strip() or "$SCRATCH/pcdf-inputs.txt"
+        for widget_id, attribute, fallback in (
+            ("condor_cpus", "condor_cpus", 1),
+            ("condor_memory", "condor_memory_mb", 4096),
+            ("condor_disk", "condor_disk_mb", 4096),
+        ):
+            try:
+                setattr(state, attribute, max(1, int(self.query_one(f"#{widget_id}", Input).value.strip())))
+            except ValueError:
+                setattr(state, attribute, fallback)
+        state.condor_requirements = self.query_one("#condor_requirements", Input).value.strip()
+        state.output_base = self.query_one("#output", Input).value.strip() or str(self.bundle_root / "output")
+        state.manifest = self.query_one("#manifest", Input).value.strip() or str(self.bundle_root / "pcdf-inputs.txt")
         state.scan_root = self.query_one("#scan_root", Input).value.strip() or "$SCRATCH"
         state.glob_pattern = self.query_one("#glob", Input).value.strip() or "DAOD_*.pool.root*"
         state.ensure_dependencies()
+
+    def submission_available(self) -> bool:
+        if self.state_data.scheduler == "condor":
+            return shutil.which("condor_submit") is not None
+        return self.perlmutter and shutil.which("sbatch") is not None
+
+    def refresh_scheduler_controls(self) -> None:
+        condor = self.state_data.scheduler == "condor"
+        self.query_one("#slurm_settings", Container).display = not condor
+        self.query_one("#condor_settings", Container).display = condor
+        for widget_id in ("account_input", "qos", "nodes", "time"):
+            self.query_one(f"#{widget_id}").disabled = condor
+        if self.perlmutter and condor:
+            self.query_one("#account_select", Select).disabled = True
+        for widget_id in ("condor_cpus", "condor_memory", "condor_disk", "condor_requirements"):
+            self.query_one(f"#{widget_id}").disabled = not condor
+        self.query_one("#submit", Button).label = "Submit with condor_submit" if condor else "Submit with sbatch"
+        self.query_one("#submit", Button).disabled = (not self.submission_available()) or (not self.review_confirmed)
 
     def refresh_dependency_widgets(self) -> None:
         if self._syncing:
@@ -490,8 +540,13 @@ class NtupleWizardTui(App[None]):
         return messages
 
     def validate_slurm_inputs(self) -> bool:
-        failures = self.invalid_inputs(("nodes", "time", "output", "manifest"))
-        if self.perlmutter:
+        self.sync_state()
+        common_failures = self.invalid_inputs(("output", "manifest"))
+        if self.state_data.scheduler == "condor":
+            failures = common_failures + self.invalid_inputs(("condor_cpus", "condor_memory", "condor_disk"))
+        else:
+            failures = common_failures + self.invalid_inputs(("nodes", "time"))
+        if self.state_data.scheduler == "slurm" and self.perlmutter:
             account_select = self.query_one("#account_select", Select)
             selected_account = account_select.value
             manual_account = self.query_one("#account_input", Input).value.strip()
@@ -501,10 +556,10 @@ class NtupleWizardTui(App[None]):
                 failures.append("Enter a NERSC account.")
             elif (not account_select.disabled) and selected_account in (Select.NULL, "") and not manual_account:
                 failures.append("Choose or enter a NERSC account.")
-        else:
+        elif self.state_data.scheduler == "slurm":
             failures.extend(self.invalid_inputs(("account_input",)))
         if failures:
-            self.notify("\n".join(failures), title="Fix SLURM settings", severity="error", timeout=8)
+            self.notify("\n".join(failures), title="Fix batch settings", severity="error", timeout=8)
             self.log_message("Validation failed:\n" + "\n".join(f"• {failure}" for failure in failures))
             return False
         return True
@@ -531,30 +586,42 @@ class NtupleWizardTui(App[None]):
     def build_slurm(self) -> str:
         return build_slurm(self.state_data, self.output_dir)
 
+    def build_batch_file(self) -> str:
+        if self.state_data.scheduler == "condor":
+            return build_condor(self.state_data, self.output_dir)
+        return self.build_slurm()
+
     def generate(self) -> tuple[Path, Path, Path] | None:
         if self.discovered_files and self.write_selected_manifest() is None:
             return None
         if not self.validate_slurm_inputs():
             return None
         self.sync_state()
-        py_path, slurm_path, bundle_path = write_bundle(self.state_data, self.output_dir)
+        py_path, submit_path, bundle_path = write_bundle(self.state_data, self.output_dir)
         self.log_message(f"Created converter: {py_path}")
-        self.log_message(f"Created SLURM script: {slurm_path}")
+        self.log_message(f"Created batch file: {submit_path}")
         self.log_message(f"Created bundle: {bundle_path}")
-        self.notify(f"Saved the converter, SLURM script, README, and bundle in {self.output_dir}.", title="Generation complete", severity="information", timeout=6)
-        return py_path, slurm_path, bundle_path
+        self.notify(
+            f"Saved the working bundle in {self.bundle_root} and the archive in {bundle_path}.",
+            title="Generation complete",
+            severity="information",
+            timeout=6,
+        )
+        return py_path, submit_path, bundle_path
 
     def scan_manifest(self) -> Path:
         self.refresh_discovered_files()
         return self.write_selected_manifest()
 
     def submit(self) -> None:
-        if not self.perlmutter:
-            self.notify("Run this action on a Perlmutter login node.", title="Submission unavailable", severity="warning", timeout=8)
-            self.log_message("The job was not submitted because this host is not a Perlmutter login node.")
+        self.sync_state()
+        if not self.submission_available():
+            command = "condor_submit" if self.state_data.scheduler == "condor" else "sbatch on a Perlmutter login node"
+            self.notify(f"Submission needs {command}.", title="Submission unavailable", severity="warning", timeout=8)
+            self.log_message(f"The job was not submitted because {command} is unavailable.")
             return
         if not self.review_confirmed:
-            self.notify("Review and confirm the Python and SLURM scripts before you submit.", title="Review required", severity="warning", timeout=8)
+            self.notify("Review and confirm the converter and batch file before you submit.", title="Review required", severity="warning", timeout=8)
             self.log_message("Submission blocked: generated scripts have not been reviewed.")
             return
         if not self.ensure_manifest_for_submit():
@@ -562,19 +629,31 @@ class NtupleWizardTui(App[None]):
         generated = self.generate()
         if generated is None:
             return
-        _, slurm_path, _ = generated
-        result = subprocess.run(["sbatch", str(slurm_path)], check=False, text=True, capture_output=True)
+        _, submit_path, _ = generated
+        if self.state_data.scheduler == "condor":
+            command = ["condor_submit", "-terse", str(submit_path)]
+        else:
+            command = ["sbatch", str(submit_path)]
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            capture_output=True,
+            cwd=self.bundle_root,
+        )
         if result.stdout:
             self.log_message(result.stdout.strip())
         if result.stderr:
             self.log_message(result.stderr.strip())
         if result.returncode:
-            self.log_message(f"The sbatch command failed with exit code {result.returncode}.")
+            self.log_message(f"The submission command failed with exit code {result.returncode}.")
             return
-        self.job_id = self.parse_sbatch_job_id(result.stdout)
+        self.job_id = self.parse_condor_cluster_id(result.stdout) if self.state_data.scheduler == "condor" else self.parse_sbatch_job_id(result.stdout)
         if self.job_id:
+            self.job_scheduler = self.state_data.scheduler
             self.set_job_log_paths()
-            self.query_one("#job_status", Static).update(f"Submitted SLURM job {self.job_id}.")
+            scheduler_name = "HTCondor" if self.state_data.scheduler == "condor" else "SLURM"
+            self.query_one("#job_status", Static).update(f"Submitted {scheduler_name} job {self.job_id}.")
             self.start_job_auto_refresh()
             self.refresh_job_status()
         self.current_step = 5
@@ -586,13 +665,21 @@ class NtupleWizardTui(App[None]):
                 return token
         return ""
 
+    def parse_condor_cluster_id(self, output: str) -> str:
+        match = re.search(r"^\s*(\d+)\.", output)
+        return match.group(1) if match else ""
+
     def set_job_log_paths(self) -> None:
         if not self.job_id:
             self.stdout_path = None
             self.stderr_path = None
             return
-        self.stdout_path = self.output_dir / f"pcdf-ntuple-{self.job_id}.out"
-        self.stderr_path = self.output_dir / f"pcdf-ntuple-{self.job_id}.err"
+        if self.job_scheduler == "condor":
+            self.stdout_path = None
+            self.stderr_path = None
+        else:
+            self.stdout_path = self.bundle_root / "logs" / f"pcdf-ntuple-{self.job_id}.out"
+            self.stderr_path = self.bundle_root / "logs" / f"pcdf-ntuple-{self.job_id}.err"
         if self.is_mounted:
             self.refresh_log_locations()
 
@@ -615,8 +702,10 @@ class NtupleWizardTui(App[None]):
     def refresh_log_locations(self) -> None:
         if self.stdout_path is not None and self.stderr_path is not None:
             text = f"Standard output log: {self.stdout_path}\nStandard error log: {self.stderr_path}"
+        elif self.job_scheduler == "condor":
+            text = f"Bundle directory: {self.bundle_root}\nHTCondor logs are under logs/ as pcdf-ntuple-{self.job_id or '<cluster>'}.<process>.out and .err."
         else:
-            text = f"Generated files directory: {self.output_dir}\nAfter submission, SLURM logs will be saved here as pcdf-ntuple-<jobid>.out and pcdf-ntuple-<jobid>.err."
+            text = f"Bundle directory: {self.bundle_root}\nAfter submission, SLURM logs are saved under logs/ as pcdf-ntuple-<jobid>.out and .err."
         self.query_one("#log_paths", Static).update(text)
 
     def refresh_job_logs(self) -> None:
@@ -640,14 +729,14 @@ class NtupleWizardTui(App[None]):
             self.refresh_job_logs()
             return
         try:
-            result = subprocess.run(
-                ["squeue", "--noheader", f"--jobs={self.job_id}", "--format=%.18i %.9T %.10M %.20R"],
-                check=False,
-                text=True,
-                capture_output=True,
+            command = (
+                ["condor_q", self.job_id, "-af", "ClusterId", "ProcId", "JobStatus", "HoldReason"]
+                if self.job_scheduler == "condor"
+                else ["squeue", "--noheader", f"--jobs={self.job_id}", "--format=%.18i %.9T %.10M %.20R"]
             )
+            result = subprocess.run(command, check=False, text=True, capture_output=True)
         except FileNotFoundError:
-            self.query_one("#job_status", Static).update("The squeue command is not available on this host. Only the log files are shown.")
+            self.query_one("#job_status", Static).update(f"The {command[0]} command is not available on this host.")
             self.stop_job_auto_refresh()
             self.refresh_job_logs()
             return
@@ -656,7 +745,8 @@ class NtupleWizardTui(App[None]):
             self.query_one("#job_status", Static).update(status)
             self.log_message(status)
         else:
-            message = result.stderr.strip() or f"Job {self.job_id} is not listed by squeue."
+            scheduler = "HTCondor" if self.job_scheduler == "condor" else "SLURM"
+            message = result.stderr.strip() or f"Job {self.job_id} is no longer listed by {scheduler}."
             self.query_one("#job_status", Static).update(message)
             self.log_message(message)
             self.stop_job_auto_refresh()
@@ -681,6 +771,14 @@ class NtupleWizardTui(App[None]):
             self.mark_unreviewed()
             self.sync_state()
             return
+        if event.select.id == "scheduler":
+            self.state_data.scheduler = "slurm" if event.value is Select.NULL else str(event.value)
+            self.mark_unreviewed()
+            if self.perlmutter and self.state_data.scheduler == "slurm":
+                self.load_accounts_with_iris(notify_user=False)
+            self.refresh_scheduler_controls()
+            self.refresh_summary()
+            return
         if event.select.id not in {"format", "sample"}:
             return
         self.state_data.input_format = str(self.query_one("#format", Select).value)
@@ -692,7 +790,7 @@ class NtupleWizardTui(App[None]):
             return
         event.input.set_class(event.validation_result.is_valid, "-valid")
         event.input.set_class(not event.validation_result.is_valid, "-invalid")
-        if event.input.id in {"account_input", "nodes", "time", "output", "manifest"}:
+        if event.input.id in {"account_input", "nodes", "time", "condor_cpus", "condor_memory", "condor_disk", "condor_requirements", "output", "manifest"}:
             self.mark_unreviewed()
         if event.input.id in {"scan_root", "glob"} and event.validation_result.is_valid:
             self.schedule_file_discovery()
@@ -704,7 +802,7 @@ class NtupleWizardTui(App[None]):
             return
         event.input.set_class(event.validation_result.is_valid, "-valid")
         event.input.set_class(not event.validation_result.is_valid, "-invalid")
-        if event.input.id in {"account_input", "nodes", "time", "output", "manifest"}:
+        if event.input.id in {"account_input", "nodes", "time", "condor_cpus", "condor_memory", "condor_disk", "condor_requirements", "output", "manifest"}:
             self.mark_unreviewed()
         if event.input.id in {"scan_root", "glob"} and event.validation_result.is_valid:
             self.schedule_file_discovery()
@@ -777,8 +875,8 @@ class NtupleWizardTui(App[None]):
                 return
             self.refresh_summary()
             self.review_confirmed = True
-            self.query_one("#submit", Button).disabled = not self.perlmutter
-            self.notify("The Python and SLURM scripts are ready to submit.", title="Review confirmed", severity="information", timeout=5)
+            self.query_one("#submit", Button).disabled = not self.submission_available()
+            self.notify("The converter and batch files are ready to submit.", title="Review confirmed", severity="information", timeout=5)
         elif event.button.id == "manifest_write":
             self.write_selected_manifest()
         elif event.button.id == "submit":
@@ -794,23 +892,23 @@ class NtupleWizardTui(App[None]):
 
 
 def default_output_dir() -> Path:
-    """Create a generated-file directory visible to Perlmutter compute nodes."""
-    scratch = os.environ.get("SCRATCH")
-    if scratch:
-        scratch_path = Path(os.path.expandvars(os.path.expanduser(scratch)))
-        if scratch_path.exists():
-            return Path(tempfile.mkdtemp(prefix="pcdf-ntuple-", dir=scratch_path))
-    return Path(tempfile.mkdtemp(prefix="pcdf-ntuple-", dir=Path.cwd()))
+    """Use the current directory as the parent of the generated bundle."""
+    return Path.cwd()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the PCDF ATLAS ntuple wizard in a terminal.")
-    parser.add_argument("--output-dir", type=Path, default=None, help="Save scripts and the bundle in this directory. By default, the wizard makes a temporary directory under $SCRATCH. If $SCRATCH is not available, it uses the current directory.")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Parent directory for pcdf-ntuple/ and its archive. The default is the current directory.",
+    )
     args = parser.parse_args()
     output_dir = args.output_dir or default_output_dir()
-    print(f"Generated files and logs will be saved in: {output_dir}", file=sys.stderr)
+    print(f"The working bundle will be saved in: {output_dir / BUNDLE_ROOT_NAME}", file=sys.stderr)
     NtupleWizardTui(output_dir=output_dir).run()
-    print(f"Generated files and logs were saved in: {output_dir}", file=sys.stderr)
+    print(f"The working bundle was saved in: {output_dir / BUNDLE_ROOT_NAME}", file=sys.stderr)
 
 
 if __name__ == "__main__":

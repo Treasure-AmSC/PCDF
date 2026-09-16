@@ -1,0 +1,20 @@
+universe = vanilla
+executable = code/run-pcdf-condor-job.sh
+arguments = "$(input_file)" {{OUTPUT_BASE}} {{PYTHON_PATH}} {{REQUEST_CPUS}}
+
+# The input files, converter, and output directory must be visible from each
+# execute node through a shared filesystem. Large DAOD files are not copied
+# through the HTCondor file-transfer service.
+should_transfer_files = NO
+getenv = PATH,HOME,UV_CACHE_DIR
+
+request_cpus = {{REQUEST_CPUS}}
+request_memory = {{REQUEST_MEMORY_MB}} MB
+request_disk = {{REQUEST_DISK_MB}} MB
+{{REQUIREMENTS_LINE}}
+
+output = logs/pcdf-ntuple-$(ClusterId).$(ProcId).out
+error = logs/pcdf-ntuple-$(ClusterId).$(ProcId).err
+log = logs/pcdf-ntuple-$(ClusterId).log
+
+queue input_file from {{INPUT_MANIFEST}}

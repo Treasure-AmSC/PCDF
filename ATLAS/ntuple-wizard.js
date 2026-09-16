@@ -7,18 +7,24 @@
       step: 0,
       inputFormat: "JETM16",
       sampleType: "MC",
+      activeVariableObject: "Event",
       selectedObjects: new Set(),
       objectSelectionsByFormat: {},
       selectedVariables: {},
       slurm: {
         enabled: true,
+        scheduler: "slurm",
         account: "",
         qos: "regular",
         nodes: 1,
         time: "00:30:00",
         pythonPath: generatedPythonName("JETM16"),
         inputManifest: "./pcdf-inputs.txt",
-        outputBase: "./pcdf-output"
+        outputBase: "./output",
+        condorCpus: 1,
+        condorMemory: 4096,
+        condorDisk: 4096,
+        condorRequirements: ""
       }
     };
 
@@ -39,6 +45,14 @@
       slurm: {
         id: "template-slurm",
         url: "templates/submit-pcdf-ntuple.template.slurm",
+      },
+      condor: {
+        id: "template-condor",
+        url: "templates/submit-pcdf-ntuple.template.condor",
+      },
+      condorJob: {
+        id: "template-condor-job",
+        url: "templates/run-pcdf-condor-job.template.sh",
       },
       readme: {
         id: "template-readme",
@@ -245,7 +259,7 @@
     }
 
     function generatedPythonName(format = state.inputFormat) {
-      return `./ntuple-maker-${format.toLowerCase()}.py`;
+      return `./code/ntuple-maker-${format.toLowerCase()}.py`;
     }
 
     function fieldValue(id) {
@@ -259,13 +273,18 @@
 
     function syncSlurmSettings() {
       state.slurm.enabled = document.getElementById("enableSlurm").checked;
+      state.slurm.scheduler = fieldValue("scheduler") || "slurm";
       state.slurm.account = fieldValue("slurmAccount");
       state.slurm.qos = fieldValue("slurmQos") || "regular";
       state.slurm.nodes = numericFieldValue("slurmNodes", 1);
       state.slurm.time = fieldValue("slurmTime") || "00:30:00";
       state.slurm.pythonPath = fieldValue("slurmPythonPath") || generatedPythonName();
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "./pcdf-inputs.txt";
-      state.slurm.outputBase = fieldValue("slurmOutputBase") || "./pcdf-output";
+      state.slurm.outputBase = fieldValue("slurmOutputBase") || "./output";
+      state.slurm.condorCpus = numericFieldValue("condorCpus", 1);
+      state.slurm.condorMemory = numericFieldValue("condorMemory", 4096);
+      state.slurm.condorDisk = numericFieldValue("condorDisk", 4096);
+      state.slurm.condorRequirements = fieldValue("condorRequirements");
     }
 
     function selectedInputFormat() {
@@ -291,6 +310,57 @@
 
     function availableVariableEntries(key) {
       return Object.entries(OBJECTS[key].aliases).filter(([name]) => variableIsAvailable(key, name));
+    }
+
+    function estimatedObjectBytesPerEvent(key) {
+      const estimate = OBJECTS[key].sizeEstimate;
+      if (!estimate || !isObjectAvailable(key)) return 0;
+      return Array.from(state.selectedVariables[key] || []).reduce((total, name) => {
+        if (!variableIsAvailable(key, name)) return total;
+        return total + (estimate.variables[name] || 0);
+      }, estimate.baseBytesPerEvent);
+    }
+
+    function estimatedTotalBytesPerEvent() {
+      return Array.from(state.selectedObjects).reduce((total, key) => {
+        return total + estimatedObjectBytesPerEvent(key);
+      }, 0);
+    }
+
+    function formatBytesPerEvent(bytes) {
+      if (bytes === 0) return "0 B/event";
+      if (bytes >= 1000) return `${(bytes / 1000).toPrecision(2)} kB/event`;
+      if (bytes >= 100) return `${Math.round(bytes / 10) * 10} B/event`;
+      if (bytes >= 10) return `${Math.round(bytes)} B/event`;
+      return `${bytes.toPrecision(2)} B/event`;
+    }
+
+    function sizeEstimateClass(bytes) {
+      if (bytes >= 1000) return "size-cost-high";
+      if (bytes >= 100) return "size-cost-medium";
+      return "size-cost-low";
+    }
+
+    function updateSizeBadge(output, bytes) {
+      output.textContent = formatBytesPerEvent(bytes);
+      output.classList.remove("size-cost-low", "size-cost-medium", "size-cost-high");
+      output.classList.add(sizeEstimateClass(bytes));
+    }
+
+    function updateSizeEstimates() {
+      const total = formatBytesPerEvent(estimatedTotalBytesPerEvent());
+      ["objectSizeEstimate", "variableSizeEstimate"].forEach((id) => {
+        const output = document.getElementById(id);
+        if (output) output.textContent = total;
+      });
+      Object.keys(OBJECTS).forEach((key) => {
+        const output = document.getElementById(`obj-size-${key}`);
+        if (output) updateSizeBadge(output, estimatedObjectBytesPerEvent(key));
+      });
+      const activeOutput = document.getElementById("activeObjectSizeEstimate");
+      if (activeOutput && state.activeVariableObject) {
+        updateSizeBadge(activeOutput, estimatedObjectBytesPerEvent(state.activeVariableObject));
+      }
     }
 
     function isObjectAvailable(key) {
@@ -331,9 +401,13 @@
     }
 
     function dependencyBadges(key) {
-      const dependents = dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
-      const dependencies = dependenciesFor(key).filter((dependency) => state.selectedObjects.has(dependency));
-      const badges = [];
+      const dependents = key === "Event"
+        ? []
+        : dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
+      const dependencies = dependenciesFor(key).filter((dependency) => dependency !== "Event");
+      const badges = key === "Event"
+        ? ['<span class="badge text-bg-info">Always included</span>']
+        : [];
       if (dependencies.length) {
         badges.push(`<span class="badge text-bg-info">Requires ${dependencies.length === 1 ? OBJECTS[dependencies[0]].title : `${dependencies.length} other objects`}</span>`);
       }
@@ -347,32 +421,36 @@
       objectList.innerHTML = Object.entries(OBJECTS).map(([key, object]) => {
         const unavailable = !isObjectAvailable(key);
         const checked = state.selectedObjects.has(key) && !unavailable;
-        const dependents = dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
-        const deselectHint = checked && dependents.length
-          ? `Turning this off also turns off ${dependents.map((dependent) => OBJECTS[dependent].title).join(", ")}.`
-          : object.requiredReason || "";
+        const statusBadges = [
+          dependencyBadges(key),
+          unavailable ? '<span class="badge text-bg-warning">Not available for PHYSLITE</span>' : "",
+          state.sampleType === "DATA" && (object.mcOnlyVariables || []).length ? '<span class="badge text-bg-info">Simulation-only labels omitted</span>' : "",
+        ].filter(Boolean).join("");
         const descriptionIds = [`obj-desc-${key}`, `obj-meta-${key}`];
-        if (deselectHint) descriptionIds.push(`obj-note-${key}`);
+        if (statusBadges) descriptionIds.push(`obj-status-${key}`);
         return `
           <div class="col-md-6 col-xl-4">
             <label class="card object-card h-100 border-secondary-subtle ${unavailable ? "opacity-50" : ""}" for="obj-${key}">
               <div class="card-body">
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input object-toggle" type="checkbox" value="${key}" id="obj-${key}" aria-labelledby="obj-label-${key}" aria-describedby="${descriptionIds.join(" ")}" ${checked ? "checked" : ""} ${unavailable || key === "Event" ? "disabled" : ""}>
-                  <span class="form-check-label fw-semibold" id="obj-label-${key}">${object.title}</span>
+                <div class="object-card-heading">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input object-toggle" type="checkbox" value="${key}" id="obj-${key}" aria-labelledby="obj-label-${key}" aria-describedby="${descriptionIds.join(" ")}" ${checked ? "checked" : ""} ${unavailable || key === "Event" ? "disabled" : ""}>
+                    <span class="form-check-label fw-semibold" id="obj-label-${key}">${object.title}</span>
+                  </div>
                 </div>
                 <p class="small text-secondary mb-2" id="obj-desc-${key}">${object.description}</p>
-                <div class="object-meta" id="obj-meta-${key}">
-                  <span class="badge text-bg-secondary">${availableVariableEntries(key).length} ${availableVariableEntries(key).length === 1 ? "variable" : "variables"}</span>
-                  ${dependencyBadges(key)}
-                  ${unavailable ? '<span class="badge text-bg-warning">Not available for PHYSLITE</span>' : ""}
-                  ${state.sampleType === "DATA" && (object.mcOnlyVariables || []).length ? '<span class="badge text-bg-info">Simulation-only labels omitted</span>' : ""}
+                <div class="object-card-footer">
+                  ${statusBadges ? `<div class="object-status" id="obj-status-${key}">${statusBadges}</div>` : ""}
+                  <div class="object-meta" id="obj-meta-${key}">
+                    <span class="badge text-bg-secondary object-variable-count">${availableVariableEntries(key).length} ${availableVariableEntries(key).length === 1 ? "variable" : "variables"}</span>
+                    ${unavailable ? "" : `<span class="badge object-size-badge ${sizeEstimateClass(estimatedObjectBytesPerEvent(key))}" id="obj-size-${key}" title="Estimated Parquet size for this table">${formatBytesPerEvent(estimatedObjectBytesPerEvent(key))}</span>`}
+                  </div>
                 </div>
-                ${deselectHint ? `<span class="d-block small dependency-note mt-2" id="obj-note-${key}">${deselectHint}</span>` : ""}
               </div>
             </label>
           </div>`;
       }).join("");
+      updateSizeEstimates();
 
       objectList.querySelectorAll(".object-toggle").forEach((input) => {
         input.addEventListener("change", () => {
@@ -405,40 +483,56 @@
 
     function renderVariables() {
       const selected = Object.keys(OBJECTS).filter((key) => state.selectedObjects.has(key) && isObjectAvailable(key));
-      variableAccordion.innerHTML = selected.length ? selected.map((key, index) => {
-        const object = OBJECTS[key];
-        const variables = Object.entries(object.aliases).map(([name, branch]) => {
+      if (!selected.includes(state.activeVariableObject)) {
+        state.activeVariableObject = selected[0];
+      }
+      if (!selected.length) {
+        variableAccordion.innerHTML = '<div class="alert alert-warning">Select at least one output object before choosing variables.</div>';
+        return;
+      }
+
+      const activeKey = state.activeVariableObject;
+      const activeObject = OBJECTS[activeKey];
+      const variables = Object.entries(activeObject.aliases).map(([name, branch]) => {
           const branchText = Array.isArray(branch) ? branch.join(" / ") : branch;
-          const required = variableIsRequired(key, name);
-          const available = variableIsAvailable(key, name);
-          if (required && available) state.selectedVariables[key].add(name);
-          const checked = available && state.selectedVariables[key].has(name);
-          const detailIds = [`var-branch-${key}-${name}`];
-          if (required && available) detailIds.push(`var-required-${key}-${name}`);
-          if (!available) detailIds.push(`var-unavailable-${key}-${name}`);
+          const required = variableIsRequired(activeKey, name);
+          const available = variableIsAvailable(activeKey, name);
+          if (required && available) state.selectedVariables[activeKey].add(name);
+          const checked = available && state.selectedVariables[activeKey].has(name);
+          const detailIds = [`var-branch-${activeKey}-${name}`];
+          if (required && available) detailIds.push(`var-required-${activeKey}-${name}`);
+          if (!available) detailIds.push(`var-unavailable-${activeKey}-${name}`);
           return `
             <div class="form-check mb-2 ${available ? "" : "opacity-50"}">
-              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${key}" id="var-${key}-${name}" aria-labelledby="var-label-${key}-${name}" aria-describedby="${detailIds.join(" ")}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
-              <label class="form-check-label" for="var-${key}-${name}">
-                <code class="variable-name" id="var-label-${key}-${name}">${name}</code>
-                ${required && available ? `<span class="badge text-bg-warning ms-1" id="var-required-${key}-${name}">Required vector component</span>` : ""}
-                ${!available ? `<span class="badge text-bg-info ms-1" id="var-unavailable-${key}-${name}">Not written for collision data</span>` : ""}
-                <span class="d-block small text-secondary" id="var-branch-${key}-${name}">${branchText}</span>
+              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${activeKey}" id="var-${activeKey}-${name}" aria-labelledby="var-label-${activeKey}-${name}" aria-describedby="${detailIds.join(" ")}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
+              <label class="form-check-label" for="var-${activeKey}-${name}">
+                <code class="variable-name" id="var-label-${activeKey}-${name}">${name}</code>
+                ${required && available ? `<span class="badge text-bg-warning ms-1" id="var-required-${activeKey}-${name}">Required vector component</span>` : ""}
+                ${!available ? `<span class="badge text-bg-info ms-1" id="var-unavailable-${activeKey}-${name}">Not written for collision data</span>` : ""}
+                <span class="d-block small text-secondary" id="var-branch-${activeKey}-${name}">${branchText}</span>
               </label>
             </div>`;
-        }).join("");
-        return `
-          <div class="accordion-item">
-            <h3 class="accordion-header">
-              <button class="accordion-button variable-group-toggle ${index ? "collapsed" : ""}" id="accordion-${key}" type="button" data-panel="panel-${key}" aria-expanded="${index ? "false" : "true"}" aria-controls="panel-${key}">
-                ${object.title}
-              </button>
-            </h3>
-            <div id="panel-${key}" class="accordion-collapse collapse ${index ? "" : "show"}" role="region" aria-labelledby="accordion-${key}">
-              <div class="accordion-body variable-grid">${variables}</div>
-            </div>
-          </div>`;
-      }).join("") : '<div class="alert alert-warning">Select at least one output object before choosing variables.</div>';
+      }).join("");
+      const options = selected.map((key) =>
+        `<option value="${key}" ${key === activeKey ? "selected" : ""}>${OBJECTS[key].title}</option>`
+      ).join("");
+      const tabs = selected.map((key) => `
+        <button class="variable-tab" id="variable-tab-${key}" type="button" role="tab" aria-selected="${key === activeKey}" aria-controls="variable-panel" tabindex="${key === activeKey ? "0" : "-1"}" data-object="${key}">
+          ${OBJECTS[key].title}
+        </button>`).join("");
+
+      variableAccordion.innerHTML = `
+        <div class="variable-tabs-layout">
+          <div class="variable-tabs-controls">
+            <label class="form-label variable-object-select-label" for="variableObjectSelect">Object</label>
+            <select class="form-select variable-object-select" id="variableObjectSelect">${options}</select>
+            <div class="variable-tab-list" role="tablist" aria-label="Output objects" aria-orientation="vertical">${tabs}</div>
+          </div>
+          <section class="variable-panel" id="variable-panel" role="tabpanel" tabindex="0" aria-labelledby="variable-tab-${activeKey}">
+            <h3 class="h5">${activeObject.title} variables <span class="badge ${sizeEstimateClass(estimatedObjectBytesPerEvent(activeKey))}" id="activeObjectSizeEstimate">${formatBytesPerEvent(estimatedObjectBytesPerEvent(activeKey))}</span></h3>
+            <div class="variable-grid">${variables}</div>
+          </section>
+        </div>`;
 
       variableAccordion.querySelectorAll(".variable-toggle").forEach((input) => {
         input.addEventListener("change", () => {
@@ -453,22 +547,42 @@
               input.checked = true;
             }
           }
+          updateSizeEstimates();
           updateGeneratedScript();
         });
       });
 
-      variableAccordion.querySelectorAll(".variable-group-toggle").forEach((button) => {
+      const activateObject = (key, focusSelector) => {
+        state.activeVariableObject = key;
+        renderVariables();
+        window.requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
+      };
+
+      variableAccordion.querySelector(".variable-object-select").addEventListener("change", (event) => {
+        activateObject(event.target.value, ".variable-object-select");
+        announce(`Showing ${OBJECTS[event.target.value].title} variables.`);
+      });
+
+      const tabButtons = Array.from(variableAccordion.querySelectorAll(".variable-tab"));
+      tabButtons.forEach((button, index) => {
         button.addEventListener("click", () => {
-          const willOpen = button.getAttribute("aria-expanded") !== "true";
-          variableAccordion.querySelectorAll(".variable-group-toggle").forEach((otherButton) => {
-            const panel = document.getElementById(otherButton.dataset.panel);
-            const expanded = otherButton === button && willOpen;
-            otherButton.setAttribute("aria-expanded", String(expanded));
-            otherButton.classList.toggle("collapsed", !expanded);
-            panel.classList.toggle("show", expanded);
-          });
+          activateObject(button.dataset.object, `#variable-tab-${button.dataset.object}`);
+          announce(`Showing ${OBJECTS[button.dataset.object].title} variables.`);
+        });
+        button.addEventListener("keydown", (event) => {
+          let nextIndex;
+          if (["ArrowDown", "ArrowRight"].includes(event.key)) nextIndex = (index + 1) % tabButtons.length;
+          if (["ArrowUp", "ArrowLeft"].includes(event.key)) nextIndex = (index - 1 + tabButtons.length) % tabButtons.length;
+          if (event.key === "Home") nextIndex = 0;
+          if (event.key === "End") nextIndex = tabButtons.length - 1;
+          if (nextIndex === undefined) return;
+          event.preventDefault();
+          const nextKey = tabButtons[nextIndex].dataset.object;
+          activateObject(nextKey, `#variable-tab-${nextKey}`);
+          announce(`Showing ${OBJECTS[nextKey].title} variables.`);
         });
       });
+      updateSizeEstimates();
     }
 
     function ensureDependencies() {
@@ -508,7 +622,7 @@
       nextButton.textContent = state.step === 3 ? "Review" : "Next";
       const activeSection = document.querySelector(`.wizard-step[data-step="${state.step}"]`);
       const heading = activeSection.querySelector("h2");
-      if (moveFocus) heading.focus();
+      if (moveFocus) heading.focus({ preventScroll: true });
     }
 
     function selectedVariables(key) {
@@ -614,8 +728,8 @@
         PYTHON_PATH: JSON.stringify(slurm.pythonPath),
         INPUT_MANIFEST: JSON.stringify(slurm.inputManifest),
         OUTPUT_BASE: JSON.stringify(slurm.outputBase),
-        LOG_OUT: JSON.stringify("pcdf-ntuple-%j.out"),
-        LOG_ERR: JSON.stringify("pcdf-ntuple-%j.err"),
+        LOG_OUT: JSON.stringify("logs/pcdf-ntuple-%j.out"),
+        LOG_ERR: JSON.stringify("logs/pcdf-ntuple-%j.err"),
       };
     }
 
@@ -637,6 +751,65 @@
       });
     }
 
+    function buildCondorSubmitFile() {
+      const batch = state.slurm;
+      return applyTemplate(requireTemplate("condor"), {
+        PYTHON_PATH: JSON.stringify(batch.pythonPath),
+        INPUT_MANIFEST: JSON.stringify(batch.inputManifest),
+        OUTPUT_BASE: JSON.stringify(batch.outputBase),
+        REQUEST_CPUS: batch.condorCpus,
+        REQUEST_MEMORY_MB: batch.condorMemory,
+        REQUEST_DISK_MB: batch.condorDisk,
+        REQUIREMENTS_LINE: batch.condorRequirements
+          ? `requirements = ${batch.condorRequirements}`
+          : "",
+      });
+    }
+
+    function batchFilename() {
+      return state.slurm.scheduler === "condor"
+        ? "submit-pcdf-ntuple.condor"
+        : "submit-pcdf-ntuple.slurm";
+    }
+
+    function updateSchedulerControls() {
+      const enabled = state.slurm.enabled;
+      const condor = state.slurm.scheduler === "condor";
+      document.querySelectorAll(".slurm-only").forEach((element) => {
+        element.hidden = condor;
+        element.querySelectorAll("input, select").forEach((control) => {
+          control.disabled = !enabled || condor;
+        });
+      });
+      document.querySelectorAll(".condor-only").forEach((element) => {
+        element.hidden = !condor;
+        element.querySelectorAll("input, select").forEach((control) => {
+          control.disabled = !enabled || !condor;
+        });
+      });
+      document.querySelectorAll(".slurm-input:not(#scheduler)").forEach((input) => {
+        if (!input.closest(".slurm-only") && !input.closest(".condor-only")) {
+          input.disabled = !enabled;
+        }
+      });
+      document.getElementById("scheduler").disabled = !enabled;
+    }
+
+    function updateRunInstructions() {
+      const instructions = document.getElementById("slurmRunInstructions");
+      if (state.slurm.scheduler === "condor") {
+        instructions.innerHTML = `
+          <li>Extract the bundle on a filesystem shared by the HTCondor access point and execute nodes. Enter the <code>pcdf-ntuple</code> directory.</li>
+          <li>Make sure <code>uv</code> is available on the execute nodes. They must also be able to read the input paths and write to the output directory.</li>
+          <li>Run <code>./run-pcdf.sh</code>. The workflow creates the manifest, asks before submission, and follows the jobs until they finish. It does not transfer DAOD files.</li>`;
+      } else {
+        instructions.innerHTML = `
+          <li>Copy the bundle to a Perlmutter login node, extract it, and enter the <code>pcdf-ntuple</code> directory.</li>
+          <li>Run <code>./run-pcdf.sh</code>. The workflow finds the input files, writes the manifest, asks before submission, and follows the job until it finishes.</li>
+          <li>You can stop monitoring without cancelling the job. Scheduler output and error messages are written under <code>logs/</code>.</li>`;
+      }
+    }
+
     function setDownloadButtonsEnabled(enabled) {
       document.getElementById("downloadScript").disabled = !enabled;
       document.getElementById("downloadBundle").disabled = !enabled;
@@ -646,42 +819,48 @@
 
     function updateGeneratedScript() {
       syncSlurmSettings();
-      document.querySelectorAll(".slurm-input").forEach((input) => {
-        input.disabled = !state.slurm.enabled;
-      });
+      updateSchedulerControls();
       ensureDependencies();
       const config = selectedConfig();
       const generatedScript = buildScript();
-      const slurmScript = buildSlurmScript();
+      const slurmScript = state.slurm.scheduler === "condor" ? buildCondorSubmitFile() : buildSlurmScript();
       scriptOutput.value = generatedScript;
       scriptHighlight.innerHTML = highlightPython(generatedScript);
       slurmScriptOutput.value = slurmScript;
-      slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "SLURM script generation is turned off.";
-      document.getElementById("slurmRunInstructions").hidden = !state.slurm.enabled;
+      slurmScriptHighlight.innerHTML = state.slurm.enabled ? highlightPython(slurmScript) : "Batch file generation is turned off.";
+      document.getElementById("runInstructions").hidden = !state.slurm.enabled;
+      updateRunInstructions();
+      document.getElementById("slurmScriptHighlightHeading").textContent = state.slurm.scheduler === "condor"
+        ? "Generated HTCondor submit file"
+        : "Generated SLURM submission script";
+      document.getElementById("downloadSlurmScript").innerHTML = `<i class="bi bi-download me-1" aria-hidden="true"></i>Download ${state.slurm.scheduler === "condor" ? "HTCondor file" : "SLURM script"}`;
       generationReady = true;
       setDownloadButtonsEnabled(true);
-      const slurmSummary = state.slurm.enabled
-        ? `The job uses ${state.slurm.nodes} whole CPU node${state.slurm.nodes === 1 ? "" : "s"}. It runs one file conversion on each physical CPU core.`
-        : "No SLURM script will be generated.";
+      const slurmSummary = !state.slurm.enabled
+        ? "No batch submission file will be generated."
+        : state.slurm.scheduler === "condor"
+          ? `HTCondor queues one job per input file. Each job requests ${state.slurm.condorCpus} CPU core${state.slurm.condorCpus === 1 ? "" : "s"} and ${state.slurm.condorMemory} MiB of memory.`
+          : `The SLURM job uses ${state.slurm.nodes} whole CPU node${state.slurm.nodes === 1 ? "" : "s"}. It runs one file conversion on each physical CPU core.`;
       const objectSummary = Object.keys(config.objects).map((key) => {
         const title = escapeHtml(OBJECTS[key].title);
         const variableCount = Object.keys(config.objects[key].aliases).length;
         return `<li>${title}: ${variableCount} ${variableCount === 1 ? "variable" : "variables"}</li>`;
       }).join("");
       const manifestSummary = state.slurm.enabled
-        ? `The job reads input paths from ${escapeHtml(state.slurm.inputManifest)}. Make this file before you submit. Compute nodes cannot download data.`
-        : "You do not need a manifest when SLURM script generation is off.";
+        ? `The workflow writes input paths to ${escapeHtml(state.slurm.inputManifest)} before submission. Every path must be readable from the compute nodes.`
+        : "You do not need a manifest when batch file generation is off.";
       summary.innerHTML = `
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Input</h3>
-          <p class="mb-0 fw-semibold">${escapeHtml(config.inputFormat)} · ${escapeHtml(config.sampleType)}</p>
+          <p class="mb-1 fw-semibold">${escapeHtml(config.inputFormat)} · ${escapeHtml(config.sampleType)}</p>
+          <p class="mb-0 small">Estimated Parquet size: ${escapeHtml(formatBytesPerEvent(estimatedTotalBytesPerEvent()))}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
           <h3 class="h6 text-uppercase text-secondary">Objects</h3>
           <ul class="mb-0">${objectSummary}</ul>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">Perlmutter job</h3>
+          <h3 class="h6 text-uppercase text-secondary">Batch job</h3>
           <p class="mb-0">${escapeHtml(slurmSummary)}</p>
         </div></div>
         <div class="card border-secondary-subtle"><div class="card-body">
@@ -732,14 +911,6 @@
       announce("All available output objects selected.");
     });
 
-    document.getElementById("selectNone").addEventListener("click", () => {
-      state.selectedObjects = new Set(["Event"]);
-      renderObjects();
-      renderVariables();
-      updateGeneratedScript();
-      announce("Only the required Event object is selected.");
-    });
-
     document.getElementById("restoreDefaults").addEventListener("click", () => {
       Object.entries(OBJECTS).forEach(([key, object]) => {
         if (state.selectedObjects.has(key)) state.selectedVariables[key] = new Set(availableVariableEntries(key).map(([name]) => name));
@@ -756,8 +927,8 @@
 
     document.getElementById("enableSlurm").addEventListener("change", (event) => {
       announce(event.target.checked
-        ? "SLURM script generation is on."
-        : "SLURM script generation is off. Perlmutter settings are no longer needed.");
+        ? "Batch file generation is on."
+        : "Batch file generation is off. Scheduler settings are no longer needed.");
     });
 
     document.querySelectorAll(".slurm-input").forEach((input) => {
@@ -795,6 +966,8 @@
       }
       const invalidStep = firstInvalid.closest(".wizard-step");
       if (invalidStep) setStep(Number(invalidStep.dataset.step), false);
+      const hiddenGroup = firstInvalid.closest("details");
+      if (hiddenGroup) hiddenGroup.open = true;
       const error = document.getElementById(firstInvalid.dataset.errorId);
       window.requestAnimationFrame(() => firstInvalid.focus());
       announce(`Cannot continue. ${error ? error.textContent.trim() : firstInvalid.validationMessage}`);
@@ -830,7 +1003,8 @@
       const encoder = new TextEncoder();
       const chunks = [];
       files.forEach((file) => {
-        const data = encoder.encode(file.content);
+        const directory = file.type === "directory";
+        const data = encoder.encode(directory ? "" : file.content);
         const header = new Uint8Array(512);
         const mode = file.mode ?? 0o644;
         header.set(tarString(file.name, 100), 0);
@@ -840,7 +1014,7 @@
         header.set(tarOctal(data.length, 12), 124);
         header.set(tarOctal(Math.floor(Date.now() / 1000), 12), 136);
         header.fill(32, 148, 156);
-        header[156] = "0".charCodeAt(0);
+        header[156] = (directory ? "5" : "0").charCodeAt(0);
         header.set(tarString("ustar", 6), 257);
         header.set(tarString("00", 2), 263);
         let checksum = 0;
@@ -855,43 +1029,58 @@
     }
 
     function bundleReadme() {
-      const pythonName = generatedPythonName().replace(/^\.\//, "");
-      const slurmSection = state.slurm.enabled ? `
+      const pythonName = generatedPythonName().split("/").pop();
+      let batchFileLine = "";
+      let workflowFileLine = "";
+      let batchSection = `
+Batch run
+---------
+This bundle has only the converter, manifest helper, and README. Turn on batch
+file generation in the wizard to include a scheduler submission file.
+`;
+      if (state.slurm.enabled && state.slurm.scheduler === "condor") {
+        batchFileLine = "- code/submit-pcdf-ntuple.condor describes one HTCondor job for each manifest entry.\n- code/run-pcdf-condor-job.sh runs one file conversion on an execute node.\n";
+        workflowFileLine = "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n";
+        batchSection = `
+HTCondor run
+------------
+1. Extract the bundle on a filesystem shared by the access point and execute
+   nodes:
+   tar -xf pcdf-ntuple-bundle.tar
+   cd pcdf-ntuple
+2. Make sure uv is available on the execute nodes. The input paths and output
+   directory must be visible at the same paths on every node. This workflow
+   does not transfer DAOD files through HTCondor.
+3. Run ./run-pcdf.sh. It creates the manifest, asks before submission, and
+   follows the jobs until they finish.
+4. To run each step yourself, use code/make-manifest.py, condor_submit
+   code/submit-pcdf-ntuple.condor, and condor_q.
+`;
+      } else if (state.slurm.enabled) {
+        batchFileLine = "- code/submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n";
+        workflowFileLine = "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n";
+        batchSection = `
 Perlmutter run
 --------------
 1. Copy this bundle to Perlmutter and extract it:
    tar -xf pcdf-ntuple-bundle.tar
-   The Python and SLURM scripts are marked executable.
-2. On a login node, check the account, manifest, output directory, and node
-   count in submit-pcdf-ntuple.slurm. The job writes all tables below the same
-   output directory. It runs one file conversion on each physical CPU core.
-3. Start the included workflow:
+   cd pcdf-ntuple
+2. Start the workflow from a login node:
    ./run-pcdf.sh
-   It creates the manifest, asks before submitting, then shows the queued,
-   running, and completed job states. It does not cancel the job if you stop
-   monitoring with Ctrl+C.
-   The manifest helper can scan a directory populated by \`rucio download\` or
-   look up a \`scope:name\` dataset at \`NERSC_LOCALGROUPDISK\`. It removes the
-   access proxy's scheme, host, and port from each replica PFN, retaining its
-   local path. The transform does not require Rucio.
-4. To run each step yourself, use make-manifest.py, sbatch
-   submit-pcdf-ntuple.slurm, and squeue -u $USER.
-` : `
-Perlmutter run
---------------
-This bundle has only the Python converter and this README. Turn on SLURM script
-generation in the wizard to include a Perlmutter job script.
+   It asks whether to scan a directory populated by \`rucio download\` or look
+   up a \`scope:name\` dataset at \`NERSC_LOCALGROUPDISK\`. It then writes the
+   manifest, asks before submission, and follows the job until it finishes.
+3. You can stop monitoring with Ctrl+C without cancelling the job. Scheduler
+   output and error messages are written under logs/.
+4. To control each step yourself, use code/make-manifest.py, sbatch
+   code/submit-pcdf-ntuple.slurm, and squeue -u $USER.
 `;
+      }
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
-        INPUT_FORMAT: state.inputFormat,
-        SLURM_FILE_LINE: state.slurm.enabled
-          ? "- submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n"
-          : "",
-        WORKFLOW_FILE_LINE: state.slurm.enabled
-          ? "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n"
-          : "",
-        SLURM_SECTION: slurmSection,
+        SLURM_FILE_LINE: batchFileLine,
+        WORKFLOW_FILE_LINE: workflowFileLine,
+        SLURM_SECTION: batchSection,
       });
     }
 
@@ -909,47 +1098,59 @@ generation in the wizard to include a Perlmutter job script.
     document.getElementById("downloadScript").addEventListener("click", () => {
       if (!generationReady || !scriptOutput.value || !formIsValid()) return;
       const blob = new Blob([scriptOutput.value], { type: "text/x-python" });
-      downloadBlob(blob, generatedPythonName().replace(/^\.\//, ""));
+      downloadBlob(blob, generatedPythonName().split("/").pop());
       announce("Converter download started.");
     });
 
     document.getElementById("downloadSlurmScript").addEventListener("click", () => {
       if (!generationReady || !state.slurm.enabled || !slurmScriptOutput.value || !formIsValid()) return;
       const blob = new Blob([slurmScriptOutput.value], { type: "text/x-shellscript" });
-      downloadBlob(blob, "submit-pcdf-ntuple.slurm");
-      announce("SLURM script download started.");
+      downloadBlob(blob, batchFilename());
+      announce(`${state.slurm.scheduler === "condor" ? "HTCondor" : "SLURM"} file download started.`);
     });
 
     document.getElementById("downloadBundle").addEventListener("click", () => {
       if (!generationReady || !scriptOutput.value || !formIsValid()) return;
       try {
-        const pythonName = generatedPythonName().replace(/^\.\//, "");
+        const pythonName = generatedPythonName().split("/").pop();
+        const root = "pcdf-ntuple";
         const files = [
-          { name: pythonName, content: scriptOutput.value, mode: 0o755 },
+          { name: `${root}/`, content: "", type: "directory", mode: 0o755 },
+          { name: `${root}/code/`, content: "", type: "directory", mode: 0o755 },
+          { name: `${root}/output/`, content: "", type: "directory", mode: 0o755 },
+          { name: `${root}/logs/`, content: "", type: "directory", mode: 0o755 },
+          { name: `${root}/code/${pythonName}`, content: scriptOutput.value, mode: 0o755 },
         ];
         if (state.slurm.enabled) {
           files.push({
-            name: "submit-pcdf-ntuple.slurm",
+            name: `${root}/code/${batchFilename()}`,
             content: slurmScriptOutput.value,
             mode: 0o755,
           });
+          if (state.slurm.scheduler === "condor") {
+            files.push({
+              name: `${root}/code/run-pcdf-condor-job.sh`,
+              content: requireTemplate("condorJob"),
+              mode: 0o755,
+            });
+          }
           files.push({
-            name: "run-pcdf.sh",
+            name: `${root}/run-pcdf.sh`,
             content: requireTemplate("workflowShell"),
             mode: 0o755,
           });
           files.push({
-            name: "run-pcdf.py",
+            name: `${root}/code/run-pcdf.py`,
             content: requireTemplate("workflowPython"),
             mode: 0o755,
           });
         }
         files.push({
-          name: "make-manifest.py",
+          name: `${root}/code/make-manifest.py`,
           content: requireTemplate("manifest"),
           mode: 0o755,
         });
-        files.push({ name: "README_SUBMIT.md", content: bundleReadme() });
+        files.push({ name: `${root}/README_SUBMIT.md`, content: bundleReadme() });
         downloadBlob(createTarArchive(files), "pcdf-ntuple-bundle.tar");
         announce("Bundle download started.");
       } catch (error) {

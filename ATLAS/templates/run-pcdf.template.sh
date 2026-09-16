@@ -3,4 +3,5 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-exec uv run ./run-pcdf.py
+mkdir -p input output logs
+exec uv run ./code/run-pcdf.py
