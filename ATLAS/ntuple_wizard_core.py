@@ -98,7 +98,7 @@ class WizardState:
     nodes: int = 1
     time: str = "00:30:00"
     condor_cpus: int = 1
-    condor_memory_mb: int = 4096
+    condor_memory_mb: int = 2048
     condor_disk_mb: int = 4096
     condor_requirements: str = ""
     output_base: str = "./output"

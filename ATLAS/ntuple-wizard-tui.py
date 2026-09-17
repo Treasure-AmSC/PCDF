@@ -177,7 +177,7 @@ class NtupleWizardTui(App[None]):
                                     yield Label("CPU cores per file", classes="field-label")
                                     yield Input(value="1", placeholder="CPU cores", id="condor_cpus", validators=[Function(self.positive_integer, "CPU cores must be a positive integer.")], validate_on=["blur", "submitted"])
                                     yield Label("Memory per file (MiB)", classes="field-label")
-                                    yield Input(value="4096", placeholder="Memory in MiB", id="condor_memory", validators=[Function(self.positive_integer, "Memory must be a positive integer.")], validate_on=["blur", "submitted"])
+                                    yield Input(value="2048", placeholder="Memory in MiB", id="condor_memory", validators=[Function(self.positive_integer, "Memory must be a positive integer.")], validate_on=["blur", "submitted"])
                                     yield Label("Scratch disk per file (MiB)", classes="field-label")
                                     yield Input(value="4096", placeholder="Disk in MiB", id="condor_disk", validators=[Function(self.positive_integer, "Disk must be a positive integer.")], validate_on=["blur", "submitted"])
                                     yield Label("Worker requirements (optional)", classes="field-label")
@@ -331,7 +331,7 @@ class NtupleWizardTui(App[None]):
         state.time = self.query_one("#time", Input).value.strip() or "00:30:00"
         for widget_id, attribute, fallback in (
             ("condor_cpus", "condor_cpus", 1),
-            ("condor_memory", "condor_memory_mb", 4096),
+            ("condor_memory", "condor_memory_mb", 2048),
             ("condor_disk", "condor_disk_mb", 4096),
         ):
             try:

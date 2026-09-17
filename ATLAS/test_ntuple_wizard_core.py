@@ -97,6 +97,10 @@ class ManifestHelperTest(unittest.TestCase):
         submit_text = build_condor(WizardState(scheduler="condor"), Path("."))
         self.assertNotIn("requirements =", submit_text)
 
+    def test_htcondor_default_memory_is_two_gibibytes_per_file(self) -> None:
+        submit_text = build_condor(WizardState(scheduler="condor"), Path("."))
+        self.assertIn("request_memory = 2048 MB", submit_text)
+
     def test_rucio_mode_strips_the_proxy_from_replica_pfns(self) -> None:
         helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
         with tempfile.TemporaryDirectory() as temporary:

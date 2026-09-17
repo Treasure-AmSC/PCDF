@@ -317,7 +317,6 @@
 
     .term-with-help:hover:not(.tooltip-dismissed) .term-tooltip {
       opacity: 1;
-      pointer-events: auto;
       visibility: visible;
     }
 

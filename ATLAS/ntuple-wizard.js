@@ -22,7 +22,7 @@
         inputManifest: "./pcdf-inputs.txt",
         outputBase: "./output",
         condorCpus: 1,
-        condorMemory: 4096,
+        condorMemory: 2048,
         condorDisk: 4096,
         condorRequirements: ""
       }
@@ -114,26 +114,52 @@
 
 
     function initTermHelp() {
-      const placeTooltip = (wrapper) => {
-        const termRect = wrapper.querySelector(".term-label").getBoundingClientRect();
-        const tooltip = wrapper.querySelector(".term-tooltip");
+      const fixedContainingBlock = (element) => {
+        for (let ancestor = element.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+          const style = getComputedStyle(ancestor);
+          const contained = /(?:paint|layout|strict|content)/.test(style.contain);
+          const prefixedBackdropFilter = style.getPropertyValue("-webkit-backdrop-filter");
+          if (style.transform !== "none" || style.perspective !== "none" || style.filter !== "none"
+              || style.backdropFilter !== "none"
+              || (prefixedBackdropFilter && prefixedBackdropFilter !== "none") || contained) {
+            return ancestor;
+          }
+        }
+        return null;
+      };
+      const placeTooltip = (tooltip, pointerEvent) => {
         const tooltipRect = tooltip.getBoundingClientRect();
         const margin = 8;
+        const gap = 12;
         const viewportWidth = document.documentElement.clientWidth;
         const viewportHeight = document.documentElement.clientHeight;
-        const left = Math.max(margin, Math.min(termRect.left, viewportWidth - tooltipRect.width - margin));
-        const below = termRect.bottom - 2;
-        const above = termRect.top - tooltipRect.height + 2;
-        const top = below + tooltipRect.height <= viewportHeight - margin ? below : Math.max(margin, above);
-        tooltip.style.left = `${left}px`;
-        tooltip.style.top = `${top}px`;
+        const right = pointerEvent.clientX + gap;
+        const leftOfPointer = pointerEvent.clientX - tooltipRect.width - gap;
+        const below = pointerEvent.clientY + gap;
+        const above = pointerEvent.clientY - tooltipRect.height - gap;
+        const left = Math.max(margin, Math.min(
+          right + tooltipRect.width <= viewportWidth - margin ? right : leftOfPointer,
+          viewportWidth - tooltipRect.width - margin
+        ));
+        const top = Math.max(margin, Math.min(
+          below + tooltipRect.height <= viewportHeight - margin ? below : above,
+          viewportHeight - tooltipRect.height - margin
+        ));
+        const containingBlock = fixedContainingBlock(tooltip);
+        const containingRect = containingBlock?.getBoundingClientRect();
+        const originLeft = containingRect ? containingRect.left + containingBlock.clientLeft : 0;
+        const originTop = containingRect ? containingRect.top + containingBlock.clientTop : 0;
+        tooltip.style.left = `${left - originLeft}px`;
+        tooltip.style.top = `${top - originTop}px`;
       };
       const closeTooltip = (wrapper, dismissed = false) => {
         wrapper.classList.toggle("tooltip-dismissed", dismissed);
       };
 
       document.querySelectorAll(".term-with-help").forEach((wrapper) => {
-        wrapper.addEventListener("pointerenter", () => placeTooltip(wrapper));
+        const tooltip = wrapper.querySelector(".term-tooltip");
+        wrapper.addEventListener("pointerenter", (event) => placeTooltip(tooltip, event));
+        wrapper.addEventListener("pointermove", (event) => placeTooltip(tooltip, event));
         wrapper.addEventListener("mouseleave", () => closeTooltip(wrapper));
       });
 
@@ -282,7 +308,7 @@
       state.slurm.inputManifest = fieldValue("slurmInputManifest") || "./pcdf-inputs.txt";
       state.slurm.outputBase = fieldValue("slurmOutputBase") || "./output";
       state.slurm.condorCpus = numericFieldValue("condorCpus", 1);
-      state.slurm.condorMemory = numericFieldValue("condorMemory", 4096);
+      state.slurm.condorMemory = numericFieldValue("condorMemory", 2048);
       state.slurm.condorDisk = numericFieldValue("condorDisk", 4096);
       state.slurm.condorRequirements = fieldValue("condorRequirements");
     }
