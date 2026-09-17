@@ -132,24 +132,9 @@
                         <div class="invalid-feedback" id="slurmAccountError">Enter your NERSC project account before downloading or submitting.</div>
                       </div>
                     </div>
-                    <div class="col-md-6">
-                      <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmOutputBase" value="./output" required placeholder="Output base directory" data-error-id="slurmOutputBaseError">
-                        <label for="slurmOutputBase">Output dataset directory</label>
-                        <div class="invalid-feedback" id="slurmOutputBaseError">Enter an output directory.</div>
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div class="form-floating">
-                        <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="Input manifest path" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
-                        <label for="slurmInputManifest">Input-file manifest path</label>
-                        <div class="invalid-feedback" id="slurmInputManifestError">Enter the manifest path.</div>
-                      </div>
-                      <div class="form-text text-secondary" id="slurmInputManifestHelp">The workflow creates this file before submission. Compute nodes do not download data.</div>
-                    </div>
-                    <p class="col-12 text-secondary small mb-0" id="advancedBatchHelp">Most users can leave the advanced settings unchanged. They control resource requests and the converter path.</p>
+                    <p class="col-12 text-secondary small mb-0" id="advancedBatchHelp">Most users can leave the advanced settings unchanged. They control resource requests, generated paths, and the converter.</p>
                     <details class="col-12 border rounded-3 p-3" id="advancedBatchSettings">
-                      <summary class="fw-semibold">Advanced scheduler settings</summary>
+                      <summary class="fw-semibold">Advanced batch settings</summary>
                       <div class="row g-3 mt-1">
                         <div class="col-md-6 slurm-only">
                           <div class="form-floating">
@@ -198,6 +183,21 @@
                             <input class="form-control slurm-input" id="condorRequirements" placeholder="Optional ClassAd expression">
                             <label for="condorRequirements">Worker requirements (optional)</label>
                           </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmOutputBase" value="./output" required placeholder="Output base directory" data-error-id="slurmOutputBaseError">
+                            <label for="slurmOutputBase">Output dataset directory</label>
+                            <div class="invalid-feedback" id="slurmOutputBaseError">Enter an output directory.</div>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="Input manifest path" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
+                            <label for="slurmInputManifest">Input-file manifest path</label>
+                            <div class="invalid-feedback" id="slurmInputManifestError">Enter the manifest path.</div>
+                          </div>
+                          <div class="form-text text-secondary" id="slurmInputManifestHelp">The workflow creates this file before submission. Compute nodes do not download data.</div>
                         </div>
                         <div class="col-12">
                           <div class="form-floating">

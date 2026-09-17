@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tarfile
@@ -9,7 +10,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ntuple_wizard_core import BUNDLE_ROOT_NAME, WizardState, build_condor, build_python, write_bundle
+from ntuple_wizard_core import (
+    BUNDLE_ROOT_NAME,
+    WizardState,
+    build_condor,
+    build_python,
+    write_bundle,
+)
 
 
 class ManifestHelperTest(unittest.TestCase):
@@ -53,6 +60,14 @@ class ManifestHelperTest(unittest.TestCase):
                 helper = archive.extractfile("pcdf-ntuple/code/make-manifest.py")
                 self.assertIsNotNone(helper)
                 self.assertIn(b'"rich", "rucio-clients"', helper.read())
+                readme = archive.extractfile("pcdf-ntuple/README_SUBMIT.md")
+                self.assertIsNotNone(readme)
+                self.assertIn(b"downloaded through a NERSC DTN", readme.read())
+                launcher = archive.extractfile("pcdf-ntuple/code/run-pcdf.py")
+                self.assertIsNotNone(launcher)
+                launcher_text = launcher.read()
+                self.assertIn(b'manifest_scheduler = "condor"', launcher_text)
+                self.assertIn(b'"--scheduler", manifest_scheduler', launcher_text)
 
     def test_bundle_archive_does_not_include_existing_runtime_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -92,6 +107,9 @@ class ManifestHelperTest(unittest.TestCase):
                 self.assertIn("pcdf-ntuple/code/submit-pcdf-ntuple.condor", names)
                 self.assertIn("pcdf-ntuple/code/run-pcdf-condor-job.sh", names)
                 self.assertNotIn("pcdf-ntuple/code/submit-pcdf-ntuple.slurm", names)
+                readme = archive.extractfile("pcdf-ntuple/README_SUBMIT.md")
+                self.assertIsNotNone(readme)
+                self.assertNotIn(b"downloaded through a NERSC DTN", readme.read())
 
     def test_htcondor_requirements_are_optional(self) -> None:
         submit_text = build_condor(WizardState(scheduler="condor"), Path("."))
@@ -242,6 +260,111 @@ class ManifestHelperTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(manifest.read_text(), "/global/cfs/file.root\n")
+
+    def test_slurm_mode_can_download_a_dataset_through_a_dtn(self) -> None:
+        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            home = workspace / "home"
+            scratch = workspace / "scratch"
+            atlas_root = workspace / "atlas"
+            binary_directory = workspace / "bin"
+            for directory in (home, scratch, binary_directory):
+                directory.mkdir()
+
+            initializer = atlas_root / "wrappers" / "gridMW" / "voms-proxy-init"
+            proxy_info = atlas_root / "wrappers" / "gridMW" / "voms-proxy-info"
+            initializer_log = workspace / "proxy-initializer-arguments.txt"
+            initializer.parent.mkdir(parents=True)
+            initializer.write_text(
+                "#!/bin/sh\n"
+                f"printf '%s\\n' \"$@\" > {initializer_log}\n"
+                "while [ \"$#\" -gt 0 ]; do\n"
+                "  if [ \"$1\" = -out ]; then shift; proxy=$1; fi\n"
+                "  shift\n"
+                "done\n"
+                ": > \"$proxy\"\n"
+            )
+            proxy_info.write_text(
+                "#!/bin/sh\n"
+                "case \" $* \" in\n"
+                "  *\" -vo \"*) echo atlas;;\n"
+                "  *\" -timeleft \"*) echo 86400;;\n"
+                "esac\n"
+            )
+            initializer.chmod(0o755)
+            proxy_info.chmod(0o755)
+
+            ssh_log = workspace / "ssh-arguments.txt"
+            downloaded = scratch / "pcdf-rucio" / "user.alice.dataset" / "DAOD_JETM16.test.pool.root"
+            ssh = binary_directory / "ssh"
+            ssh.write_text(
+                "#!/bin/sh\n"
+                f"printf '%s\\n' \"$@\" > {ssh_log}\n"
+                f"mkdir -p {downloaded.parent}\n"
+                f"dd if=/dev/zero of={downloaded} bs=1025 count=1 status=none\n"
+            )
+            ssh.chmod(0o755)
+
+            manifest = workspace / "inputs.txt"
+            environment = {
+                "ATLAS_LOCAL_ROOT_BASE": str(atlas_root),
+                "HOME": str(home),
+                "PATH": f"{binary_directory}:{os.environ['PATH']}",
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "SCRATCH": str(scratch),
+            }
+            result = subprocess.run(
+                [sys.executable, "-B", str(helper), "--scheduler", "slurm"],
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+                input=(
+                    "3\n"
+                    "user.alice:user.alice.dataset\n"
+                    "alice\n"
+                    "\n"
+                    "\n"
+                    "\n"
+                    "y\n"
+                    f"{manifest}\n"
+                ),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(manifest.read_text(), f"{downloaded}\n")
+            proxy = home / ".cache" / "pcdf" / "credentials" / f"x509up_u{os.getuid()}"
+            self.assertTrue(proxy.is_file())
+            self.assertEqual(proxy.stat().st_mode & 0o777, 0o600)
+            initializer_arguments = initializer_log.read_text()
+            self.assertIn("-voms\natlas\n-valid\n12:00\n-out\n", initializer_arguments)
+            self.assertIn(str(proxy), initializer_arguments)
+            ssh_arguments = ssh_log.read_text()
+            self.assertIn("dtn01.nersc.gov", ssh_arguments)
+            self.assertIn("user.alice:user.alice.dataset", ssh_arguments)
+            self.assertIn("alice", ssh_arguments)
+            self.assertIn(str(proxy), ssh_arguments)
+
+    def test_condor_mode_does_not_offer_dtn_download(self) -> None:
+        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "download"
+            root.mkdir()
+            input_file = root / "DAOD_JETM16.1.pool.root"
+            input_file.write_bytes(b"x" * 1025)
+            manifest = Path(temporary) / "inputs.txt"
+
+            result = subprocess.run(
+                [sys.executable, "-B", str(helper), "--scheduler", "condor"],
+                check=False,
+                text=True,
+                capture_output=True,
+                input=f"1\n{root}\n{manifest}\n",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("NERSC DTN", result.stdout)
 
 
 if __name__ == "__main__":

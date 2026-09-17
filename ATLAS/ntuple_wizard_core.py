@@ -240,6 +240,7 @@ def build_condor(state: WizardState, output_dir: Path) -> str:
 def build_readme(state: WizardState) -> str:
     python_name = generated_python_name(state.input_format)
     if state.scheduler == "condor":
+        manifest_description = "interactively writes an input manifest from local files or NERSC_LOCALGROUPDISK replica PFNs."
         batch_file_line = "- code/submit-pcdf-ntuple.condor describes one HTCondor job for each manifest entry.\n- code/run-pcdf-condor-job.sh runs one file conversion on an execute node.\n"
         batch_section = """\
 HTCondor run
@@ -259,6 +260,7 @@ HTCondor run
    code/submit-pcdf-ntuple.condor, and condor_q.
 """
     else:
+        manifest_description = "interactively writes an input manifest from local files, NERSC_LOCALGROUPDISK replica PFNs, or a Rucio dataset downloaded through a NERSC DTN."
         batch_file_line = "- code/submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n"
         batch_section = """\
 Perlmutter run
@@ -278,13 +280,16 @@ Perlmutter run
    The manifest helper can scan a directory populated by `rucio download` or
    look up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`. It removes the
    access proxy's scheme, host, and port from each replica PFN, retaining its
-   local path. The transform does not require Rucio.
+   local path. It can also create a private shared ATLAS VOMS proxy, SSH to a
+   NERSC DTN, and download a Rucio dataset into `$SCRATCH` before submission. The
+   transform does not require Rucio.
 4. To run each step yourself, use code/make-manifest.py, sbatch
    code/submit-pcdf-ntuple.slurm, and squeue -u $USER.
 """
     return apply_template((TEMPLATE_DIR / "README_SUBMIT.template.md").read_text(), {
         "PYTHON_NAME": python_name,
         "INPUT_FORMAT": state.input_format,
+        "MANIFEST_DESCRIPTION": manifest_description,
         "SLURM_FILE_LINE": batch_file_line,
         "WORKFLOW_FILE_LINE": "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n",
         "SLURM_SECTION": batch_section,

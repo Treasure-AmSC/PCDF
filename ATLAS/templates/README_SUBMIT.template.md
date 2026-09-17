@@ -4,7 +4,7 @@ PCDF ntuple bundle
 Generated files
 ---------------
 - code/{{PYTHON_NAME}} is the executable converter.
-- code/make-manifest.py interactively writes an input manifest from local files or, using the current ATLAS Rucio configuration from CVMFS, from NERSC_LOCALGROUPDISK replica PFNs.
+- code/make-manifest.py {{MANIFEST_DESCRIPTION}}
 {{SLURM_FILE_LINE}}{{WORKFLOW_FILE_LINE}}- README_SUBMIT.md contains these instructions.
 - pcdf-inputs.txt is the default generated file manifest.
 - output/ contains generated Parquet datasets.

@@ -831,7 +831,7 @@
       } else {
         instructions.innerHTML = `
           <li>Copy the bundle to a Perlmutter login node, extract it, and enter the <code>pcdf-ntuple</code> directory.</li>
-          <li>Run <code>./run-pcdf.sh</code>. The workflow finds the input files, writes the manifest, asks before submission, and follows the job until it finishes.</li>
+          <li>Run <code>./run-pcdf.sh</code>. The workflow can find local files, use NERSC_LOCALGROUPDISK replicas, or download a Rucio dataset through a NERSC DTN before submission.</li>
           <li>You can stop monitoring without cancelling the job. Scheduler output and error messages are written under <code>logs/</code>.</li>`;
       }
     }
@@ -1093,9 +1093,10 @@ Perlmutter run
    cd pcdf-ntuple
 2. Start the workflow from a login node:
    ./run-pcdf.sh
-   It asks whether to scan a directory populated by \`rucio download\` or look
-   up a \`scope:name\` dataset at \`NERSC_LOCALGROUPDISK\`. It then writes the
-   manifest, asks before submission, and follows the job until it finishes.
+   It can scan a directory populated by \`rucio download\`, look up a
+   \`scope:name\` dataset at \`NERSC_LOCALGROUPDISK\`, or download a dataset
+   through a NERSC DTN using a private shared ATLAS VOMS proxy. It then writes
+   the manifest, asks before submission, and follows the job until it finishes.
 3. You can stop monitoring with Ctrl+C without cancelling the job. Scheduler
    output and error messages are written under logs/.
 4. To control each step yourself, use code/make-manifest.py, sbatch
@@ -1104,6 +1105,9 @@ Perlmutter run
       }
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
+        MANIFEST_DESCRIPTION: state.slurm.scheduler === "condor"
+          ? "interactively writes an input manifest from local files or NERSC_LOCALGROUPDISK replica PFNs."
+          : "interactively writes an input manifest from local files, NERSC_LOCALGROUPDISK replica PFNs, or a Rucio dataset downloaded through a NERSC DTN.",
         SLURM_FILE_LINE: batchFileLine,
         WORKFLOW_FILE_LINE: workflowFileLine,
         SLURM_SECTION: batchSection,

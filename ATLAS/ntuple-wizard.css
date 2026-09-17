@@ -67,6 +67,10 @@
       display: none !important;
     }
 
+    details:not([open]) > :not(summary) {
+      display: none !important;
+    }
+
     fieldset {
       border: 0;
       margin: 0;

@@ -182,10 +182,11 @@ class NtupleWizardTui(App[None]):
                                     yield Input(value="4096", placeholder="Disk in MiB", id="condor_disk", validators=[Function(self.positive_integer, "Disk must be a positive integer.")], validate_on=["blur", "submitted"])
                                     yield Label("Worker requirements (optional)", classes="field-label")
                                     yield Input(placeholder="ClassAd expression", id="condor_requirements")
-                            yield Label("Output dataset directory", classes="field-label")
-                            yield Input(value=self.state_data.output_base, placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
-                            yield Label("Input-file manifest", classes="field-label")
-                            yield Input(value=self.state_data.manifest, placeholder="Input-file manifest", id="manifest", validators=[Function(self.non_empty, "Enter an input-file manifest path.")], validate_on=["blur", "submitted"])
+                            with Collapsible(title="Advanced paths", collapsed=True, id="advanced_paths"):
+                                yield Label("Output dataset directory", classes="field-label")
+                                yield Input(value=self.state_data.output_base, placeholder="Output dataset directory", id="output", validators=[Function(self.non_empty, "Enter an output dataset directory.")], validate_on=["blur", "submitted"])
+                                yield Label("Input-file manifest", classes="field-label")
+                                yield Input(value=self.state_data.manifest, placeholder="Input-file manifest", id="manifest", validators=[Function(self.non_empty, "Enter an input-file manifest path.")], validate_on=["blur", "submitted"])
                             yield Static("Perlmutter detected: " + ("Yes" if self.perlmutter else "No") + ". HTCondor submission is available when condor_submit is on PATH.", classes="hint")
                         with VerticalScroll(classes="column"):
                             yield Static("Manifest source", classes="section-title")
@@ -542,10 +543,17 @@ class NtupleWizardTui(App[None]):
     def validate_slurm_inputs(self) -> bool:
         self.sync_state()
         common_failures = self.invalid_inputs(("output", "manifest"))
+        if common_failures:
+            self.query_one("#advanced_paths", Collapsible).collapsed = False
         if self.state_data.scheduler == "condor":
-            failures = common_failures + self.invalid_inputs(("condor_cpus", "condor_memory", "condor_disk"))
+            scheduler_failures = self.invalid_inputs(("condor_cpus", "condor_memory", "condor_disk"))
+            if scheduler_failures:
+                self.query_one("#advanced_condor", Collapsible).collapsed = False
         else:
-            failures = common_failures + self.invalid_inputs(("nodes", "time"))
+            scheduler_failures = self.invalid_inputs(("nodes", "time"))
+            if scheduler_failures:
+                self.query_one("#advanced_slurm", Collapsible).collapsed = False
+        failures = common_failures + scheduler_failures
         if self.state_data.scheduler == "slurm" and self.perlmutter:
             account_select = self.query_one("#account_select", Select)
             selected_account = account_select.value
