@@ -93,6 +93,44 @@ def select_per_jet(base, indexer):
     return ak.zip(selected)
 
 
+def identify_constituent_hashes(keys, charged_sizes, neutral_sizes):
+    """Return the container hashes of the charged and neutral constituents.
+
+    Each container is linked once per element, so a hash's link count in an
+    event equals its container's size there. An event can only tell the two
+    containers apart when their sizes differ, so use the first such event.
+    """
+    differing = np.flatnonzero(
+        ak.to_numpy(charged_sizes) != ak.to_numpy(neutral_sizes)
+    )
+    for event in differing[:100]:
+        hashes, counts = np.unique(
+            ak.flatten(keys[event], axis=None), return_counts=True
+        )
+        if len(hashes) != 2:
+            continue
+        sizes = (int(charged_sizes[event]), int(neutral_sizes[event]))
+        if tuple(int(count) for count in counts) == sizes:
+            return hashes[0], hashes[1]
+        if tuple(int(count) for count in counts) == sizes[::-1]:
+            return hashes[1], hashes[0]
+    raise click.ClickException(
+        "The converter could not tell the charged and neutral constituent "
+        "containers apart from the jet links"
+    )
+
+
+def check_links_in_range(links, sizes, label):
+    """Fail clearly if a link points past the end of its container."""
+    largest = ak.fill_none(ak.max(ak.flatten(links, axis=-1), axis=-1), -1)
+    bad = np.flatnonzero(ak.to_numpy(largest) >= ak.to_numpy(sizes))
+    if len(bad):
+        raise click.ClickException(
+            f"{len(bad)} events have {label} constituent links past the end of "
+            f"their container, first at event {bad[0]}"
+        )
+
+
 def split_constituent_aliases():
     charged = {}
     neutral = {}
@@ -362,51 +400,21 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
 
     if "Const" in OBJECTS:
         print(f"  {POINT} Reading jet constituents")
-        hashes, counts = np.unique(
-            ak.flatten(
-                jet.constLinks.m_persKey[0],
-                axis=None,
-            ),
-            return_counts=True,
+        charged_sizes = ak.num(arrays["c_const"][ak.fields(arrays["c_const"])[0]])
+        neutral_sizes = ak.num(arrays["n_const"][ak.fields(arrays["n_const"])[0]])
+        charged_hash, neutral_hash = identify_constituent_hashes(
+            jet.constLinks.m_persKey, charged_sizes, neutral_sizes
         )
-        charged_fields = ak.fields(arrays["c_const"])
-        neutral_fields = ak.fields(arrays["n_const"])
-        charged_count = len(
-            arrays["c_const"][0][charged_fields[0]]
-        )
-        neutral_count = len(
-            arrays["n_const"][0][neutral_fields[0]]
-        )
-        if len(hashes) < 2:
-            raise click.ClickException(
-                "The converter could not identify the charged and neutral constituent containers"
-            )
-        charged_first = charged_count == counts[0]
-        neutral_second = neutral_count == counts[1]
-        charged_second = charged_count == counts[1]
-        neutral_first = neutral_count == counts[0]
-        if charged_first and neutral_second:
-            charged_hash = hashes[0]
-            neutral_hash = hashes[1]
-        elif charged_second and neutral_first:
-            charged_hash = hashes[1]
-            neutral_hash = hashes[0]
-        else:
-            raise click.ClickException(
-                "The charged and neutral constituent counts do not match the container links"
-            )
-        charged = select_per_jet(
-            arrays["c_const"],
-            jet.constLinks.m_persIndex[
-                jet.constLinks.m_persKey == charged_hash
-            ],
-        )
-        neutral = select_per_jet(
-            arrays["n_const"],
-            jet.constLinks.m_persIndex[
-                jet.constLinks.m_persKey == neutral_hash
-            ],
-        )
+        charged_links = jet.constLinks.m_persIndex[
+            jet.constLinks.m_persKey == charged_hash
+        ]
+        neutral_links = jet.constLinks.m_persIndex[
+            jet.constLinks.m_persKey == neutral_hash
+        ]
+        check_links_in_range(charged_links, charged_sizes, "charged")
+        check_links_in_range(neutral_links, neutral_sizes, "neutral")
+        charged = select_per_jet(arrays["c_const"], charged_links)
+        neutral = select_per_jet(arrays["n_const"], neutral_links)
         constituents = ak.concatenate(
             [charged, neutral],
             axis=2,
