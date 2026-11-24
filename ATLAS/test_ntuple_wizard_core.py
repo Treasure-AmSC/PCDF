@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
+import select
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from ntuple_wizard_core import (
@@ -125,6 +129,56 @@ class WizardPageTest(unittest.TestCase):
             page = (Path(temporary) / "index.html").read_text()
             self.assertIn('href="ntuple-wizard.css"', page)
             self.assertIn('src="ntuple-wizard.js"', page)
+
+
+class ManifestPromptTest(unittest.TestCase):
+    def test_prompt_is_passed_to_input_with_its_color_codes_marked_invisible(self) -> None:
+        from rich.console import Console
+        from rich.text import Text
+
+        helper = rendered_script("make-manifest.template.py")
+        spec = importlib.util.spec_from_file_location("make_manifest_for_test", helper)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        prompt = Text.assemble("Directory ", ("(.)", "bold cyan"), ": ")
+        with mock.patch("builtins.input", return_value="") as fake_input:
+            module.Prompt.get_input(Console(force_terminal=True, color_system="standard"), prompt, False)
+        shown = fake_input.call_args.args[0]
+        self.assertIn("\x01\x1b[", shown)
+        self.assertIn("\x02", shown)
+        self.assertTrue(shown.endswith(": "))
+
+    def test_pressing_enter_on_a_default_ends_the_line(self) -> None:
+        try:
+            import pty
+        except ImportError:
+            self.skipTest("a pseudo-terminal is not available")
+        helper = rendered_script("make-manifest.template.py")
+        child, descriptor = pty.fork()
+        if child == 0:
+            os.environ.update(TERM="xterm-256color", COLUMNS="120", LINES="40")
+            os.execv(sys.executable, [sys.executable, "-B", str(helper)])
+
+        def read_until(marker: bytes, seconds: float) -> bytes:
+            seen = b""
+            deadline = time.time() + seconds
+            while marker not in seen and time.time() < deadline:
+                if select.select([descriptor], [], [], 0.2)[0]:
+                    try:
+                        seen += os.read(descriptor, 4096)
+                    except OSError:
+                        break
+            return seen
+
+        try:
+            read_until(b"(1)", 60)
+            os.write(descriptor, b"\r")
+            after_enter = read_until(b"Downloaded-data directory", 20)
+        finally:
+            os.kill(child, 9)
+            os.waitpid(child, 0)
+            os.close(descriptor)
+        self.assertIn(b"\r\nDownloaded-data directory", after_enter)
 
 
 class ManifestHelperTest(unittest.TestCase):

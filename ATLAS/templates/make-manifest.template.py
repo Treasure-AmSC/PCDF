@@ -25,7 +25,8 @@ except ImportError:
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm as RichConfirm
+from rich.prompt import Prompt as RichPrompt
 from rich.table import Table
 from rich.traceback import install as install_rich_traceback
 
@@ -35,6 +36,27 @@ MESSAGES = {{MESSAGES:common}} | {{MESSAGES:manifest}}
 def message(key: str, **values: object) -> str:
     """Return a user-facing message, filling in each double-brace placeholder from values."""
     return re.sub(r"{{([A-Z0-9_]+)}}", lambda match: str(values.get(match.group(1), match.group(0))), MESSAGES[key])
+
+
+class ReadlineInput:
+    """Pass Rich's prompt to input() so readline knows the prompt and ends the line itself."""
+
+    @classmethod
+    def get_input(cls, console, prompt, password, stream=None):
+        if readline is None or password or stream is not None:
+            return super().get_input(console, prompt, password, stream)
+        with console.capture() as capture:
+            console.print(prompt, end="")
+        # readline needs the width of the prompt, so mark the color codes as invisible.
+        return input(re.sub(r"(\x1b\[[0-9;?]*[A-Za-z])", "\x01\\1\x02", capture.get()))
+
+
+class Prompt(ReadlineInput, RichPrompt):
+    pass
+
+
+class Confirm(ReadlineInput, RichConfirm):
+    pass
 
 
 ATLAS_ROOT = Path(
