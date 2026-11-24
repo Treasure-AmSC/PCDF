@@ -155,7 +155,7 @@ class NtupleWizardTui(App[None]):
                             with Collapsible(title="Terms used here", collapsed=True):
                                 yield Static("SLURM: The workload manager used on Perlmutter.\nHTCondor: A workload manager that queues independent jobs.\nManifest: A text file with one input file path on each line.\nShared filesystem: Storage visible at the same path from submit and execute nodes.", classes="hint")
                             yield Label("Batch system", classes="field-label")
-                            yield Select([("SLURM on NERSC Perlmutter", "slurm"), ("HTCondor with a shared filesystem", "condor")], value="slurm", allow_blank=False, id="scheduler")
+                            yield Select([("SLURM on NERSC Perlmutter", "slurm"), ("HTCondor with a shared filesystem, or one machine", "condor")], value="slurm", allow_blank=False, id="scheduler")
                             with Container(id="slurm_settings"):
                                 yield Label("NERSC account", classes="field-label")
                                 if self.perlmutter:

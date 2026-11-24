@@ -3,20 +3,29 @@
 # requires-python = ">=3.10"
 # dependencies = ["rich"]
 # ///
-"""Create a manifest, submit the configured PCDF job, and follow its state."""
+"""Create a manifest, submit the configured PCDF job, and follow its state.
+
+An HTCondor bundle can also run its conversions on this machine. That happens
+when condor_submit is unavailable or when --local is given.
+"""
 
 from __future__ import annotations
 
+import argparse
+import os
 import re
+import shlex
+import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
-from rich.prompt import Confirm
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm, IntPrompt
 
 
 CODE_DIRECTORY = Path(__file__).resolve().parent
@@ -24,6 +33,7 @@ BUNDLE_DIRECTORY = CODE_DIRECTORY.parent
 MANIFEST_HELPER = CODE_DIRECTORY / "make-manifest.py"
 SLURM_SCRIPT = CODE_DIRECTORY / "submit-pcdf-ntuple.slurm"
 CONDOR_SUBMIT_FILE = CODE_DIRECTORY / "submit-pcdf-ntuple.condor"
+CONDOR_JOB_SCRIPT = CODE_DIRECTORY / "run-pcdf-condor-job.sh"
 POLL_SECONDS = 10
 SLURM_TERMINAL_STATES = {
     "BOOT_FAIL", "CANCELLED", "COMPLETED", "DEADLINE", "FAILED",
@@ -210,7 +220,125 @@ def wait_for_condor(console: Console, job_id: str) -> None:
         progress.stop()
 
 
+@dataclass(frozen=True)
+class LocalRun:
+    manifest: Path
+    output_base: str
+    python_script: str
+    cpus_per_file: int
+
+
+def local_run_settings() -> LocalRun:
+    """Read the per-file job settings from the generated HTCondor submit file.
+
+    The wizards write the arguments line as "$(input_file)" output converter
+    cpus and the queue line as queue input_file from manifest. Relative paths
+    are relative to the bundle directory, as they are for condor_submit.
+    """
+    arguments: list[str] | None = None
+    manifest: str | None = None
+    for line in CONDOR_SUBMIT_FILE.read_text().splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "arguments":
+            arguments = shlex.split(value)
+        queue = re.match(r"\s*queue\s+input_file\s+from\s+(.+?)\s*$", line)
+        if queue:
+            manifest = shlex.split(queue.group(1))[0]
+    if not arguments or len(arguments) != 4 or manifest is None:
+        raise RuntimeError(f"{CONDOR_SUBMIT_FILE.name} has no usable arguments or queue line")
+    try:
+        cpus_per_file = int(arguments[3])
+    except ValueError as error:
+        raise RuntimeError(f"{CONDOR_SUBMIT_FILE.name} has a non-integer CPU count: {arguments[3]}") from error
+    return LocalRun(BUNDLE_DIRECTORY / manifest, arguments[1], arguments[2], max(1, cpus_per_file))
+
+
+def available_cpus() -> int:
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def run_locally(console: Console, settings: LocalRun) -> None:
+    """Run one conversion per manifest entry on this machine and wait for all of them."""
+    if not settings.manifest.is_file():
+        raise RuntimeError(f"The input manifest is missing: {settings.manifest}")
+    inputs = [line.strip() for line in settings.manifest.read_text().splitlines() if line.strip()]
+    if not inputs:
+        raise RuntimeError(f"The input manifest contains no work: {settings.manifest}")
+    if shutil.which("uv") is None:
+        raise RuntimeError("uv is not on PATH")
+
+    default_workers = max(1, min(len(inputs), available_cpus() // settings.cpus_per_file))
+    workers = IntPrompt.ask(
+        f"Conversions to run at once ({settings.cpus_per_file} CPU core(s) each)",
+        default=default_workers,
+    )
+    workers = max(1, min(workers, len(inputs)))
+
+    # Build the converter's environment once, so parallel runs do not all
+    # resolve the same dependencies at the same time.
+    console.print("Preparing the Python environment.")
+    prepared = command_output(["uv", "run", settings.python_script, "--help"])
+    if prepared.returncode:
+        raise RuntimeError(f"Could not prepare the converter: {prepared.stderr.strip() or prepared.stdout.strip()}")
+
+    logs = BUNDLE_DIRECTORY / "logs"
+    logs.mkdir(exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+
+    def convert(number: int, input_file: str) -> tuple[int, int]:
+        stem = logs / f"pcdf-ntuple-local-{stamp}.{number}"
+        with open(f"{stem}.out", "w") as stdout, open(f"{stem}.err", "w") as stderr:
+            result = subprocess.run(
+                [
+                    str(CONDOR_JOB_SCRIPT), input_file, settings.output_base,
+                    settings.python_script, str(settings.cpus_per_file),
+                ],
+                check=False,
+                stdout=stdout,
+                stderr=stderr,
+                cwd=BUNDLE_DIRECTORY,
+            )
+        return number, result.returncode
+
+    failed: list[int] = []
+    progress = Progress(
+        SpinnerColumn(), TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn(),
+        console=console, transient=False,
+    )
+    with progress, ThreadPoolExecutor(max_workers=workers) as pool:
+        task = progress.add_task(f"Converting with {workers} at once", total=len(inputs))
+        futures = [pool.submit(convert, number, path) for number, path in enumerate(inputs)]
+        try:
+            for future in as_completed(futures):
+                number, returncode = future.result()
+                if returncode:
+                    failed.append(number)
+                progress.advance(task)
+        except KeyboardInterrupt:
+            # Ctrl+C also reaches the running conversions, which share this
+            # process group. Drop the conversions that have not started.
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
+    console.print(f"Logs: {logs}/pcdf-ntuple-local-{stamp}.<n>.out and .err")
+    if failed:
+        raise RuntimeError(f"{len(failed)} of {len(inputs)} conversions failed, for example entry {min(failed)}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="run an HTCondor bundle's conversions on this machine instead of submitting them",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     console = Console()
     console.print(Panel(
         "This launcher creates the input manifest, submits the prepared batch "
@@ -222,6 +350,10 @@ def main() -> int:
         scheduler = configured_scheduler()
     except RuntimeError as error:
         console.print(f"[red]Workflow not started:[/red] {error}")
+        return 2
+    run_here = scheduler.name == "HTCondor" and (args.local or shutil.which("condor_submit") is None)
+    if args.local and scheduler.name != "HTCondor":
+        console.print("[red]Workflow not started:[/red] --local works only with an HTCondor bundle.")
         return 2
     if not MANIFEST_HELPER.is_file():
         console.print("[red]Workflow not started:[/red] make-manifest.py is missing.")
@@ -239,6 +371,27 @@ def main() -> int:
     if manifest_result.returncode:
         console.print("[red]Workflow stopped:[/red] the manifest was not created.")
         return manifest_result.returncode
+
+    if run_here:
+        if not args.local:
+            console.print("condor_submit was not found, so the conversions can run on this machine instead.")
+        if not Confirm.ask("Run the conversions on this machine now", default=False):
+            console.print("The manifest is ready. Nothing was run.")
+            return 0
+        try:
+            console.print("[bold]2. Running the conversions on this machine[/bold]")
+            run_locally(console, local_run_settings())
+        except RuntimeError as error:
+            console.print(f"[red]Workflow stopped:[/red] {error}")
+            return 2
+        except KeyboardInterrupt:
+            console.print(
+                "\nLocal run stopped. Rerun to finish: files whose output "
+                "partitions are complete are skipped."
+            )
+            return 130
+        console.print("[green]All PCDF conversions completed successfully on this machine.[/green]")
+        return 0
 
     if not Confirm.ask(f"Submit {scheduler.submit_file.name} now", default=False):
         console.print("The manifest is ready. The job was not submitted.")

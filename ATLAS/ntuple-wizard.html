@@ -119,11 +119,11 @@
                       <div class="form-floating">
                         <select class="form-select slurm-input" id="scheduler" aria-describedby="schedulerHelp">
                           <option value="slurm" selected>SLURM on NERSC Perlmutter</option>
-                          <option value="condor">HTCondor with a shared filesystem</option>
+                          <option value="condor">HTCondor with a shared filesystem, or one machine</option>
                         </select>
                         <label for="scheduler">Batch system</label>
                       </div>
-                      <div class="form-text text-secondary" id="schedulerHelp">HTCondor workers must see the input files, converter, and output directory at the same paths as the submit host.</div>
+                      <div class="form-text text-secondary" id="schedulerHelp">HTCondor workers must see the input files, converter, and output directory at the same paths as the submit host. Without HTCondor, run-pcdf.sh runs the conversions on the machine where you start it.</div>
                     </div>
                     <div class="col-md-6 slurm-only">
                       <div class="form-floating">

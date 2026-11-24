@@ -258,6 +258,16 @@ HTCondor run
    the cluster until they finish. Stopping the monitor does not remove jobs.
 4. To run each step yourself, use code/make-manifest.py, condor_submit
    code/submit-pcdf-ntuple.condor, and condor_q.
+
+Single machine without HTCondor
+-------------------------------
+When condor_submit is not on PATH, ./run-pcdf.sh offers to run the
+conversions on this machine instead. Use ./run-pcdf.sh --local to do this even
+when HTCondor is installed. It reads the manifest, output directory, and CPU
+cores per file from code/submit-pcdf-ntuple.condor, and runs as many
+conversions at once as the available cores allow. Each conversion writes its
+output and error logs under logs/. Rerunning skips files whose output is
+already complete.
 """
     else:
         manifest_description = "interactively writes an input manifest from local files, NERSC_LOCALGROUPDISK replica PFNs, or a Rucio dataset downloaded through a NERSC DTN."

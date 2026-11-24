@@ -111,6 +111,57 @@ class ManifestHelperTest(unittest.TestCase):
                 self.assertIsNotNone(readme)
                 self.assertNotIn(b"downloaded through a NERSC DTN", readme.read())
 
+    def test_htcondor_bundle_runs_conversions_locally(self) -> None:
+        state = WizardState(scheduler="condor", manifest="./inputs.txt", condor_cpus=1)
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_path = Path(temporary)
+            write_bundle(state, temporary_path)
+            bundle = temporary_path / BUNDLE_ROOT_NAME
+            inputs = temporary_path / "download"
+            inputs.mkdir()
+            for number in (1, 2):
+                (inputs / f"DAOD_JETM16.1._00000{number}.pool.root.1").write_bytes(b"x" * 1025)
+
+            # A stand-in uv writes the manifest in place of the interactive
+            # helper, which has its own tests, and records every other command
+            # instead of converting anything.
+            listing = "".join(f"{path}\\n" for path in sorted(inputs.iterdir()))
+            fake_bin = temporary_path / "bin"
+            fake_bin.mkdir()
+            uv_log = temporary_path / "uv.log"
+            fake_uv = fake_bin / "uv"
+            fake_uv.write_text(
+                "#!/bin/bash\n"
+                'if [[ "$2" == *make-manifest.py ]]; then '
+                f"printf '{listing}' > inputs.txt; exit 0; fi\n"
+                f'echo "$*" >> {uv_log}\n'
+            )
+            fake_uv.chmod(0o755)
+            environment = {**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}
+
+            result = subprocess.run(
+                [sys.executable, "-B", str(bundle / "code" / "run-pcdf.py"), "--local"],
+                check=False,
+                text=True,
+                capture_output=True,
+                cwd=bundle,
+                env=environment,
+                input="y\n2\n",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            calls = uv_log.read_text().splitlines()
+            self.assertIn("run ./code/ntuple-maker-jetm16.py --help", calls)
+            conversions = sorted(call for call in calls if not call.endswith("--help"))
+            self.assertEqual(
+                conversions,
+                [
+                    f"run ./code/ntuple-maker-jetm16.py {inputs}/DAOD_JETM16.1._00000{number}.pool.root.1 -o output"
+                    for number in (1, 2)
+                ],
+            )
+            self.assertEqual(len(list((bundle / "logs").glob("pcdf-ntuple-local-*.out"))), 2)
+
     def test_htcondor_requirements_are_optional(self) -> None:
         submit_text = build_condor(WizardState(scheduler="condor"), Path("."))
         self.assertNotIn("requirements =", submit_text)
