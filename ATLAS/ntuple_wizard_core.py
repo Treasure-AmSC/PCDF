@@ -12,6 +12,8 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from wizard_text import catalog, wizard_text
+
 ATLAS_DIR = Path(__file__).resolve().parent
 OBJECT_CONFIG_PATH = ATLAS_DIR / "ntuple-wizard.objects.json"
 TEMPLATE_DIR = ATLAS_DIR / "templates"
@@ -36,14 +38,37 @@ def generated_python_name(input_format: str) -> str:
     return f"ntuple-maker-{input_format.lower()}.py"
 
 
-def apply_template(template: str, values: dict[str, str]) -> str:
-    def replace(match: re.Match[str]) -> str:
-        key = match.group(1)
-        if key not in values:
-            raise KeyError(f"Missing template value: {key}")
-        return values[key]
+TEMPLATE_PLACEHOLDER = re.compile(r"{{(?:([A-Z0-9_]+)|@([a-z0-9.-]+)|MESSAGES:([a-z]+))}}")
 
-    return re.sub(r"{{([A-Z0-9_]+)}}", replace, template)
+
+def messages_literal(prefix: str) -> str:
+    """Return the catalog entries whose keys start with prefix, as a Python dict literal."""
+    entries = {key: value for key, value in catalog().items() if key.startswith(f"{prefix}.")}
+    return json.dumps(entries, ensure_ascii=False, indent=4)
+
+
+def apply_template(template: str, values: dict[str, str]) -> str:
+    """Fill a template.
+
+    {{NAME}} takes its value from values, {{@key}} is one catalog entry, and
+    {{MESSAGES:prefix}} is a dict literal of every catalog entry under a prefix.
+    """
+    def replace(match: re.Match[str]) -> str:
+        name, entry, prefix = match.groups()
+        if entry:
+            return wizard_text(entry)
+        if prefix:
+            return messages_literal(prefix)
+        if name not in values:
+            raise KeyError(f"Missing template value: {name}")
+        return values[name]
+
+    return TEMPLATE_PLACEHOLDER.sub(replace, template)
+
+
+def render_bundle_template(filename: str) -> str:
+    """Return a file from templates/ with its catalog text filled in."""
+    return apply_template((TEMPLATE_DIR / filename).read_text(), {})
 
 
 def split_python_string(value: str, indent: int) -> str:
@@ -88,7 +113,7 @@ def python_literal(value: Any, indent: int = 0) -> str:
 @dataclass
 class WizardState:
     objects: dict[str, dict[str, Any]] = field(default_factory=load_object_config)
-    input_format: str = "JETM16"
+    input_format: str = "JETMOD1"
     sample_type: str = "MC"
     selected_objects: set[str] = field(default_factory=set)
     selected_variables: dict[str, set[str]] = field(default_factory=dict)
@@ -119,7 +144,7 @@ class WizardState:
         return not (self.sample_type == "DATA" and name in self.objects[key].get("mcOnlyVariables", []))
 
     def object_available(self, key: str) -> bool:
-        return not (self.objects[key].get("requiresJetm16") and self.input_format == "PHYSLITE")
+        return not (self.objects[key].get("requiresJetmod1") and self.input_format == "PHYSLITE")
 
     def add_dependencies(self, key: str) -> None:
         for dependency in self.objects[key].get("dependsOn", []):
@@ -178,17 +203,11 @@ class WizardState:
 
 def build_python(state: WizardState) -> str:
     config = state.selected_config()
-    format_note = (
-        "PHYSLITE does not contain the data needed for jet constituents, so "
-        "that output is off."
-        if config["inputFormat"] == "PHYSLITE"
-        else "JETM16 contains the data needed for jet constituents."
+    format_note = wizard_text(
+        "bundle.format-note-physlite" if config["inputFormat"] == "PHYSLITE" else "bundle.format-note-jetmod1"
     )
-    sample_note = (
-        "For collision data, truth and flavor fields are skipped. Events include "
-        "lumiBlock."
-        if config["sampleType"] == "DATA"
-        else "Simulation input can include the truth and flavor fields you select."
+    sample_note = wizard_text(
+        "bundle.sample-note-data" if config["sampleType"] == "DATA" else "bundle.sample-note-simulation"
     )
     return apply_template((TEMPLATE_DIR / "ntuple-maker.template.py").read_text(), {
         "INPUT_FORMAT": config["inputFormat"],
@@ -250,72 +269,15 @@ def build_condor(state: WizardState, output_dir: Path) -> str:
 
 
 def build_readme(state: WizardState) -> str:
-    python_name = generated_python_name(state.input_format)
-    if state.scheduler == "condor":
-        manifest_description = "interactively writes an input manifest from local files or NERSC_LOCALGROUPDISK replica PFNs."
-        batch_file_line = "- code/submit-pcdf-ntuple.condor describes one HTCondor job for each manifest entry.\n- code/run-pcdf-condor-job.sh runs one file conversion on an execute node.\n"
-        batch_section = """\
-HTCondor run
-------------
-1. Extract the bundle on a filesystem shared by the access point and execute
-   nodes:
-   tar -xf pcdf-ntuple-bundle.tar
-   cd pcdf-ntuple
-2. Check code/submit-pcdf-ntuple.condor. Its input manifest, converter, and output
-   directory must be visible at the same paths on every execute node. The
-   submit file does not copy DAOD inputs through HTCondor file transfer.
-3. Start the included workflow:
-   ./run-pcdf.sh
-   It creates the manifest, asks before submitting, then follows all jobs in
-   the cluster until they finish. Stopping the monitor does not remove jobs.
-4. To run each step yourself, use code/make-manifest.py, condor_submit
-   code/submit-pcdf-ntuple.condor, and condor_q.
-
-Single machine without HTCondor
--------------------------------
-When condor_submit is not on PATH, ./run-pcdf.sh offers to run the
-conversions on this machine instead. Use ./run-pcdf.sh --local to do this even
-when HTCondor is installed. It reads the manifest, output directory, and CPU
-cores per file from code/submit-pcdf-ntuple.condor, and runs as many
-conversions at once as the available cores allow. Each conversion writes its
-output and error logs under logs/. Rerunning skips files whose output is
-already complete.
-"""
-    else:
-        manifest_description = "interactively writes an input manifest from local files, NERSC_LOCALGROUPDISK replica PFNs, or a Rucio dataset downloaded through a NERSC DTN."
-        batch_file_line = "- code/submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.\n"
-        batch_section = """\
-Perlmutter run
---------------
-1. Copy this bundle to Perlmutter and extract it:
-   tar -xf pcdf-ntuple-bundle.tar
-   cd pcdf-ntuple
-   The Python and SLURM scripts are marked executable.
-2. On a login node, check the account, manifest, output directory, and node
-   count in code/submit-pcdf-ntuple.slurm. The job writes all tables below the same
-   output directory. It runs one file conversion on each physical CPU core.
-3. Start the included workflow:
-   ./run-pcdf.sh
-   It creates the manifest, asks before submitting, then shows the queued,
-   running, and completed job states. It does not cancel the job if you stop
-   monitoring with Ctrl+C.
-   The manifest helper can scan a directory populated by `rucio download` or
-   look up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`. It removes the
-   access proxy's scheme, host, and port from each replica PFN, retaining its
-   local path. It can also create a private shared ATLAS VOMS proxy, SSH to a
-   NERSC DTN, and download a Rucio dataset into `$SCRATCH` before submission. The
-   transform does not require Rucio.
-4. To run each step yourself, use code/make-manifest.py, sbatch
-   code/submit-pcdf-ntuple.slurm, and squeue -u $USER.
-"""
+    scheduler = "condor" if state.scheduler == "condor" else "slurm"
     return apply_template((TEMPLATE_DIR / "README_SUBMIT.template.md").read_text(), {
-        "PYTHON_NAME": python_name,
+        "PYTHON_NAME": generated_python_name(state.input_format),
         "INPUT_FORMAT": state.input_format,
         "OUTPUT_DIR": bundle_output_dir(state.output_base) or expanded_path(state.output_base),
-        "MANIFEST_DESCRIPTION": manifest_description,
-        "SLURM_FILE_LINE": batch_file_line,
-        "WORKFLOW_FILE_LINE": "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n",
-        "SLURM_SECTION": batch_section,
+        "MANIFEST_DESCRIPTION": wizard_text(f"bundle.manifest-description-{scheduler}"),
+        "SLURM_FILE_LINE": wizard_text(f"bundle.file-lines-{scheduler}") + "\n",
+        "WORKFLOW_FILE_LINE": wizard_text("bundle.file-lines-workflow") + "\n",
+        "SLURM_SECTION": wizard_text(f"bundle.section-{scheduler}") + "\n",
     })
 
 
@@ -345,11 +307,11 @@ def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path
     py_path.write_text(build_python(state))
     submit_path.write_text(submit_text)
     readme_path.write_text(build_readme(state))
-    manifest_helper_path.write_text((TEMPLATE_DIR / "make-manifest.template.py").read_text())
-    workflow_shell_path.write_text((TEMPLATE_DIR / "run-pcdf.template.sh").read_text())
-    workflow_python_path.write_text((TEMPLATE_DIR / "run-pcdf.template.py").read_text())
+    manifest_helper_path.write_text(render_bundle_template("make-manifest.template.py"))
+    workflow_shell_path.write_text(render_bundle_template("run-pcdf.template.sh"))
+    workflow_python_path.write_text(render_bundle_template("run-pcdf.template.py"))
     if state.scheduler == "condor":
-        condor_job_path.write_text((TEMPLATE_DIR / "run-pcdf-condor-job.template.sh").read_text())
+        condor_job_path.write_text(render_bundle_template("run-pcdf-condor-job.template.sh"))
     py_path.chmod(0o755)
     submit_path.chmod(0o755)
     manifest_helper_path.chmod(0o755)

@@ -1,3 +1,18 @@
+# The wizard page is rendered once here, so the running image needs only the
+# Python standard library.
+FROM ghcr.io/astral-sh/uv:python3.13-alpine AS build
+
+WORKDIR /src
+
+COPY ATLAS/build_site.py ATLAS/wizard_text.py ATLAS/wizard-text.txt \
+    ATLAS/ntuple-wizard.html.j2 ATLAS/ntuple-wizard.css ATLAS/ntuple-wizard.js \
+    ATLAS/ntuple-wizard.objects.json ATLAS/
+COPY ATLAS/templates/ ATLAS/templates/
+COPY ATLAS/assets/ ATLAS/assets/
+
+RUN uv run ATLAS/build_site.py /site
+
+
 FROM python:3.13-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/Treasure-AmSC/PCDF"
@@ -8,10 +23,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/pcdf
 
-COPY ATLAS/serve-ntuple-wizard.py ATLAS/ntuple-wizard.html \
-    ATLAS/ntuple-wizard.css ATLAS/ntuple-wizard.js \
-    ATLAS/ntuple-wizard.objects.json ATLAS/
-COPY ATLAS/templates/ ATLAS/templates/
+COPY ATLAS/serve-ntuple-wizard.py ATLAS/
+COPY --from=build /site/ site/
 
 USER 65532:65532
 
@@ -21,4 +34,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"]
 
 ENTRYPOINT ["python", "ATLAS/serve-ntuple-wizard.py"]
-CMD ["--host", "0.0.0.0", "--port", "8080", "--no-browser"]
+CMD ["--host", "0.0.0.0", "--port", "8080", "--no-browser", "--site", "site"]

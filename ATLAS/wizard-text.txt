@@ -1,0 +1,1586 @@
+## Wording shared by the wizards, kept once so every program says the same thing.
+##
+## Each entry starts with a line "@@ key" and runs to the next one. Blank lines
+## around an entry are not part of it. Lines that start with "##" are comments.
+## {{NAME}} marks a value that the program fills in.
+##
+## How entries reach each program:
+##   Page, TUI, and generators  read this file directly (the page build embeds the
+##                              entries its script uses in the page).
+##   bundle.*                   README sections and converter notes, chosen when the
+##                              script builds a bundle.
+##   runner.*, manifest.*,      embedded in run-pcdf.py, make-manifest.py, and the
+##   converter.*, common.*      converter as a MESSAGES dict ({{MESSAGES:prefix}}).
+##   shell.*, dtn.*             inserted into shell scripts one entry at a time
+##                              ({{@key}}).
+
+@@ key" and runs to the next one. Blank lines
+## around an entry are not part of it. Lines that start with "##" are comments.
+## {{NAME}} marks a value that the program fills in.
+##
+## The page build embeds the entries the browser script uses: every "bundle."
+## entry, and any entry whose key appears as a quoted string in the script
+## (plus the "-one" and "-many" forms of a key passed to pluralKey). The rest
+## are written into the page when it is built, or used by the TUI.
+
+
+@@ scheduler.slurm
+SLURM on NERSC Perlmutter
+
+@@ scheduler.condor
+HTCondor with a shared filesystem, or one machine
+
+@@ bundle.format-note-physlite
+PHYSLITE does not contain the data needed for jet constituents, so that output is off.
+
+@@ bundle.format-note-jetmod1
+JETMOD1 contains the data needed for jet constituents.
+
+@@ bundle.sample-note-data
+For collision data, truth and flavor fields are skipped. Events include lumiBlock.
+
+@@ bundle.sample-note-simulation
+Simulation input can include the truth and flavor fields you select.
+
+@@ bundle.manifest-description-condor
+interactively writes an input manifest from local files or NERSC_LOCALGROUPDISK replica PFNs.
+
+@@ bundle.manifest-description-slurm
+interactively writes an input manifest from local files, NERSC_LOCALGROUPDISK replica PFNs, or a Rucio dataset downloaded through a NERSC DTN.
+
+@@ bundle.file-lines-condor
+- code/submit-pcdf-ntuple.condor describes one HTCondor job for each manifest entry.
+- code/run-pcdf-condor-job.sh runs one file conversion on an execute node.
+
+@@ bundle.file-lines-slurm
+- code/submit-pcdf-ntuple.slurm is the executable CPU job script for NERSC Perlmutter.
+
+@@ bundle.file-lines-workflow
+- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.
+
+@@ bundle.section-condor
+HTCondor run
+------------
+1. Extract the bundle on a filesystem shared by the access point and execute
+   nodes:
+   tar -xf pcdf-ntuple-bundle.tar
+   cd pcdf-ntuple
+2. Check code/submit-pcdf-ntuple.condor. Its input manifest, converter, and output
+   directory must be visible at the same paths on every execute node. The
+   submit file does not copy DAOD inputs through HTCondor file transfer. Each
+   execute node also needs uv on its PATH.
+3. Start the included workflow:
+   ./run-pcdf.sh
+   It creates the manifest, asks before submitting, then follows all jobs in
+   the cluster until they finish. Stopping the monitor does not remove jobs.
+4. To run each step yourself, use code/make-manifest.py, condor_submit
+   code/submit-pcdf-ntuple.condor, and condor_q.
+
+Single machine without HTCondor
+-------------------------------
+When condor_submit is not on PATH, ./run-pcdf.sh offers to run the
+conversions on this machine instead. Use ./run-pcdf.sh --local to do this even
+when HTCondor is installed. It reads the manifest, output directory, and CPU
+cores per file from code/submit-pcdf-ntuple.condor, and runs as many
+conversions at once as the available cores allow. Each conversion writes its
+output and error logs under logs/. Rerunning skips files whose output is
+already complete.
+
+@@ bundle.section-slurm
+Perlmutter run
+--------------
+1. Copy this bundle to Perlmutter and extract it:
+   tar -xf pcdf-ntuple-bundle.tar
+   cd pcdf-ntuple
+   The Python and SLURM scripts are marked executable.
+2. On a login node, check the account, manifest, output directory, and node
+   count in code/submit-pcdf-ntuple.slurm. The job writes all tables below the same
+   output directory. It runs one file conversion on each physical CPU core.
+3. Start the included workflow:
+   ./run-pcdf.sh
+   It creates the manifest, asks before submitting, then shows the queued,
+   running, and completed job states. It does not cancel the job if you stop
+   monitoring with Ctrl+C.
+   The manifest helper can scan a directory populated by `rucio download` or
+   look up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`. It removes the
+   access proxy's scheme, host, and port from each replica PFN, retaining its
+   local path. It can also create a private shared ATLAS VOMS proxy, SSH to a
+   NERSC DTN, and download a Rucio dataset into `$SCRATCH` before submission. The
+   transform does not require Rucio.
+4. To run each step yourself, use code/make-manifest.py, sbatch
+   code/submit-pcdf-ntuple.slurm, and squeue -u $USER.
+
+@@ bundle.section-no-batch
+Batch run
+---------
+This bundle has only the converter, manifest helper, and README. Turn on batch
+file generation in the wizard to include a scheduler submission file.
+
+## Page text
+
+@@ page.title
+ATLAS DAOD Parquet Wizard
+
+@@ page.skip-link
+Skip to the wizard
+
+@@ page.heading
+ATLAS DAOD → Parquet wizard
+
+@@ nav.steps-label
+Wizard steps
+
+@@ nav.step-input
+1. Input format
+
+@@ nav.step-objects
+2. Objects
+
+@@ nav.step-variables
+3. Variables
+
+@@ nav.step-batch
+4. Batch system
+
+@@ nav.step-generate
+5. Generate
+
+@@ input.heading
+Choose the DAOD input
+
+@@ input.format-legend
+DAOD input format
+
+@@ input.jetmod1-label
+DAOD_JETMOD1
+
+@@ input.jetmod1-help
+Includes every object offered by this wizard, including jet constituents.
+
+@@ input.physlite-label
+DAOD_PHYSLITE
+
+@@ input.physlite-help
+Includes common analysis objects, but not jet constituents.
+
+@@ sample.legend
+Sample type
+
+@@ sample.mc
+Simulation / MC
+
+@@ sample.data
+Collision data
+
+@@ objects.heading
+Select output objects
+
+@@ objects.help
+Turning off an object also turns off tables that depend on it.
+
+@@ size.estimate-label
+Estimated Parquet size:
+
+@@ objects.shortcuts-label
+Object selection shortcuts
+
+@@ objects.recommended
+Recommended
+
+@@ objects.all
+All available
+
+@@ variables.heading
+Choose variables
+
+@@ variables.help
+Four-vector fields are required and remain selected.
+
+@@ variables.restore
+Restore all available variables
+
+@@ batch.heading
+Batch job
+
+@@ batch.generate-switch
+Generate batch files
+
+@@ batch.system-label
+Batch system
+
+@@ batch.system-help
+HTCondor workers must see the input files, converter, and output directory at the same paths as the submit host. Without HTCondor, run-pcdf.sh runs the conversions on the machine where you start it.
+
+@@ field.account-label
+NERSC project account
+
+@@ field.account-error
+Enter your NERSC project account before downloading or submitting.
+
+@@ batch.advanced-help
+Most users can leave the advanced settings unchanged. They control resource requests, generated paths, and the converter.
+
+@@ batch.advanced-summary
+Advanced batch settings
+
+@@ field.qos-placeholder
+QOS
+
+@@ field.qos-label
+Queue (QOS)
+
+@@ field.qos-error
+Enter a queue name, such as regular.
+
+@@ field.nodes-label
+CPU nodes
+
+@@ field.nodes-error
+Request at least one CPU node.
+
+@@ field.walltime-label
+Wall time
+
+@@ field.walltime-error
+Use HH:MM:SS, for example 00:30:00.
+
+@@ field.cpus-placeholder
+CPU cores
+
+@@ field.cpus-label
+CPU cores per file
+
+@@ field.cpus-error
+Request at least one CPU core.
+
+@@ field.memory-placeholder
+Memory in MiB
+
+@@ field.memory-label
+Memory per file (MiB)
+
+@@ field.memory-error
+Request at least 1 MiB of memory.
+
+@@ field.disk-placeholder
+Disk in MiB
+
+@@ field.disk-label
+Scratch disk per file (MiB)
+
+@@ field.disk-error
+Request at least 1 MiB of scratch disk.
+
+@@ field.requirements-placeholder
+Optional ClassAd expression
+
+@@ field.requirements-label
+Worker requirements (optional)
+
+@@ field.output-placeholder
+Output base directory
+
+@@ field.output-label
+Output dataset directory
+
+@@ field.output-error
+Enter an output directory.
+
+@@ field.manifest-placeholder
+Input manifest path
+
+@@ field.manifest-label
+Input-file manifest path
+
+@@ field.manifest-error
+Enter the manifest path.
+
+@@ field.manifest-help
+The workflow creates this file before submission. Compute nodes do not download data.
+
+@@ field.converter-label
+Converter path
+
+@@ field.converter-error
+Enter the converter path.
+
+@@ generate.heading
+Review configuration
+
+@@ generate.download-bundle
+Download bundle (.tar)
+
+@@ generate.download-converter
+Download converter
+
+@@ generate.download-batch
+Download batch file
+
+@@ generate.run-heading
+Run the bundle
+
+@@ generate.scripts-heading
+Generated scripts
+
+@@ generate.python-heading
+Generated Python script
+
+@@ generate.batch-heading
+Generated batch submission file
+
+@@ ui.back
+Back
+
+@@ ui.help
+Help
+
+@@ ui.next
+Next
+
+@@ glossary.title
+Help and glossary
+
+@@ glossary.close-label
+Close help
+
+@@ glossary.terms-heading
+Terms
+
+@@ term.atlas-daod
+ATLAS DAOD
+
+@@ term.atlas-daod.help
+An ATLAS analysis data format stored in a ROOT file.
+
+@@ term.jetmod1
+JETMOD1
+
+@@ term.jetmod1.help
+An ATLAS DAOD made for jet studies. It includes detailed jet content.
+
+@@ term.physlite
+PHYSLITE
+
+@@ term.physlite.help
+A compact ATLAS DAOD with objects used in many analyses.
+
+@@ term.object
+Object
+
+@@ term.object.help
+A group of related event data, such as jets or electrons. Each selected object becomes a Parquet table.
+
+@@ term.variable
+Variable
+
+@@ term.variable.help
+One value stored for an object. It becomes a column in the Parquet table.
+
+@@ term.parquet
+Parquet
+
+@@ term.parquet.help
+A column-based data format that works well with tools such as Pandas.
+
+@@ term.collectiontree
+CollectionTree
+
+@@ term.collectiontree.help
+The ROOT tree that stores events and physics objects in an ATLAS DAOD.
+
+@@ term.root-file-id
+ROOT file ID
+
+@@ term.root-file-id.help
+A 128-bit UUID stored inside a ROOT file. It stays the same if the file is renamed.
+
+@@ term.slurm
+SLURM
+
+@@ term.slurm.help
+The system that places jobs in a queue and runs them on Perlmutter.
+
+@@ term.htcondor
+HTCondor
+
+@@ term.htcondor.help
+A workload manager that queues independent jobs. This wizard expects a filesystem shared by its access point and execute nodes.
+
+@@ term.perlmutter
+NERSC Perlmutter
+
+@@ term.perlmutter.help
+The NERSC supercomputer where this job script runs.
+
+@@ term.input-manifest
+Input manifest
+
+@@ term.input-manifest.help
+A text file with one input file path on each line.
+
+@@ appearance.heading
+Appearance
+
+@@ appearance.textures-label
+Use material textures
+
+@@ appearance.textures-help
+Turn off the background and frame grain. Glass effects and colours remain.
+
+@@ ui.close
+Close
+
+@@ page.lead
+Choose the data you need from an {{DAOD}}. The wizard builds a Python program that writes one Parquet table for each object you select.
+
+@@ sample.help
+For collision data, the program skips truth and flavor fields. It adds `lumiBlock` to the Event table.
+
+@@ batch.manifest-term
+input manifest
+
+@@ batch.intro
+The workflow submits one conversion for each path in the {{MANIFEST}}.
+
+@@ keyboard.label
+Keyboard:
+
+## Interface text built by the browser script
+
+@@ ui.review
+Review
+
+@@ summary.input
+Input
+
+@@ summary.objects
+Objects
+
+@@ summary.batch-off
+No batch submission file will be generated.
+
+@@ summary.condor-cores-one
+HTCondor queues one job per input file. Each job requests 1 CPU core and {{MEMORY}} MiB of memory.
+
+@@ summary.condor-cores-many
+HTCondor queues one job per input file. Each job requests {{CORES}} CPU cores and {{MEMORY}} MiB of memory.
+
+@@ summary.slurm-nodes-one
+The SLURM job uses 1 whole CPU node. It runs one file conversion on each physical CPU core.
+
+@@ summary.slurm-nodes-many
+The SLURM job uses {{NODES}} whole CPU nodes. It runs one file conversion on each physical CPU core.
+
+@@ summary.manifest-on
+The workflow writes input paths to {{PATH}} before submission. Every path must be readable from the compute nodes.
+
+@@ summary.manifest-off
+You do not need a manifest when batch file generation is off.
+
+@@ generate.script-off
+Batch file generation is turned off.
+
+@@ generate.condor-heading
+Generated HTCondor submit file
+
+@@ generate.slurm-heading
+Generated SLURM submission script
+
+@@ generate.download-condor
+Download HTCondor file
+
+@@ generate.download-slurm
+Download SLURM script
+
+@@ run.condor-extract
+Extract the bundle on a filesystem shared by the HTCondor access point and execute nodes. Enter the `pcdf-ntuple` directory.
+
+@@ run.condor-nodes
+Make sure `uv` is available on the execute nodes. They must also be able to read the input paths and write to the output directory.
+
+@@ run.condor-start
+Run `./run-pcdf.sh`. The workflow creates the manifest, asks before submission, and follows the jobs until they finish. It does not transfer DAOD files.
+
+@@ run.slurm-copy
+Copy the bundle to a Perlmutter login node, extract it, and enter the `pcdf-ntuple` directory.
+
+@@ run.slurm-start
+Run `./run-pcdf.sh`. The workflow can find local files, use NERSC_LOCALGROUPDISK replicas, or download a Rucio dataset through a NERSC DTN before submission.
+
+@@ run.slurm-stop
+You can stop monitoring without cancelling the job. Scheduler output and error messages are written under `logs/`.
+
+@@ objects.badge-always
+Always included
+
+@@ objects.badge-requires-one
+Requires {{OBJECT}}
+
+@@ objects.badge-requires-many
+Requires {{COUNT}} other objects
+
+@@ objects.badge-used-by-one
+Used by 1 selected object
+
+@@ objects.badge-used-by-many
+Used by {{COUNT}} selected objects
+
+@@ objects.badge-unavailable
+Not available for PHYSLITE
+
+@@ objects.badge-labels-omitted
+Simulation-only labels omitted
+
+@@ objects.variable-count-one
+{{COUNT}} variable
+
+@@ objects.variable-count-many
+{{COUNT}} variables
+
+@@ objects.size-title
+Estimated Parquet size for this table
+
+@@ variables.select-object-first
+Select at least one output object before choosing variables.
+
+@@ variables.badge-required
+Required vector component
+
+@@ variables.badge-data-unavailable
+Not written for collision data
+
+@@ objects.output-label
+Output objects
+
+@@ variables.panel-heading
+{{OBJECT}} variables
+
+@@ size.bytes-per-event
+{{VALUE}} B/event
+
+@@ size.kilobytes-per-event
+{{VALUE}} kB/event
+
+@@ announce.object-selected
+{{OBJECT}} selected.
+
+@@ announce.object-selected-with
+{{OBJECT}} selected. Also selected: {{RELATED}}.
+
+@@ announce.object-off
+{{OBJECT}} turned off.
+
+@@ announce.object-off-with
+{{OBJECT}} turned off. Also turned off: {{RELATED}}.
+
+@@ announce.showing-variables
+Showing {{OBJECT}} variables.
+
+@@ announce.input-set
+Input set to {{FORMAT}}, {{SAMPLE}}.
+
+@@ announce.sample-simulation
+simulation
+
+@@ announce.sample-data
+collision data
+
+@@ announce.recommended-selected
+Recommended output objects selected.
+
+@@ announce.all-selected
+All available output objects selected.
+
+@@ announce.variables-restored
+All available variables were restored for the objects you selected.
+
+@@ announce.batch-on
+Batch file generation is on.
+
+@@ announce.batch-off
+Batch file generation is off. Scheduler settings are no longer needed.
+
+@@ announce.check-form
+Check the form before you continue.
+
+@@ announce.cannot-continue
+Cannot continue. {{REASON}}
+
+@@ announce.converter-download
+Converter download started.
+
+@@ announce.condor-download
+HTCondor file download started.
+
+@@ announce.slurm-download
+SLURM file download started.
+
+@@ announce.bundle-download
+Bundle download started.
+
+@@ announce.bundle-failed
+Bundle download failed: {{ERROR}}
+
+@@ error.load-failed
+The wizard could not load the files it needs: {{ERROR}}
+
+## Terminal wizard text
+
+@@ tui.title
+ATLAS ntuple wizard
+
+@@ tui.subtitle
+JETMOD1 → Parquet
+
+@@ tui.step-status
+6. Status
+
+@@ tui.status-name
+Status
+
+@@ tui.binding-quit
+Quit
+
+@@ tui.binding-generate
+Generate
+
+@@ tui.submit-button
+Submit batch job
+
+@@ tui.input-title
+Input format and sample type
+
+@@ tui.input-hint
+PHYSLITE lacks jet-constituent inputs. Collision data excludes truth and flavor fields.
+
+@@ tui.terms-title
+Terms used here
+
+@@ tui.input-format-label
+Input format
+
+@@ tui.objects-hint
+Required tables remain selected. Turning off a table also turns off tables that depend on it.
+
+@@ tui.variables-title
+Output variables
+
+@@ tui.variables-hint
+Four-vector fields are required. Truth labels are unavailable for collision data.
+
+@@ tui.variable-required
+{{NAME}} (required)
+
+@@ term.shared-filesystem
+Shared filesystem
+
+@@ term.shared-filesystem.help
+Storage visible at the same path from submit and execute nodes.
+
+@@ tui.accounts-loading
+Loading accounts from iris…
+
+@@ tui.account-manual-placeholder
+Manual NERSC account
+
+@@ tui.advanced-help
+Most users can leave these settings unchanged.
+
+@@ tui.advanced-slurm-title
+Advanced Perlmutter settings
+
+@@ tui.advanced-condor-title
+Advanced HTCondor settings
+
+@@ tui.advanced-paths-title
+Advanced paths
+
+@@ tui.nodes-label
+Nodes
+
+@@ tui.perlmutter-yes
+Perlmutter detected: Yes. HTCondor submission is available when condor_submit is on PATH.
+
+@@ tui.perlmutter-no
+Perlmutter detected: No. HTCondor submission is available when condor_submit is on PATH.
+
+@@ tui.manifest-source-title
+Manifest source
+
+@@ tui.manifest-source-hint
+The bundle helper can also find a Rucio dataset copied to NERSC_LOCALGROUPDISK.
+
+@@ tui.scan-root-label
+Local data directory
+
+@@ tui.scan-root-placeholder
+Directory used with rucio download
+
+@@ tui.scan-root-error
+Data directory must exist.
+
+@@ tui.advanced-manifest-title
+Advanced manifest options
+
+@@ tui.glob-label
+Filename pattern
+
+@@ tui.glob-placeholder
+For example: DAOD_*.pool.root*
+
+@@ tui.glob-error
+Enter a filename pattern.
+
+@@ tui.discovered-title
+Discovered files
+
+@@ tui.manifest-write
+Save selected files to manifest
+
+@@ tui.generate-title
+Generate
+
+@@ tui.review-title
+Review the generated scripts
+
+@@ tui.preview-python
+Python
+
+@@ tui.preview-batch
+Batch file
+
+@@ tui.generate-button
+Generate scripts
+
+@@ tui.confirm-review
+Confirm review
+
+@@ tui.status-title
+Job status
+
+@@ tui.no-job
+No job submitted yet.
+
+@@ tui.refresh-button
+Refresh now
+
+@@ tui.stdout-title
+Standard output
+
+@@ tui.stderr-title
+Standard error
+
+@@ tui.activity-title
+Wizard activity
+
+@@ tui.ready
+The ATLAS ntuple wizard is ready.
+
+@@ tui.bundle-location
+The bundle will be saved in {{PATH}}.
+
+@@ tui.perlmutter-login
+This is a Perlmutter login node. Choose input files, build the scripts, and then submit the job.
+
+@@ tui.generic-host
+This host can generate either batch format. HTCondor submission is available when condor_submit is on PATH.
+
+@@ tui.summary-object
+• {{TITLE}}: {{VARIABLES}}
+
+@@ tui.summary-condor
+HTCondor: one job per file, {{CORES}} CPU core(s), {{MEMORY}} MiB memory, {{DISK}} MiB disk.
+
+@@ tui.summary-slurm
+Perlmutter SLURM: {{NODES}} exclusive CPU node(s), queue {{QOS}}, wall time {{TIME}}.
+
+@@ tui.summary-input
+Input: {{FORMAT}} · {{SAMPLE}}
+
+@@ tui.summary-manifest
+Manifest: {{PATH}}
+
+@@ tui.summary-output
+Output: {{PATH}}
+
+@@ tui.summary-objects-label
+Objects:
+
+@@ tui.summary-none
+• none selected
+
+@@ tui.submit-condor
+Submit with condor_submit
+
+@@ tui.submit-slurm
+Submit with sbatch
+
+@@ tui.found-files-one
+Found 1 file under {{PATH}}.
+
+@@ tui.found-files-many
+Found {{COUNT}} files under {{PATH}}.
+
+@@ tui.manifest-none-selected
+No discovered files are selected. The manifest was not changed.
+
+@@ tui.manifest-unchanged
+Select one or more discovered files, then save the manifest.
+
+@@ tui.manifest-unchanged-title
+Manifest unchanged
+
+@@ tui.manifest-scanning
+No file list is loaded. Scanning the selected directory before writing the manifest.
+
+@@ tui.manifest-no-match-log
+No files matched {{PATTERN}} under {{ROOT}}. The manifest was not written.
+
+@@ tui.manifest-no-match
+No matching input files were found.
+
+@@ tui.manifest-no-match-title
+Manifest not written
+
+@@ tui.file-count-one
+1 file
+
+@@ tui.file-count-many
+{{COUNT}} files
+
+@@ tui.manifest-wrote
+Wrote {{FILES}} to {{MANIFEST}}.
+
+@@ tui.manifest-wrote-title
+Manifest written
+
+@@ tui.manifest-updating
+Updating the manifest from the files selected here before submission.
+
+@@ tui.manifest-required
+Create a non-empty input manifest before submitting.
+
+@@ tui.submission-blocked-title
+Submission blocked
+
+@@ tui.manifest-still-empty
+Submission blocked: input manifest is still missing or empty.
+
+@@ tui.manifest-writing
+The input manifest is missing or empty. Writing it before submission.
+
+@@ tui.iris-missing-notice
+This host does not provide the iris command. Enter an account manually.
+
+@@ tui.iris-missing-title
+Iris unavailable
+
+@@ tui.account-manual-option
+Enter an account manually
+
+@@ tui.iris-missing-log
+The iris command was not found. Enter a NERSC account manually.
+
+@@ tui.iris-timeout-notice
+The iris command did not finish within 15 seconds. Enter an account manually.
+
+@@ tui.iris-timeout-title
+Iris timeout
+
+@@ tui.accounts-loaded-one
+Loaded 1 NERSC account from iris.
+
+@@ tui.accounts-loaded-many
+Loaded {{COUNT}} NERSC accounts from iris.
+
+@@ tui.accounts-loaded-title
+NERSC accounts loaded
+
+@@ tui.accounts-loaded-log
+NERSC accounts loaded from iris: {{ACCOUNTS}}
+
+@@ tui.iris-none-option
+No iris accounts found
+
+@@ tui.iris-none-notice
+The iris command returned no account names that the wizard could read.
+
+@@ tui.iris-none-title
+No NERSC accounts found
+
+@@ tui.account-enter
+Enter a NERSC account.
+
+@@ tui.account-choose
+Choose or enter a NERSC account.
+
+@@ tui.fix-batch-title
+Fix batch settings
+
+@@ tui.fix-discovery-title
+Fix file discovery settings
+
+@@ tui.fix-manifest-title
+Fix manifest settings
+
+@@ tui.validation-failed
+Validation failed:
+
+@@ tui.created-converter
+Created converter: {{PATH}}
+
+@@ tui.created-batch
+Created batch file: {{PATH}}
+
+@@ tui.created-bundle
+Created bundle: {{PATH}}
+
+@@ tui.generation-complete
+Saved the working bundle in {{BUNDLE}} and the archive in {{ARCHIVE}}.
+
+@@ tui.generation-complete-title
+Generation complete
+
+@@ tui.command-condor
+condor_submit
+
+@@ tui.command-slurm
+sbatch on a Perlmutter login node
+
+@@ tui.submission-unavailable
+Submission needs {{COMMAND}}.
+
+@@ tui.submission-unavailable-title
+Submission unavailable
+
+@@ tui.submission-unavailable-log
+The job was not submitted because {{COMMAND}} is unavailable.
+
+@@ tui.review-required
+Review and confirm the converter and batch file before you submit.
+
+@@ tui.review-required-title
+Review required
+
+@@ tui.review-required-log
+Submission blocked: generated scripts have not been reviewed.
+
+@@ tui.submission-failed
+The submission command failed with exit code {{CODE}}.
+
+@@ tui.scheduler-condor
+HTCondor
+
+@@ tui.scheduler-slurm
+SLURM
+
+@@ tui.submitted
+Submitted {{SCHEDULER}} job {{JOB}}.
+
+@@ tui.log-waiting
+Waiting for {{PATH}}.
+
+@@ tui.log-unreadable
+Could not read {{PATH}}: {{ERROR}}
+
+@@ tui.log-empty
+{{PATH}} is empty.
+
+@@ tui.log-paths
+Standard output log: {{OUT}}
+Standard error log: {{ERR}}
+
+@@ tui.log-paths-condor
+Bundle directory: {{BUNDLE}}
+HTCondor logs are under logs/ as pcdf-ntuple-{{JOB}}.<process>.out and .err.
+
+@@ tui.log-paths-slurm
+Bundle directory: {{BUNDLE}}
+After submission, SLURM logs are saved under logs/ as pcdf-ntuple-<jobid>.out and .err.
+
+@@ tui.no-submitted-job
+Submit a job before refreshing its status.
+
+@@ tui.no-submitted-job-title
+No submitted job
+
+@@ tui.command-missing
+The {{COMMAND}} command is not available on this host.
+
+@@ tui.job-gone
+Job {{JOB}} is no longer listed by {{SCHEDULER}}.
+
+@@ tui.account-selected
+Using NERSC account {{ACCOUNT}}.
+
+@@ tui.account-selected-title
+Account selected
+
+@@ tui.invalid-input-title
+Invalid input
+
+@@ tui.scan-directory-selected
+Selected scan directory: {{PATH}}
+
+@@ tui.object-off-dependents
+Also turned off the objects that require it: {{OBJECTS}}.
+
+@@ tui.object-off-title
+{{OBJECT}} turned off
+
+@@ tui.review-confirmed
+The converter and batch files are ready to submit.
+
+@@ tui.review-confirmed-title
+Review confirmed
+
+@@ tui.cli-description
+Run the PCDF ATLAS ntuple wizard in a terminal.
+
+@@ tui.cli-output-help
+Parent directory for pcdf-ntuple/ and its archive. The default is the current directory.
+
+@@ tui.cli-will-save
+The working bundle will be saved in: {{PATH}}
+
+@@ tui.cli-saved
+The working bundle was saved in: {{PATH}}
+
+## Messages printed by the generated shell scripts. The text is inserted when the bundle is
+## generated, and any $VARIABLE in it is expanded when the script runs.
+
+@@ common.preparing-environment
+Preparing the Python environment.
+
+@@ shell.uv-required
+uv is required but was not found on PATH.
+
+@@ shell.uv-install
+Install it from https://docs.astral.sh/uv/getting-started/installation/ and run this again.
+
+@@ shell.condor-no-uv
+ERROR: uv is not available on this HTCondor execute node.
+
+@@ shell.slurm-needs-edit
+ERROR: replace the placeholder values for the account, input manifest, and output directory.
+
+@@ shell.slurm-download-ignored
+WARNING: PCDF_ALLOW_COMPUTE_DOWNLOAD is ignored because compute-node downloads are disabled.
+
+@@ shell.slurm-keeping-helpers
+Keeping generated job helpers in $RUN_DIR
+
+@@ shell.slurm-no-manifest
+ERROR: missing or empty input manifest: $INPUT_MANIFEST
+
+@@ shell.slurm-create-manifest
+Create the manifest before submitting this compute job.
+
+@@ shell.slurm-no-uv
+ERROR: uv is not on PATH. Load it before submitting the job.
+
+@@ shell.slurm-no-parallel
+ERROR: GNU parallel is not on PATH.
+
+@@ shell.slurm-bad-cpus
+ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1.
+
+@@ shell.slurm-task
+Task ${TASK_ID}: $INPUT_FILE -> $OUTPUT_BASE
+
+@@ shell.slurm-no-node-work
+Node ${SLURM_NODEID}: no input files were assigned. This node has no work to do.
+
+@@ shell.slurm-no-cores
+ERROR: could not determine the number of physical CPU cores on this node.
+
+@@ shell.slurm-too-many-cpus
+ERROR: the requested ${CPUS_PER_CONVERSION} CPUs per conversion exceed the ${PHYSICAL_CORES} physical cores available on this node.
+
+@@ shell.slurm-node-summary
+Node ${SLURM_NODEID}: assigned files: ${NODE_WORK}, physical cores: ${PHYSICAL_CORES}, concurrent conversions: ${JOBS_ON_NODE}.
+
+@@ shell.slurm-empty-manifest
+ERROR: input manifest contains no work.
+
+@@ shell.slurm-nodes
+Exclusive CPU nodes: ${SLURM_NNODES}
+
+@@ shell.slurm-node-list
+Node list:      ${SLURM_JOB_NODELIST:-unknown}
+
+@@ shell.slurm-manifest
+Input manifest: $INPUT_MANIFEST
+
+@@ shell.slurm-files
+Input files:    $TOTAL_WORK
+
+@@ shell.slurm-output
+Output dataset: $OUTPUT_BASE
+
+@@ shell.slurm-helpers
+Run helpers:    $RUN_DIR
+
+@@ shell.slurm-topology
+CPU topology:   ${PERLMUTTER_PHYSICAL_CORES} physical cores / ${PERLMUTTER_LOGICAL_CPUS} logical CPUs per Perlmutter CPU node
+
+@@ shell.slurm-concurrency
+Conversions:    up to ${MAX_CONCURRENT} at once, using ${CPUS_PER_CONVERSION} physical cores each
+
+## Messages printed by the generated converter. They are embedded in it when the bundle is generated.
+
+@@ converter.no-variables
+No variables selected
+
+@@ converter.hashes-ambiguous
+The converter could not tell the charged and neutral constituent containers apart from the jet links
+
+@@ converter.label-charged
+charged
+
+@@ converter.label-neutral
+neutral
+
+@@ converter.links-out-of-range
+{{COUNT}} events have {{LABEL}} constituent links past the end of their container, first at event {{FIRST}}
+
+@@ converter.file-number-too-large
+File number {{NUMBER}} exceeds the {{MAXIMUM}} maximum that can be encoded in 16 index bits
+
+@@ converter.no-partition-identity
+Cannot derive a stable partition identity for {{PATH}}
+
+@@ converter.uuid-partitions
+INFO: The input filename has no ATLAS task ID or file number. Using numeric ROOT UUID partitions fileUUIDHigh={{HIGH}}, fileUUIDLow={{LOW}} for {{PATH}}
+
+@@ converter.local-index-too-large
+{{LABEL}} local index exceeds {{MAXIMUM}}. The leading 16 bits cannot be reserved for the file number
+
+@@ converter.partition-exists
+Output partition exists: {{PATH}}
+
+@@ converter.partition-exists-for
+Output partition exists for {{INPUT}}: {{PATHS}}{{SUFFIX}}
+
+@@ converter.partitions-more
+, and {{COUNT}} more
+
+@@ converter.skipping-complete
+WARNING: Skipping complete existing output partitions. {{DETAIL}}
+
+@@ converter.incomplete-partitions
+Incomplete or conflicting output partitions: {{DETAIL}}
+
+@@ converter.missing-branch
+The input does not contain a selected branch: {{INPUT}}: {{ERROR}}
+
+@@ converter.skipping-unreadable
+WARNING: Skipping unreadable input {{INPUT}}: {{ERROR}}
+
+@@ converter.cannot-read
+Cannot read input ROOT file {{INPUT}}: {{ERROR}}
+
+@@ converter.no-events
+The input contains no events
+
+@@ converter.read-events
+Read {{COUNT}} events
+
+@@ converter.step-events
+Events
+
+@@ converter.step-jets
+Jets
+
+@@ converter.step-reading-constituents
+Reading jet constituents
+
+@@ converter.step-constituents
+Constituents
+
+@@ converter.step-reading-tracks
+Reading tracks linked to jets
+
+@@ converter.step-tracks
+Tracks
+
+@@ converter.step-met
+MET
+
+@@ converter.complete
+Conversion complete
+
+@@ converter.help-skip-unreadable
+Skip unreadable or truncated ROOT inputs instead of failing the job.
+
+@@ converter.help-skip-existing
+Skip inputs whose selected output partitions already exist, allowing safe job reruns.
+
+## Messages shown by run-pcdf.py. They are embedded in it when the bundle is generated.
+
+@@ runner.description
+Create a manifest, submit the configured PCDF job, and follow its state. An HTCondor bundle can also run its conversions on this machine. That happens when condor_submit is unavailable or when --local is given.
+
+@@ runner.help-local
+run an HTCondor bundle's conversions on this machine instead of submitting them
+
+@@ runner.command-not-found
+Required command not found: {{COMMAND}}
+
+@@ runner.no-error-details
+no error details were reported
+
+@@ runner.submission-failed
+Submission failed: {{DETAIL}}
+
+@@ runner.no-job-id
+Could not read a job ID from submission output: {{OUTPUT}}
+
+@@ runner.one-scheduler-file
+The bundle must contain exactly one scheduler file: {{NAMES}}
+
+@@ runner.slurm-query-failed
+Could not query SLURM: {{DETAIL}}
+
+@@ runner.slurm-accounting-failed
+Could not read SLURM accounting: {{DETAIL}}
+
+@@ runner.condor-query-failed
+Could not query HTCondor: {{DETAIL}}
+
+@@ runner.condor-unknown-state
+state {{CODE}}
+
+@@ runner.manifest-ready
+Input manifest is ready
+
+@@ runner.submitted
+Submitted {{SCHEDULER}} job {{JOB}}
+
+@@ runner.waiting-start
+Waiting for work to start
+
+@@ runner.waiting-finish
+Waiting for work to finish
+
+@@ runner.job-started
+Job has started
+
+@@ runner.job-running
+Job is running ({{DETAIL}})
+
+@@ runner.no-location
+no location reported
+
+@@ runner.job-pending
+Job is {{STATE}} ({{DETAIL}})
+
+@@ runner.no-reason
+no reason reported
+
+@@ runner.left-queue-accounting
+Job left the queue. Waiting for SLURM accounting.
+
+@@ runner.left-queue
+Job left the queue
+
+@@ runner.job-state
+Job state is {{STATE}}
+
+@@ runner.job-completed
+Job completed successfully
+
+@@ runner.slurm-ended
+SLURM job {{JOB}} ended with {{STATE}} ({{EXIT}})
+
+@@ runner.no-hold-reason
+no hold reason was reported
+
+@@ runner.condor-held
+HTCondor cluster {{JOB}} has held jobs: {{DETAIL}}
+
+@@ runner.any-started
+At least one job has started
+
+@@ runner.cluster-active
+Cluster is active ({{SUMMARY}})
+
+@@ runner.cluster-waiting
+Cluster is waiting ({{SUMMARY}})
+
+@@ runner.cluster-left-history
+Cluster left the queue. Waiting for HTCondor history.
+
+@@ runner.cluster-left
+Cluster left the queue
+
+@@ runner.condor-failed
+HTCondor cluster {{JOB}} finished with {{COUNT}} failed job(s)
+
+@@ runner.condor-all-done
+All {{COUNT}} jobs completed successfully
+
+@@ runner.bad-submit-file
+{{FILE}} has no usable arguments or queue line
+
+@@ runner.bad-cpu-count
+{{FILE}} has a non-integer CPU count: {{VALUE}}
+
+@@ runner.manifest-missing
+The input manifest is missing: {{PATH}}
+
+@@ runner.manifest-no-work
+The input manifest contains no work: {{PATH}}
+
+@@ runner.no-uv
+uv is not on PATH
+
+@@ runner.workers-prompt
+Conversions to run at once ({{CORES}} CPU core(s) each)
+
+@@ runner.prepare-failed
+Could not prepare the converter: {{DETAIL}}
+
+@@ runner.converting
+Converting with {{WORKERS}} at once
+
+@@ runner.logs-location
+Logs: {{LOGS}}/pcdf-ntuple-local-{{STAMP}}.<n>.out and .err
+
+@@ runner.some-failed
+{{FAILED}} of {{TOTAL}} conversions failed, for example entry {{FIRST}}
+
+@@ runner.intro
+This launcher creates the input manifest, submits the prepared batch job, then follows it until all work finishes. Stopping this launcher with Ctrl+C does not cancel submitted work.
+
+@@ runner.intro-title
+PCDF job workflow
+
+@@ runner.not-started
+[red]Workflow not started:[/red] {{REASON}}
+
+@@ runner.local-condor-only
+--local works only with an HTCondor bundle.
+
+@@ runner.helper-missing
+make-manifest.py is missing.
+
+@@ runner.step-manifest
+[bold]1. Create the input manifest[/bold]
+
+@@ runner.manifest-not-created
+[red]Workflow stopped:[/red] the manifest was not created.
+
+@@ runner.no-condor-submit
+condor_submit was not found, so the conversions can run on this machine instead.
+
+@@ runner.run-here-prompt
+Run the conversions on this machine now
+
+@@ runner.nothing-run
+The manifest is ready. Nothing was run.
+
+@@ runner.step-local
+[bold]2. Running the conversions on this machine[/bold]
+
+@@ runner.workflow-stopped
+[red]Workflow stopped:[/red] {{REASON}}
+
+@@ runner.local-interrupted
+Local run stopped. Rerun to finish: files whose output partitions are complete are skipped.
+
+@@ runner.local-done
+[green]All PCDF conversions completed successfully on this machine.[/green]
+
+@@ runner.submit-prompt
+Submit {{FILE}} now
+
+@@ runner.not-submitted
+The manifest is ready. The job was not submitted.
+
+@@ runner.step-submitted
+[bold]2. Submitted {{SCHEDULER}} job {{JOB}}[/bold]
+
+@@ runner.monitoring-stopped
+Monitoring stopped. Job {{JOB}} remains under {{SCHEDULER}} control.
+
+@@ runner.job-done
+[green]PCDF {{SCHEDULER}} job {{JOB}} completed successfully.[/green]
+
+## Messages shown by make-manifest.py. They are embedded in it when the bundle is generated.
+
+@@ manifest.description
+Interactively create a PCDF input manifest before submitting a batch job.
+
+@@ manifest.no-rucio-config
+no Rucio configuration was found (set RUCIO_CONFIG or set up an ATLAS environment)
+
+@@ manifest.no-proxy-tool
+no X.509 proxy and no voms-proxy-init were found
+
+@@ manifest.no-proxy-file
+no valid X.509 proxy file was found
+
+@@ manifest.proxy-instructions
+To create one yourself in a Perlmutter login-node shell, run:
+  setupATLAS
+  lsetup emi
+  voms-proxy-init -voms atlas
+Then verify it with:
+  voms-proxy-info -all
+
+@@ manifest.no-proxy-found
+no valid X.509 proxy was found. {{INSTRUCTIONS}}
+
+@@ manifest.proxy-notice
+A Rucio lookup needs an ATLAS VOMS proxy. Creating one will prompt for your grid-certificate passphrase.
+
+@@ manifest.proxy-prompt
+Create an ATLAS VOMS proxy now
+
+@@ manifest.proxy-start-failed
+could not start voms-proxy-init: {{ERROR}}
+
+@@ manifest.proxy-create-failed
+voms-proxy-init did not create a proxy
+
+@@ manifest.proxy-missing
+voms-proxy-init completed, but no proxy file was found
+
+@@ manifest.set-rucio-config
+no Rucio configuration was found. Set RUCIO_CONFIG
+
+@@ manifest.bad-did
+enter the Rucio dataset as scope:name
+
+@@ manifest.no-voms-tool
+voms-proxy-init was not found on PATH or in ATLASLocalRootBase
+
+@@ manifest.shared-proxy-notice
+The DTN download needs a shared ATLAS VOMS proxy. Creating it will prompt for your grid-certificate passphrase.
+
+@@ manifest.shared-proxy-prompt
+Create or renew the shared proxy at {{PATH}}
+
+@@ manifest.shared-proxy-needed
+the DTN download needs a valid shared ATLAS VOMS proxy
+
+@@ manifest.shared-proxy-failed
+voms-proxy-init did not create the shared proxy
+
+@@ manifest.shared-proxy-unusable
+voms-proxy-init completed, but the proxy is missing, has substantially less validity than requested, or has no ATLAS VOMS credentials
+
+@@ manifest.validity-prompt
+Proxy lifetime to request (HH:MM)
+
+@@ manifest.validity-error
+[red]Use HH:MM with a positive duration, such as 12:00.[/red]
+
+@@ manifest.scratch-required
+SCRATCH or PSCRATCH must be set for a DTN download
+
+@@ manifest.download-dir-prompt
+Download directory
+
+@@ manifest.download-dir-error
+[red]Use a directory below {{SCRATCH}} or {{PROJECT}}.[/red]
+
+@@ manifest.ssh-failed
+could not start SSH for {{HOST}}: {{ERROR}}
+
+@@ manifest.download-failed
+the Rucio download on {{HOST}} failed
+
+@@ manifest.data-dir-prompt
+Downloaded-data directory
+
+@@ manifest.not-a-directory
+[red]Not a directory:[/red] {{PATH}}
+
+@@ manifest.rucio-client-missing
+the Rucio Python client is unavailable. Run this bundled script with uv
+
+@@ manifest.lookup-failed
+Rucio lookup failed: {{ERROR}}
+
+@@ manifest.no-replicas
+Rucio returned no replica paths at NERSC_LOCALGROUPDISK
+
+@@ manifest.no-files
+no usable local ROOT files were found. The manifest was not written
+
+@@ manifest.intro
+Prepare DAOD files before submission. Batch workers read the manifest and never download data themselves.
+
+@@ manifest.intro-title
+PCDF input manifest
+
+@@ manifest.column-option
+Option
+
+@@ manifest.column-use
+Use when
+
+@@ manifest.option-local
+You used rucio download and have the files in a directory.
+
+@@ manifest.option-replicas
+The dataset is already copied to NERSC_LOCALGROUPDISK.
+
+@@ manifest.option-dtn
+Download a Rucio dataset on a NERSC DTN before SLURM submission.
+
+@@ manifest.hidden-option-2
+option 2: {{REASON}}
+
+@@ manifest.hidden-option-3
+option 3: voms-proxy-init or ssh was not found
+
+@@ manifest.hidden-sources
+[dim]Hidden Rucio sources, {{REASONS}}.[/dim]
+
+@@ manifest.source-prompt
+Choose an input source
+
+@@ manifest.did-prompt
+Dataset DID (scope:name)
+
+@@ manifest.account-prompt
+Rucio account
+
+@@ manifest.dtn-prompt
+NERSC DTN
+
+@@ manifest.path-prompt
+Manifest path
+
+@@ manifest.not-written
+[red]Manifest not written:[/red] {{REASON}}
+
+@@ manifest.wrote
+[green]Wrote {{COUNT}} local paths to {{PATH}}.[/green]
+
+## Messages printed by the shell script that runs on the data transfer node. The text is inserted
+## into the script when the bundle is generated.
+
+@@ dtn.no-voms-info
+voms-proxy-info is unavailable on this DTN.
+
+@@ dtn.unreadable-config
+The Rucio configuration is unreadable on this DTN: $rucio_config
+
+@@ dtn.no-certificates
+Grid certificate authorities are unavailable on this DTN: $certificate_directory
+
+@@ dtn.no-proxy
+The shared X.509 proxy is unavailable on this DTN: $proxy
+
+@@ dtn.no-vo
+The shared X.509 proxy does not contain ATLAS VOMS credentials.
+
+@@ dtn.no-rucio
+The Rucio command is unavailable on this DTN.
+
+@@ dtn.downloading
+Downloading $did into $destination on $(hostname).

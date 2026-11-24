@@ -65,9 +65,9 @@
     "title": "Jet constituents",
     "folder": "Const",
     "indexName": "constIndex",
-    "description": "Charged and neutral PFO four-vectors for the constituents of each jet. Available only with JETM16 input.",
+    "description": "Charged and neutral PFO four-vectors for the constituents of each jet. Available only with JETMOD1 input.",
     "recommended": true,
-    "requiresJetm16": true,
+    "requiresJetmod1": true,
     "dependsOn": [
       "Jet"
     ],

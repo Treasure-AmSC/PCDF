@@ -1,0 +1,310 @@
+{#- Rendered by build_site.py. Text comes from wizard-text.txt through t(). -#}
+{% macro term(id, label, help) -%}
+<span class="term-with-help"><span class="term-label" aria-describedby="{{ id }}">{{ label }}</span><span class="term-tooltip" id="{{ id }}" role="tooltip">{{ help }}</span></span>
+{%- endmacro %}
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ t('page.title') }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Iosevka+Charon:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Franklin:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.9/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-yEPZ7jP9S0QKiUQ0m3jjsO4ProIW7wvR9gXkI7JOGa2XVsw53Yke2bsdkBbjmmiX" crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/font/bootstrap-icons.min.css" rel="stylesheet" integrity="sha384-nWN3KqaaVcbEsCjLSV+2jMjh62Iny/+mN3srM8TZeM8N6aj7eDl5wwYggjAJ4/sJ" crossorigin="anonymous">
+  <link href="{{ asset_prefix }}ntuple-wizard.css" rel="stylesheet">
+</head>
+<body>
+  <a class="skip-link" href="#stepInputHeading">{{ t('page.skip-link') }}</a>
+  <main id="mainContent" class="container-fluid px-3 px-lg-4 py-4 py-lg-5">
+    <section class="row justify-content-center">
+      <div class="col-12 col-xxl-11 pcdf-page-width">
+        <div class="mb-4 text-center text-lg-start">
+          <h1 class="display-5 fw-bold"><i class="bi bi-stars me-2" aria-hidden="true"></i>{{ t('page.heading') }}</h1>
+          <p class="lead text-secondary mb-0">{{ t('page.lead', DAOD=term('tip-daod', t('term.atlas-daod'), t('term.atlas-daod.help'))) }}</p>
+        </div>
+
+        <div class="wizard-shell rounded-4 p-3 p-md-4">
+          <nav class="wizard-progress mb-4" aria-label="{{ t('nav.steps-label') }}">
+            <button class="btn step-pill active flex-fill" type="button" data-step-target="0" aria-controls="stepInput" aria-current="step"><i class="bi bi-file-earmark-binary me-1" aria-hidden="true"></i>{{ t('nav.step-input') }}</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="1" aria-controls="stepObjects"><i class="bi bi-boxes me-1" aria-hidden="true"></i>{{ t('nav.step-objects') }}</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="2" aria-controls="stepVariables"><i class="bi bi-list-check me-1" aria-hidden="true"></i>{{ t('nav.step-variables') }}</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="3" aria-controls="stepSlurm"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>{{ t('nav.step-batch') }}</button>
+            <button class="btn step-pill flex-fill" type="button" data-step-target="4" aria-controls="stepGenerate"><i class="bi bi-code-square me-1" aria-hidden="true"></i>{{ t('nav.step-generate') }}</button>
+          </nav>
+
+          <form id="wizardForm" class="needs-validation" novalidate>
+            <div id="wizardStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+            <section id="stepInput" class="wizard-step" data-step="0" aria-labelledby="stepInputHeading">
+              <div class="row g-4 align-items-stretch">
+                <div class="col-12">
+                  <div class="card h-100 border-secondary-subtle">
+                    <div class="card-body">
+                      <h2 id="stepInputHeading" class="h4 card-title" tabindex="-1">{{ t('input.heading') }}</h2>
+                      <fieldset>
+                        <legend class="visually-hidden">{{ t('input.format-legend') }}</legend>
+                        <div class="vstack gap-3 mt-4">
+                          <label class="form-check p-3 border rounded-3">
+                            <input class="form-check-input" type="radio" name="inputFormat" id="formatJetmod1" value="JETMOD1" checked required>
+                            <span class="form-check-label fw-semibold"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>{{ t('input.jetmod1-label') }}</span>
+                            <span class="d-block small text-secondary">{{ t('input.jetmod1-help') }}</span>
+                          </label>
+                          <label class="form-check p-3 border rounded-3">
+                            <input class="form-check-input" type="radio" name="inputFormat" id="formatPhyslite" value="PHYSLITE" required>
+                            <span class="form-check-label fw-semibold"><i class="bi bi-file-earmark me-1" aria-hidden="true"></i>{{ t('input.physlite-label') }}</span>
+                            <span class="d-block small text-secondary">{{ t('input.physlite-help') }}</span>
+                          </label>
+                        </div>
+                      </fieldset>
+                      <hr class="border-secondary-subtle my-4">
+                      <fieldset aria-describedby="sampleTypeHelp">
+                        <legend class="h5">{{ t('sample.legend') }}</legend>
+                        <p id="sampleTypeHelp" class="text-secondary small mb-3">{{ t('sample.help') }}</p>
+                        <div class="btn-group w-100 sample-toggle">
+                          <input class="btn-check" type="radio" name="sampleType" id="sampleMc" value="MC" checked required>
+                          <label class="btn btn-outline-light" for="sampleMc"><i class="bi bi-cpu me-1" aria-hidden="true"></i>{{ t('sample.mc') }}</label>
+                          <input class="btn-check" type="radio" name="sampleType" id="sampleData" value="DATA" required>
+                          <label class="btn btn-outline-light" for="sampleData"><i class="bi bi-database me-1" aria-hidden="true"></i>{{ t('sample.data') }}</label>
+                        </div>
+                      </fieldset>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="stepObjects" class="wizard-step d-none" data-step="1" aria-labelledby="stepObjectsHeading" hidden>
+              <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+                <div>
+                  <h2 id="stepObjectsHeading" class="h4 mb-1" tabindex="-1">{{ t('objects.heading') }}</h2>
+                  <p class="text-secondary mb-0">{{ t('objects.help') }}</p>
+                </div>
+                <div class="selection-actions align-self-start">
+                  <p class="size-estimate mb-0">{{ t('size.estimate-label') }} <strong id="objectSizeEstimate"></strong></p>
+                  <div class="d-flex flex-wrap gap-2" role="group" aria-label="{{ t('objects.shortcuts-label') }}">
+                    <button class="btn btn-outline-light" type="button" id="selectRecommended">{{ t('objects.recommended') }}</button>
+                    <button class="btn btn-outline-light" type="button" id="selectAll">{{ t('objects.all') }}</button>
+                  </div>
+                </div>
+              </div>
+              <div class="row g-3" id="objectList"></div>
+            </section>
+
+            <section id="stepVariables" class="wizard-step d-none" data-step="2" aria-labelledby="stepVariablesHeading" hidden>
+              <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+                <div>
+                  <h2 id="stepVariablesHeading" class="h4 mb-1" tabindex="-1">{{ t('variables.heading') }}</h2>
+                  <p class="text-secondary mb-0">{{ t('variables.help') }}</p>
+                </div>
+                <div class="selection-actions align-self-start">
+                  <p class="size-estimate mb-0">{{ t('size.estimate-label') }} <strong id="variableSizeEstimate"></strong></p>
+                  <button class="btn btn-outline-info" type="button" id="restoreDefaults">{{ t('variables.restore') }}</button>
+                </div>
+              </div>
+              <div class="accordion" id="variableAccordion"></div>
+            </section>
+
+            <section id="stepSlurm" class="wizard-step d-none" data-step="3" aria-labelledby="stepSlurmHeading" hidden>
+              <div class="card border-secondary-subtle slurm-settings">
+                <div class="card-body">
+                  <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                    <div>
+                      <h2 id="stepSlurmHeading" class="h4 mb-1" tabindex="-1">{{ t('batch.heading') }}</h2>
+                      <p class="text-secondary mb-0">{{ t('batch.intro', MANIFEST=term('tip-manifest', t('batch.manifest-term'), t('term.input-manifest.help'))) }}</p>
+                    </div>
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="enableSlurm" checked>
+                      <label class="form-check-label" for="enableSlurm">{{ t('batch.generate-switch') }}</label>
+                    </div>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <div class="form-floating">
+                        <select class="form-select slurm-input" id="scheduler" aria-describedby="schedulerHelp">
+                          <option value="slurm" selected>{{ t('scheduler.slurm') }}</option>
+                          <option value="condor">{{ t('scheduler.condor') }}</option>
+                        </select>
+                        <label for="scheduler">{{ t('batch.system-label') }}</label>
+                      </div>
+                      <div class="form-text text-secondary" id="schedulerHelp">{{ t('batch.system-help') }}</div>
+                    </div>
+                    <div class="col-md-6 slurm-only">
+                      <div class="form-floating">
+                        <input class="form-control slurm-input" id="slurmAccount" value="" required placeholder="{{ t('field.account-label') }}" data-error-id="slurmAccountError">
+                        <label for="slurmAccount">{{ t('field.account-label') }}</label>
+                        <div class="invalid-feedback" id="slurmAccountError">{{ t('field.account-error') }}</div>
+                      </div>
+                    </div>
+                    <p class="col-12 text-secondary small mb-0" id="advancedBatchHelp">{{ t('batch.advanced-help') }}</p>
+                    <details class="col-12 border rounded-3 p-3" id="advancedBatchSettings">
+                      <summary class="fw-semibold">{{ t('batch.advanced-summary') }}</summary>
+                      <div class="row g-3 mt-1">
+                        <div class="col-md-6 slurm-only">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmQos" value="regular" required placeholder="{{ t('field.qos-placeholder') }}" data-error-id="slurmQosError">
+                            <label for="slurmQos">{{ t('field.qos-label') }}</label>
+                            <div class="invalid-feedback" id="slurmQosError">{{ t('field.qos-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-md-6 slurm-only">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmNodes" type="number" min="1" value="1" required placeholder="{{ t('field.nodes-label') }}" data-error-id="slurmNodesError">
+                            <label for="slurmNodes">{{ t('field.nodes-label') }}</label>
+                            <div class="invalid-feedback" id="slurmNodesError">{{ t('field.nodes-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-md-6 slurm-only">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmTime" value="00:30:00" required pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="{{ t('field.walltime-label') }}" data-error-id="slurmTimeError">
+                            <label for="slurmTime">{{ t('field.walltime-label') }}</label>
+                            <div class="invalid-feedback" id="slurmTimeError">{{ t('field.walltime-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-md-4 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorCpus" type="number" min="1" value="1" required placeholder="{{ t('field.cpus-placeholder') }}" data-error-id="condorCpusError">
+                            <label for="condorCpus">{{ t('field.cpus-label') }}</label>
+                            <div class="invalid-feedback" id="condorCpusError">{{ t('field.cpus-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-md-4 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorMemory" type="number" min="1" value="2048" required placeholder="{{ t('field.memory-placeholder') }}" data-error-id="condorMemoryError">
+                            <label for="condorMemory">{{ t('field.memory-label') }}</label>
+                            <div class="invalid-feedback" id="condorMemoryError">{{ t('field.memory-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-md-4 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorDisk" type="number" min="1" value="4096" required placeholder="{{ t('field.disk-placeholder') }}" data-error-id="condorDiskError">
+                            <label for="condorDisk">{{ t('field.disk-label') }}</label>
+                            <div class="invalid-feedback" id="condorDiskError">{{ t('field.disk-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-12 condor-only" hidden>
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="condorRequirements" placeholder="{{ t('field.requirements-placeholder') }}">
+                            <label for="condorRequirements">{{ t('field.requirements-label') }}</label>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmOutputBase" value="./output" required placeholder="{{ t('field.output-placeholder') }}" data-error-id="slurmOutputBaseError">
+                            <label for="slurmOutputBase">{{ t('field.output-label') }}</label>
+                            <div class="invalid-feedback" id="slurmOutputBaseError">{{ t('field.output-error') }}</div>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="{{ t('field.manifest-placeholder') }}" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
+                            <label for="slurmInputManifest">{{ t('field.manifest-label') }}</label>
+                            <div class="invalid-feedback" id="slurmInputManifestError">{{ t('field.manifest-error') }}</div>
+                          </div>
+                          <div class="form-text text-secondary" id="slurmInputManifestHelp">{{ t('field.manifest-help') }}</div>
+                        </div>
+                        <div class="col-12">
+                          <div class="form-floating">
+                            <input class="form-control slurm-input" id="slurmPythonPath" value="./code/ntuple-maker-jetmod1.py" required placeholder="{{ t('field.converter-label') }}" data-error-id="slurmPythonPathError">
+                            <label for="slurmPythonPath">{{ t('field.converter-label') }}</label>
+                            <div class="invalid-feedback" id="slurmPythonPathError">{{ t('field.converter-error') }}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="stepGenerate" class="wizard-step d-none" data-step="4" aria-labelledby="stepGenerateHeading" hidden>
+              <div class="row g-4 generate-grid">
+                <div class="col-xl-5 summary-column">
+                  <h2 id="stepGenerateHeading" class="h4 generate-heading" tabindex="-1">{{ t('generate.heading') }}</h2>
+                  <div id="summary" class="vstack gap-3 mb-4"></div>
+                  <div class="action-bar">
+                    <button class="btn btn-primary fw-bold" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>{{ t('generate.download-bundle') }}</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>{{ t('generate.download-converter') }}</button>
+                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>{{ t('generate.download-batch') }}</button>
+                  </div>
+                  <div class="alert alert-info mt-4 mb-0" id="runInstructions">
+                    <h3 class="h6">{{ t('generate.run-heading') }}</h3>
+                    <ol class="submission-steps mb-0 ps-3" id="slurmRunInstructions"></ol>
+                  </div>
+                </div>
+                <details class="col-xl-7 script-details">
+                  <summary><h2 class="h4 generate-heading">{{ t('generate.scripts-heading') }}</h2></summary>
+                  <div class="script-column mt-2">
+                    <h3 id="scriptHighlightHeading" class="h6 form-label fw-semibold">{{ t('generate.python-heading') }}</h3>
+                    <pre id="scriptHighlight" class="form-control code-output python-preview mb-4" tabindex="0" role="region" aria-labelledby="scriptHighlightHeading"><code></code></pre>
+                    <textarea id="scriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+
+                    <h3 id="slurmScriptHighlightHeading" class="h6 form-label fw-semibold">{{ t('generate.batch-heading') }}</h3>
+                    <pre id="slurmScriptHighlight" class="form-control code-output slurm-preview mb-0" tabindex="0" role="region" aria-labelledby="slurmScriptHighlightHeading"><code></code></pre>
+                    <textarea id="slurmScriptOutput" class="visually-hidden" aria-hidden="true" tabindex="-1" readonly></textarea>
+                  </div>
+                </details>
+              </div>
+            </section>
+
+            <div class="wizard-footer d-flex justify-content-between gap-3 pt-4 border-top border-secondary-subtle">
+              <button class="btn btn-outline-light" type="button" id="prevStep" aria-keyshortcuts="F8">{{ t('ui.back') }}</button>
+              <p class="keyboard-help text-secondary small mb-0"><span class="fw-semibold">{{ t('keyboard.label') }}</span> <kbd>F8</kbd> {{ t('ui.back') }} · <kbd>F9</kbd> {{ t('ui.next') }} · <kbd>F2</kbd> <button class="glossary-link" id="glossaryOpen" type="button" aria-haspopup="dialog" aria-controls="glossaryModal" aria-keyshortcuts="F2">{{ t('ui.help') }}</button></p>
+              <button class="btn btn-primary" type="button" id="nextStep" aria-keyshortcuts="F9">{{ t('ui.next') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+  <dialog class="modal pcdf-modal" id="glossaryModal" aria-labelledby="glossaryTitle" aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title h4" id="glossaryTitle" tabindex="-1">{{ t('glossary.title') }}</h2>
+          <button class="btn-close btn-close-white" type="button" data-glossary-close aria-label="{{ t('glossary.close-label') }}"></button>
+        </div>
+        <div class="modal-body">
+          <section aria-labelledby="glossaryTermsTitle">
+            <h3 class="h5" id="glossaryTermsTitle">{{ t('glossary.terms-heading') }}</h3>
+            <dl class="glossary-list mb-0">
+              <dt>{{ t('term.atlas-daod') }}</dt><dd>{{ t('term.atlas-daod.help') }}</dd>
+              <dt>{{ t('term.jetmod1') }}</dt><dd>{{ t('term.jetmod1.help') }}</dd>
+              <dt>{{ t('term.physlite') }}</dt><dd>{{ t('term.physlite.help') }}</dd>
+              <dt>{{ t('term.object') }}</dt><dd>{{ t('term.object.help') }}</dd>
+              <dt>{{ t('term.variable') }}</dt><dd>{{ t('term.variable.help') }}</dd>
+              <dt>{{ t('term.parquet') }}</dt><dd>{{ t('term.parquet.help') }}</dd>
+              <dt><code>{{ t('term.collectiontree') }}</code></dt><dd>{{ t('term.collectiontree.help') }}</dd>
+              <dt>{{ t('term.root-file-id') }}</dt><dd>{{ t('term.root-file-id.help') }}</dd>
+              <dt>{{ t('term.slurm') }}</dt><dd>{{ t('term.slurm.help') }}</dd>
+              <dt>{{ t('term.htcondor') }}</dt><dd>{{ t('term.htcondor.help') }}</dd>
+              <dt>{{ t('term.perlmutter') }}</dt><dd>{{ t('term.perlmutter.help') }}</dd>
+              <dt>{{ t('term.input-manifest') }}</dt><dd>{{ t('term.input-manifest.help') }}</dd>
+            </dl>
+          </section>
+          <section aria-labelledby="appearanceTitle">
+            <h3 class="h5" id="appearanceTitle">{{ t('appearance.heading') }}</h3>
+            <div class="form-check form-switch help-texture-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="textureToggle" aria-describedby="textureHelp" checked>
+              <label class="form-check-label fw-semibold" for="textureToggle">{{ t('appearance.textures-label') }}</label>
+            </div>
+            <p class="text-secondary small mb-0" id="textureHelp">{{ t('appearance.textures-help') }}</p>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" type="button" data-glossary-close>{{ t('ui.close') }}</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+  <script type="application/json" id="object-config">
+{{ objects_json|safe }}
+  </script>
+  <script type="application/json" id="wizard-text">{{ runtime_text_json }}</script>
+{%- for name, body in templates.items() %}
+  <script type="text/plain" id="template-{{ name }}">
+{{ body|safe }}</script>
+{%- endfor %}
+  <script src="{{ asset_prefix }}ntuple-wizard.js"></script>
+</body>
+</html>

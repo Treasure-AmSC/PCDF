@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["rich", "rucio-clients"]
 # ///
-"""Interactively create a PCDF input manifest before submitting a batch job."""
+"""Create a PCDF input manifest. The text it shows is in MESSAGES."""
 
 from __future__ import annotations
 
@@ -28,6 +28,14 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.traceback import install as install_rich_traceback
+
+MESSAGES = {{MESSAGES:manifest}}
+
+
+def message(key: str, **values: object) -> str:
+    """Return a user-facing message, filling in each double-brace placeholder from values."""
+    return re.sub(r"{{([A-Z0-9_]+)}}", lambda match: str(values.get(match.group(1), match.group(0))), MESSAGES[key])
+
 
 ATLAS_ROOT = Path(
     os.environ.get("ATLAS_LOCAL_ROOT_BASE", "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase")
@@ -63,12 +71,12 @@ def rucio_config_path() -> Path | None:
 def rucio_sources_unavailable() -> str | None:
     """Explain why Rucio input sources cannot be offered, or return None when they can."""
     if rucio_config_path() is None:
-        return "no Rucio configuration was found (set RUCIO_CONFIG or set up an ATLAS environment)"
+        return message("manifest.no-rucio-config")
     auth_type = os.environ.get("RUCIO_AUTH_TYPE")
     if (not auth_type or auth_type == "x509_proxy") and not (
         local_x509_proxy() or grid_tool("voms-proxy-init")
     ):
-        return "no X.509 proxy and no voms-proxy-init were found"
+        return message("manifest.no-proxy-tool")
     return None
 REMOTE_DTN_DOWNLOAD = r'''set -euo pipefail
 
@@ -92,25 +100,25 @@ if [[ -r "$atlas_setup" ]]; then
 fi
 
 if ! command -v "$proxy_info" >/dev/null; then
-    echo "voms-proxy-info is unavailable on this DTN." >&2
+    echo "{{@dtn.no-voms-info}}" >&2
     exit 2
 fi
 if [[ -n "$rucio_config" && ! -r "$rucio_config" ]]; then
-    echo "The Rucio configuration is unreadable on this DTN: $rucio_config" >&2
+    echo "{{@dtn.unreadable-config}}" >&2
     exit 2
 fi
 if [[ -n "$certificate_directory" && ! -d "$certificate_directory" ]]; then
-    echo "Grid certificate authorities are unavailable on this DTN: $certificate_directory" >&2
+    echo "{{@dtn.no-certificates}}" >&2
     exit 2
 fi
 if [[ ! -r "$proxy" ]]; then
-    echo "The shared X.509 proxy is unavailable on this DTN: $proxy" >&2
+    echo "{{@dtn.no-proxy}}" >&2
     exit 2
 fi
 
 "$proxy_info" -file "$proxy" -exists -valid 1:00
 if ! "$proxy_info" -file "$proxy" -vo | grep -Fxq atlas; then
-    echo "The shared X.509 proxy does not contain ATLAS VOMS credentials." >&2
+    echo "{{@dtn.no-vo}}" >&2
     exit 2
 fi
 
@@ -122,11 +130,11 @@ export RUCIO_ACCOUNT="$rucio_account"
 [[ -z "$certificate_directory" ]] || export X509_CERT_DIR="$certificate_directory"
 
 if ! command -v rucio >/dev/null; then
-    echo "The Rucio command is unavailable on this DTN." >&2
+    echo "{{@dtn.no-rucio}}" >&2
     exit 2
 fi
 mkdir -p "$destination"
-echo "Downloading $did into $destination on $(hostname)."
+echo "{{@dtn.downloading}}"
 rucio download --dir "$destination" "$did"
 '''
 
@@ -150,7 +158,7 @@ def select_x509_proxy() -> Path:
     """Tell supported Rucio client versions which usable proxy to use."""
     proxy = local_x509_proxy()
     if proxy is None:
-        raise RuntimeError("no valid X.509 proxy file was found")
+        raise RuntimeError(message("manifest.no-proxy-file"))
     proxy_path = str(proxy)
     os.environ["X509_USER_PROXY"] = proxy_path
     os.environ["RUCIO_CLIENT_PROXY"] = proxy_path
@@ -158,28 +166,18 @@ def select_x509_proxy() -> Path:
 
 
 def proxy_setup_instructions() -> str:
-    return (
-        "To create one yourself in a Perlmutter login-node shell, run:\n"
-        "  setupATLAS\n"
-        "  lsetup emi\n"
-        "  voms-proxy-init -voms atlas\n"
-        "Then verify it with:\n"
-        "  voms-proxy-info -all"
-    )
+    return message("manifest.proxy-instructions")
 
 
 def create_x509_proxy(console: Console) -> None:
     """Offer to create a proxy without changing this process's environment."""
     initializer = grid_tool("voms-proxy-init")
     if initializer is None:
-        raise RuntimeError(f"no valid X.509 proxy was found. {proxy_setup_instructions()}")
+        raise RuntimeError(message("manifest.no-proxy-found", INSTRUCTIONS=proxy_setup_instructions()))
 
-    console.print(
-        "A Rucio lookup needs an ATLAS VOMS proxy. Creating one will prompt for "
-        "your grid-certificate passphrase."
-    )
-    if not Confirm.ask("Create an ATLAS VOMS proxy now", default=False):
-        raise RuntimeError(f"no valid X.509 proxy was found. {proxy_setup_instructions()}")
+    console.print(message("manifest.proxy-notice"))
+    if not Confirm.ask(message("manifest.proxy-prompt"), default=False):
+        raise RuntimeError(message("manifest.no-proxy-found", INSTRUCTIONS=proxy_setup_instructions()))
     try:
         environment = os.environ.copy()
         environment.setdefault("ALRB_tmpScratch", gettempdir())
@@ -189,11 +187,11 @@ def create_x509_proxy(console: Console) -> None:
             env=environment,
         )
     except OSError as error:
-        raise RuntimeError(f"could not start voms-proxy-init: {error}") from error
+        raise RuntimeError(message("manifest.proxy-start-failed", ERROR=error)) from error
     if result.returncode:
-        raise RuntimeError("voms-proxy-init did not create a proxy")
+        raise RuntimeError(message("manifest.proxy-create-failed"))
     if not local_x509_proxy():
-        raise RuntimeError("voms-proxy-init completed, but no proxy file was found")
+        raise RuntimeError(message("manifest.proxy-missing"))
 
 
 def configure_rucio(console: Console) -> None:
@@ -201,7 +199,7 @@ def configure_rucio(console: Console) -> None:
     if not os.environ.get("RUCIO_CONFIG"):
         config = rucio_config_path()
         if config is None:
-            raise RuntimeError("no Rucio configuration was found. Set RUCIO_CONFIG")
+            raise RuntimeError(message("manifest.set-rucio-config"))
         os.environ["RUCIO_CONFIG"] = str(config)
 
     certificate_directory = ATLAS_ROOT / "etc" / "grid-security-emi" / "certificates"
@@ -221,7 +219,7 @@ def configure_rucio(console: Console) -> None:
 def validate_did(did: str) -> str:
     """Require an explicit Rucio scope and name without inferring their boundary."""
     if did.count(":") != 1 or any(not part for part in did.split(":", 1)):
-        raise RuntimeError("enter the Rucio dataset as scope:name")
+        raise RuntimeError(message("manifest.bad-did"))
     return did
 
 
@@ -268,13 +266,10 @@ def create_shared_x509_proxy(
     """Create an ATLAS proxy at a private path visible from the DTNs."""
     initializer = grid_tool("voms-proxy-init")
     if initializer is None:
-        raise RuntimeError("voms-proxy-init was not found on PATH or in ATLASLocalRootBase")
-    console.print(
-        "The DTN download needs a shared ATLAS VOMS proxy. Creating it will "
-        "prompt for your grid-certificate passphrase."
-    )
-    if not Confirm.ask(f"Create or renew the shared proxy at {proxy}", default=True):
-        raise RuntimeError("the DTN download needs a valid shared ATLAS VOMS proxy")
+        raise RuntimeError(message("manifest.no-voms-tool"))
+    console.print(message("manifest.shared-proxy-notice"))
+    if not Confirm.ask(message("manifest.shared-proxy-prompt", PATH=proxy), default=True):
+        raise RuntimeError(message("manifest.shared-proxy-needed"))
     environment = os.environ.copy()
     environment.setdefault("ALRB_tmpScratch", gettempdir())
     try:
@@ -287,16 +282,13 @@ def create_shared_x509_proxy(
             env=environment,
         )
     except OSError as error:
-        raise RuntimeError(f"could not start voms-proxy-init: {error}") from error
+        raise RuntimeError(message("manifest.proxy-start-failed", ERROR=error)) from error
     if result.returncode:
-        raise RuntimeError("voms-proxy-init did not create the shared proxy")
+        raise RuntimeError(message("manifest.shared-proxy-failed"))
     if proxy.is_file():
         proxy.chmod(0o600)
     if not proxy_is_usable(proxy, minimum_seconds):
-        raise RuntimeError(
-            "voms-proxy-init completed, but the proxy is missing, has substantially "
-            "less validity than requested, or has no ATLAS VOMS credentials"
-        )
+        raise RuntimeError(message("manifest.shared-proxy-unusable"))
 
 
 def ensure_shared_x509_proxy(
@@ -348,34 +340,32 @@ def prompt_nonempty(label: str, default: str | None = None) -> str:
 def prompt_proxy_validity() -> tuple[str, int]:
     """Ask how long a proxy should remain valid and return its acceptance threshold."""
     while True:
-        value = Prompt.ask("Proxy lifetime to request (HH:MM)", default="12:00").strip()
+        value = Prompt.ask(message("manifest.validity-prompt"), default="12:00").strip()
         match = re.fullmatch(r"([0-9]+):([0-9]{2})", value)
         if match and int(match.group(2)) < 60:
             seconds = (int(match.group(1)) * 60 + int(match.group(2))) * 60
             if seconds > 0:
                 return value, max(60, seconds - 300)
-        Console().print("[red]Use HH:MM with a positive duration, such as 12:00.[/red]")
+        Console().print(message("manifest.validity-error"))
 
 
 def prompt_download_directory() -> Path:
     """Ask for a bounded shared destination suitable for a Perlmutter job."""
     scratch = os.environ.get("SCRATCH") or os.environ.get("PSCRATCH")
     if not scratch:
-        raise RuntimeError("SCRATCH or PSCRATCH must be set for a DTN download")
+        raise RuntimeError(message("manifest.scratch-required"))
     scratch_root = Path(scratch).expanduser().resolve(strict=False)
     cfs_root = Path("/global/cfs/cdirs")
     default = scratch_root / "pcdf-rucio"
     while True:
         destination = Path(
-            ask_path("Download directory", str(default))
+            ask_path(message("manifest.download-dir-prompt"), str(default))
         ).expanduser().resolve(strict=False)
         in_scratch = destination.is_relative_to(scratch_root)
         in_project_cfs = destination != cfs_root and destination.is_relative_to(cfs_root)
         if in_scratch or in_project_cfs:
             return destination
-        Console().print(
-            f"[red]Use a directory below {scratch_root} or {cfs_root}.[/red]"
-        )
+        Console().print(message("manifest.download-dir-error", SCRATCH=scratch_root, PROJECT=cfs_root))
 
 
 def dtn_path(path: Path) -> Path:
@@ -401,17 +391,17 @@ def download_rucio_on_dtn(
     try:
         result = subprocess.run(["ssh", "-t", host, remote_command], check=False)
     except OSError as error:
-        raise RuntimeError(f"could not start SSH for {host}: {error}") from error
+        raise RuntimeError(message("manifest.ssh-failed", HOST=host, ERROR=error)) from error
     if result.returncode:
-        raise RuntimeError(f"the Rucio download on {host} failed")
+        raise RuntimeError(message("manifest.download-failed", HOST=host))
 
 
 def prompt_directory(console: Console) -> Path:
     while True:
-        root = Path(ask_path("Downloaded-data directory", ".")).expanduser()
+        root = Path(ask_path(message("manifest.data-dir-prompt"), ".")).expanduser()
         if root.is_dir():
             return root
-        console.print(f"[red]Not a directory:[/red] {root}")
+        console.print(message("manifest.not-a-directory", PATH=root))
 
 
 def local_files(root: Path) -> list[Path]:
@@ -432,7 +422,7 @@ def rucio_replica_paths(did: str) -> list[Path]:
     try:
         from rucio.client import Client
     except ImportError as error:
-        raise RuntimeError("the Rucio Python client is unavailable. Run this bundled script with uv") from error
+        raise RuntimeError(message("manifest.rucio-client-missing")) from error
 
     paths: list[Path] = []
     scope, name = did.split(":", 1)
@@ -451,15 +441,15 @@ def rucio_replica_paths(did: str) -> list[Path]:
                     if local_path not in paths:
                         paths.append(local_path)
     except Exception as error:
-        raise RuntimeError(f"Rucio lookup failed: {error}") from error
+        raise RuntimeError(message("manifest.lookup-failed", ERROR=error)) from error
     if not paths:
-        raise RuntimeError("Rucio returned no replica paths at NERSC_LOCALGROUPDISK")
+        raise RuntimeError(message("manifest.no-replicas"))
     return sorted(paths)
 
 
 def write_manifest(paths: list[Path], output: Path) -> None:
     if not paths:
-        raise RuntimeError("no usable local ROOT files were found. The manifest was not written")
+        raise RuntimeError(message("manifest.no-files"))
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile("w", delete=False, dir=output.parent) as temporary:
         temporary.writelines(f"{path}\n" for path in paths)
@@ -468,7 +458,7 @@ def write_manifest(paths: list[Path], output: Path) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=message("manifest.description"))
     parser.add_argument("--scheduler", choices=("slurm", "condor"), default="slurm")
     return parser.parse_args()
 
@@ -476,57 +466,53 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     console = Console()
-    console.print(Panel(
-        "Prepare DAOD files before submission. Batch workers read the manifest "
-        "and never download data themselves.",
-        title="PCDF input manifest",
-    ))
+    console.print(Panel(message("manifest.intro"), title=message("manifest.intro-title")))
     choices = Table(show_header=True, header_style="bold", box=None)
-    choices.add_column("Option", style="bold cyan", no_wrap=True)
-    choices.add_column("Use when")
-    choices.add_row("1", "You used rucio download and have the files in a directory.")
+    choices.add_column(message("manifest.column-option"), style="bold cyan", no_wrap=True)
+    choices.add_column(message("manifest.column-use"))
+    choices.add_row("1", message("manifest.option-local"))
     source_choices = ["1"]
     hidden: list[str] = []
     unavailable = rucio_sources_unavailable()
     if unavailable is None:
-        choices.add_row("2", "The dataset is already copied to NERSC_LOCALGROUPDISK.")
+        choices.add_row("2", message("manifest.option-replicas"))
         source_choices.append("2")
     else:
-        hidden.append(f"option 2: {unavailable}")
+        hidden.append(message("manifest.hidden-option-2", REASON=unavailable))
     if args.scheduler == "slurm":
         if grid_tool("voms-proxy-init") and shutil.which("ssh"):
-            choices.add_row("3", "Download a Rucio dataset on a NERSC DTN before SLURM submission.")
+            choices.add_row("3", message("manifest.option-dtn"))
             source_choices.append("3")
         else:
-            hidden.append("option 3: voms-proxy-init or ssh was not found")
+            hidden.append(message("manifest.hidden-option-3"))
     console.print(choices)
     if hidden:
-        console.print(f"[dim]Hidden Rucio sources, {'; '.join(hidden)}.[/dim]")
-    source = Prompt.ask("Choose an input source", choices=source_choices, default="1")
+        console.print(message("manifest.hidden-sources", REASONS="; ".join(hidden)))
+    source = Prompt.ask(message("manifest.source-prompt"), choices=source_choices, default="1")
     try:
         if source == "1":
             root = prompt_directory(console)
         elif source == "2":
-            did = validate_did(prompt_nonempty("Dataset DID (scope:name)"))
+            did = validate_did(prompt_nonempty(message("manifest.did-prompt")))
             configure_rucio(console)
         else:
-            did = validate_did(prompt_nonempty("Dataset DID (scope:name)"))
-            rucio_account = prompt_nonempty("Rucio account", os.environ.get("RUCIO_ACCOUNT"))
-            host = Prompt.ask("NERSC DTN", choices=list(DTN_HOSTS), default=DTN_HOSTS[0])
+            did = validate_did(prompt_nonempty(message("manifest.did-prompt")))
+            rucio_account = prompt_nonempty(message("manifest.account-prompt"), os.environ.get("RUCIO_ACCOUNT"))
+            host = Prompt.ask(message("manifest.dtn-prompt"), choices=list(DTN_HOSTS), default=DTN_HOSTS[0])
             root = prompt_download_directory()
             requested_validity, minimum_seconds = prompt_proxy_validity()
             proxy = ensure_shared_x509_proxy(console, requested_validity, minimum_seconds)
             download_rucio_on_dtn(did, rucio_account, host, root, proxy)
-        output = Path(ask_path("Manifest path", "pcdf-inputs.txt")).expanduser()
+        output = Path(ask_path(message("manifest.path-prompt"), "pcdf-inputs.txt")).expanduser()
         if source in {"1", "3"}:
             paths = local_files(root)
         else:
             paths = rucio_replica_paths(did)
         write_manifest(paths, output)
     except RuntimeError as error:
-        console.print(f"[red]Manifest not written:[/red] {error}")
+        console.print(message("manifest.not-written", REASON=error))
         return 2
-    console.print(f"[green]Wrote {len(paths)} local paths to {output}.[/green]")
+    console.print(message("manifest.wrote", COUNT=len(paths), PATH=output))
     return 0
 
 

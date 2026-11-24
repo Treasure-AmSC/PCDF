@@ -3,11 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["rich"]
 # ///
-"""Create a manifest, submit the configured PCDF job, and follow its state.
-
-An HTCondor bundle can also run its conversions on this machine. That happens
-when condor_submit is unavailable or when --local is given.
-"""
+"""Launcher for a generated PCDF bundle. The text it shows is in MESSAGES."""
 
 from __future__ import annotations
 
@@ -27,6 +23,14 @@ from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, IntPrompt
 from rich.traceback import install as install_rich_traceback
+
+
+MESSAGES = {{MESSAGES:common}} | {{MESSAGES:runner}}
+
+
+def message(key: str, **values: object) -> str:
+    """Return a user-facing message, filling in each double-brace placeholder from values."""
+    return re.sub(r"{{([A-Z0-9_]+)}}", lambda match: str(values.get(match.group(1), match.group(0))), MESSAGES[key])
 
 
 CODE_DIRECTORY = Path(__file__).resolve().parent
@@ -56,7 +60,7 @@ def command_output(command: list[str]) -> subprocess.CompletedProcess[str]:
             cwd=BUNDLE_DIRECTORY,
         )
     except FileNotFoundError as error:
-        raise RuntimeError(f"Required command not found: {command[0]}") from error
+        raise RuntimeError(message("runner.command-not-found", COMMAND=command[0])) from error
 
 
 @dataclass(frozen=True)
@@ -72,11 +76,11 @@ class Scheduler:
             result = command_output(["condor_submit", "-terse", str(self.submit_file)])
             pattern = r"^\s*(\d+)\."
         if result.returncode:
-            message = result.stderr.strip() or result.stdout.strip() or "no error details were reported"
-            raise RuntimeError(f"Submission failed: {message}")
+            message = result.stderr.strip() or result.stdout.strip() or message("runner.no-error-details")
+            raise RuntimeError(message("runner.submission-failed", DETAIL=message))
         match = re.search(pattern, result.stdout)
         if not match:
-            raise RuntimeError(f"Could not read a job ID from submission output: {result.stdout.strip()}")
+            raise RuntimeError(message("runner.no-job-id", OUTPUT=result.stdout.strip()))
         return match.group(1)
 
 
@@ -85,14 +89,14 @@ def configured_scheduler() -> Scheduler:
     configured = [scheduler for scheduler in available if scheduler.submit_file.is_file()]
     if len(configured) != 1:
         names = ", ".join(path.name for path in (SLURM_SCRIPT, CONDOR_SUBMIT_FILE))
-        raise RuntimeError(f"The bundle must contain exactly one scheduler file: {names}")
+        raise RuntimeError(message("runner.one-scheduler-file", NAMES=names))
     return configured[0]
 
 
 def slurm_queued_state(job_id: str) -> tuple[str, str] | None:
     result = command_output(["squeue", "--noheader", f"--jobs={job_id}", "--format=%T|%R"])
     if result.returncode:
-        raise RuntimeError(f"Could not query SLURM: {result.stderr.strip() or 'no error details were reported'}")
+        raise RuntimeError(message("runner.slurm-query-failed", DETAIL=result.stderr.strip() or message("runner.no-error-details")))
     line = next((line for line in result.stdout.splitlines() if line.strip()), "")
     if not line:
         return None
@@ -106,7 +110,7 @@ def slurm_completed_state(job_id: str) -> tuple[str, str] | None:
         "--format=JobIDRaw,State,ExitCode",
     ])
     if result.returncode:
-        raise RuntimeError(f"Could not read SLURM accounting: {result.stderr.strip() or 'no error details were reported'}")
+        raise RuntimeError(message("runner.slurm-accounting-failed", DETAIL=result.stderr.strip() or message("runner.no-error-details")))
     for line in result.stdout.splitlines():
         fields = line.split("|")
         if len(fields) >= 3 and fields[0] == job_id:
@@ -117,15 +121,15 @@ def slurm_completed_state(job_id: str) -> tuple[str, str] | None:
 def condor_rows(command: str, job_id: str, attributes: list[str]) -> list[list[str]]:
     result = command_output([command, job_id, "-af", *attributes])
     if result.returncode:
-        message = result.stderr.strip() or "no error details were reported"
-        raise RuntimeError(f"Could not query HTCondor: {message}")
+        message = result.stderr.strip() or message("runner.no-error-details")
+        raise RuntimeError(message("runner.condor-query-failed", DETAIL=message))
     return [line.split(None, len(attributes) - 1) for line in result.stdout.splitlines() if line.strip()]
 
 
 def count_condor_states(rows: list[list[str]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in rows:
-        name = CONDOR_STATUS_NAMES.get(row[0], f"state {row[0]}")
+        name = CONDOR_STATUS_NAMES.get(row[0], message("runner.condor-unknown-state", CODE=row[0]))
         counts[name] = counts.get(name, 0) + 1
     return counts
 
@@ -140,10 +144,10 @@ def progress_context(console: Console, scheduler_name: str, job_id: str):
         console=console, transient=False,
     )
     progress.start()
-    progress.add_task("Input manifest is ready", total=1, completed=1)
-    progress.add_task(f"Submitted {scheduler_name} job {job_id}", total=1, completed=1)
-    start_task = progress.add_task("Waiting for work to start", total=None)
-    finish_task = progress.add_task("Waiting for work to finish", total=None)
+    progress.add_task(message("runner.manifest-ready"), total=1, completed=1)
+    progress.add_task(message("runner.submitted", SCHEDULER=scheduler_name, JOB=job_id), total=1, completed=1)
+    start_task = progress.add_task(message("runner.waiting-start"), total=None)
+    finish_task = progress.add_task(message("runner.waiting-finish"), total=None)
     return progress, start_task, finish_task
 
 
@@ -157,29 +161,29 @@ def wait_for_slurm(console: Console, job_id: str) -> None:
                 state, detail = queued
                 if state == "RUNNING":
                     if not started:
-                        progress.update(start_task, completed=1, total=1, description="Job has started")
+                        progress.update(start_task, completed=1, total=1, description=message("runner.job-started"))
                         started = True
-                    progress.update(finish_task, description=f"Job is running ({detail or 'no location reported'})")
+                    progress.update(finish_task, description=message("runner.job-running", DETAIL=detail or message("runner.no-location")))
                 else:
-                    progress.update(start_task, description=f"Job is {state.lower()} ({detail or 'no reason reported'})")
+                    progress.update(start_task, description=message("runner.job-pending", STATE=state.lower(), DETAIL=detail or message("runner.no-reason")))
                 time.sleep(POLL_SECONDS)
                 continue
             accounting = slurm_completed_state(job_id)
             if accounting is None:
-                progress.update(finish_task, description="Job left the queue. Waiting for SLURM accounting.")
+                progress.update(finish_task, description=message("runner.left-queue-accounting"))
                 time.sleep(POLL_SECONDS)
                 continue
             state, exit_code = accounting
             if not started:
-                progress.update(start_task, completed=1, total=1, description="Job left the queue")
+                progress.update(start_task, completed=1, total=1, description=message("runner.left-queue"))
             if state not in SLURM_TERMINAL_STATES:
-                progress.update(finish_task, description=f"Job state is {state.lower()}")
+                progress.update(finish_task, description=message("runner.job-state", STATE=state.lower()))
                 time.sleep(POLL_SECONDS)
                 continue
             if state == "COMPLETED" and exit_code.startswith("0:"):
-                progress.update(finish_task, completed=1, total=1, description="Job completed successfully")
+                progress.update(finish_task, completed=1, total=1, description=message("runner.job-completed"))
                 return
-            raise RuntimeError(f"SLURM job {job_id} ended with {state} ({exit_code})")
+            raise RuntimeError(message("runner.slurm-ended", JOB=job_id, STATE=state, EXIT=exit_code))
     finally:
         progress.stop()
 
@@ -194,28 +198,28 @@ def wait_for_condor(console: Console, job_id: str) -> None:
                 counts = count_condor_states(active)
                 if counts.get("held"):
                     reasons = sorted({" ".join(row[1:]) for row in active if row[0] == "5" and len(row) > 1})
-                    detail = reasons[0] if reasons else "no hold reason was reported"
-                    raise RuntimeError(f"HTCondor cluster {job_id} has held jobs: {detail}")
+                    detail = reasons[0] if reasons else message("runner.no-hold-reason")
+                    raise RuntimeError(message("runner.condor-held", JOB=job_id, DETAIL=detail))
                 if counts.get("running") or counts.get("transferring output"):
                     if not started:
-                        progress.update(start_task, completed=1, total=1, description="At least one job has started")
+                        progress.update(start_task, completed=1, total=1, description=message("runner.any-started"))
                         started = True
-                    progress.update(finish_task, description=f"Cluster is active ({state_summary(counts)})")
+                    progress.update(finish_task, description=message("runner.cluster-active", SUMMARY=state_summary(counts)))
                 else:
-                    progress.update(start_task, description=f"Cluster is waiting ({state_summary(counts)})")
+                    progress.update(start_task, description=message("runner.cluster-waiting", SUMMARY=state_summary(counts)))
                 time.sleep(POLL_SECONDS)
                 continue
             history = condor_rows("condor_history", job_id, ["JobStatus", "ExitCode"])
             if not history:
-                progress.update(finish_task, description="Cluster left the queue. Waiting for HTCondor history.")
+                progress.update(finish_task, description=message("runner.cluster-left-history"))
                 time.sleep(POLL_SECONDS)
                 continue
             if not started:
-                progress.update(start_task, completed=1, total=1, description="Cluster left the queue")
+                progress.update(start_task, completed=1, total=1, description=message("runner.cluster-left"))
             failed = [row for row in history if row[0] != "4" or len(row) < 2 or row[1] != "0"]
             if failed:
-                raise RuntimeError(f"HTCondor cluster {job_id} finished with {len(failed)} failed job(s)")
-            progress.update(finish_task, completed=1, total=1, description=f"All {len(history)} jobs completed successfully")
+                raise RuntimeError(message("runner.condor-failed", JOB=job_id, COUNT=len(failed)))
+            progress.update(finish_task, completed=1, total=1, description=message("runner.condor-all-done", COUNT=len(history)))
             return
     finally:
         progress.stop()
@@ -246,11 +250,11 @@ def local_run_settings() -> LocalRun:
         if queue:
             manifest = shlex.split(queue.group(1))[0]
     if not arguments or len(arguments) != 4 or manifest is None:
-        raise RuntimeError(f"{CONDOR_SUBMIT_FILE.name} has no usable arguments or queue line")
+        raise RuntimeError(message("runner.bad-submit-file", FILE=CONDOR_SUBMIT_FILE.name))
     try:
         cpus_per_file = int(arguments[3])
     except ValueError as error:
-        raise RuntimeError(f"{CONDOR_SUBMIT_FILE.name} has a non-integer CPU count: {arguments[3]}") from error
+        raise RuntimeError(message("runner.bad-cpu-count", FILE=CONDOR_SUBMIT_FILE.name, VALUE=arguments[3])) from error
     return LocalRun(BUNDLE_DIRECTORY / manifest, arguments[1], arguments[2], max(1, cpus_per_file))
 
 
@@ -264,26 +268,26 @@ def available_cpus() -> int:
 def run_locally(console: Console, settings: LocalRun) -> None:
     """Run one conversion per manifest entry on this machine and wait for all of them."""
     if not settings.manifest.is_file():
-        raise RuntimeError(f"The input manifest is missing: {settings.manifest}")
+        raise RuntimeError(message("runner.manifest-missing", PATH=settings.manifest))
     inputs = [line.strip() for line in settings.manifest.read_text().splitlines() if line.strip()]
     if not inputs:
-        raise RuntimeError(f"The input manifest contains no work: {settings.manifest}")
+        raise RuntimeError(message("runner.manifest-no-work", PATH=settings.manifest))
     if shutil.which("uv") is None:
-        raise RuntimeError("uv is not on PATH")
+        raise RuntimeError(message("runner.no-uv"))
 
     default_workers = max(1, min(len(inputs), available_cpus() // settings.cpus_per_file))
     workers = IntPrompt.ask(
-        f"Conversions to run at once ({settings.cpus_per_file} CPU core(s) each)",
+        message("runner.workers-prompt", CORES=settings.cpus_per_file),
         default=default_workers,
     )
     workers = max(1, min(workers, len(inputs)))
 
     # Build the converter's environment once, so parallel runs do not all
     # resolve the same dependencies at the same time.
-    console.print("Preparing the Python environment.")
+    console.print(message("common.preparing-environment"))
     prepared = command_output(["uv", "run", settings.python_script, "--help"])
     if prepared.returncode:
-        raise RuntimeError(f"Could not prepare the converter: {prepared.stderr.strip() or prepared.stdout.strip()}")
+        raise RuntimeError(message("runner.prepare-failed", DETAIL=prepared.stderr.strip() or prepared.stdout.strip()))
 
     logs = BUNDLE_DIRECTORY / "logs"
     logs.mkdir(exist_ok=True)
@@ -310,7 +314,7 @@ def run_locally(console: Console, settings: LocalRun) -> None:
         console=console, transient=False,
     )
     with progress, ThreadPoolExecutor(max_workers=workers) as pool:
-        task = progress.add_task(f"Converting with {workers} at once", total=len(inputs))
+        task = progress.add_task(message("runner.converting", WORKERS=workers), total=len(inputs))
         futures = [pool.submit(convert, number, path) for number, path in enumerate(inputs)]
         try:
             for future in as_completed(futures):
@@ -323,17 +327,17 @@ def run_locally(console: Console, settings: LocalRun) -> None:
             # process group. Drop the conversions that have not started.
             pool.shutdown(wait=True, cancel_futures=True)
             raise
-    console.print(f"Logs: {logs}/pcdf-ntuple-local-{stamp}.<n>.out and .err")
+    console.print(message("runner.logs-location", LOGS=logs, STAMP=stamp))
     if failed:
-        raise RuntimeError(f"{len(failed)} of {len(inputs)} conversions failed, for example entry {min(failed)}")
+        raise RuntimeError(message("runner.some-failed", FAILED=len(failed), TOTAL=len(inputs), FIRST=min(failed)))
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=message("runner.description"))
     parser.add_argument(
         "--local",
         action="store_true",
-        help="run an HTCondor bundle's conversions on this machine instead of submitting them",
+        help=message("runner.help-local"),
     )
     return parser.parse_args()
 
@@ -341,26 +345,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     console = Console()
-    console.print(Panel(
-        "This launcher creates the input manifest, submits the prepared batch "
-        "job, then follows it until all work finishes. Stopping this launcher "
-        "with Ctrl+C does not cancel submitted work.",
-        title="PCDF job workflow",
-    ))
+    console.print(Panel(message("runner.intro"), title=message("runner.intro-title")))
     try:
         scheduler = configured_scheduler()
     except RuntimeError as error:
-        console.print(f"[red]Workflow not started:[/red] {error}")
+        console.print(message("runner.not-started", REASON=error))
         return 2
     run_here = scheduler.name == "HTCondor" and (args.local or shutil.which("condor_submit") is None)
     if args.local and scheduler.name != "HTCondor":
-        console.print("[red]Workflow not started:[/red] --local works only with an HTCondor bundle.")
+        console.print(message("runner.not-started", REASON=message("runner.local-condor-only")))
         return 2
     if not MANIFEST_HELPER.is_file():
-        console.print("[red]Workflow not started:[/red] make-manifest.py is missing.")
+        console.print(message("runner.not-started", REASON=message("runner.helper-missing")))
         return 2
 
-    console.print("[bold]1. Create the input manifest[/bold]")
+    console.print(message("runner.step-manifest"))
     for directory in ("input", "logs"):
         (BUNDLE_DIRECTORY / directory).mkdir(exist_ok=True)
     manifest_scheduler = "condor" if scheduler.name == "HTCondor" else "slurm"
@@ -370,48 +369,45 @@ def main() -> int:
         cwd=BUNDLE_DIRECTORY,
     )
     if manifest_result.returncode:
-        console.print("[red]Workflow stopped:[/red] the manifest was not created.")
+        console.print(message("runner.manifest-not-created"))
         return manifest_result.returncode
 
     if run_here:
         if not args.local:
-            console.print("condor_submit was not found, so the conversions can run on this machine instead.")
-        if not Confirm.ask("Run the conversions on this machine now", default=False):
-            console.print("The manifest is ready. Nothing was run.")
+            console.print(message("runner.no-condor-submit"))
+        if not Confirm.ask(message("runner.run-here-prompt"), default=False):
+            console.print(message("runner.nothing-run"))
             return 0
         try:
-            console.print("[bold]2. Running the conversions on this machine[/bold]")
+            console.print(message("runner.step-local"))
             run_locally(console, local_run_settings())
         except RuntimeError as error:
-            console.print(f"[red]Workflow stopped:[/red] {error}")
+            console.print(message("runner.workflow-stopped", REASON=error))
             return 2
         except KeyboardInterrupt:
-            console.print(
-                "\nLocal run stopped. Rerun to finish: files whose output "
-                "partitions are complete are skipped."
-            )
+            console.print("\n" + message("runner.local-interrupted"))
             return 130
-        console.print("[green]All PCDF conversions completed successfully on this machine.[/green]")
+        console.print(message("runner.local-done"))
         return 0
 
-    if not Confirm.ask(f"Submit {scheduler.submit_file.name} now", default=False):
-        console.print("The manifest is ready. The job was not submitted.")
+    if not Confirm.ask(message("runner.submit-prompt", FILE=scheduler.submit_file.name), default=False):
+        console.print(message("runner.not-submitted"))
         return 0
     job_id = ""
     try:
         job_id = scheduler.submit()
-        console.print(f"[bold]2. Submitted {scheduler.name} job {job_id}[/bold]")
+        console.print(message("runner.step-submitted", SCHEDULER=scheduler.name, JOB=job_id))
         if scheduler.name == "SLURM":
             wait_for_slurm(console, job_id)
         else:
             wait_for_condor(console, job_id)
     except RuntimeError as error:
-        console.print(f"[red]Workflow stopped:[/red] {error}")
+        console.print(message("runner.workflow-stopped", REASON=error))
         return 2
     except KeyboardInterrupt:
-        console.print(f"\nMonitoring stopped. Job {job_id} remains under {scheduler.name} control.")
+        console.print("\n" + message("runner.monitoring-stopped", JOB=job_id, SCHEDULER=scheduler.name))
         return 130
-    console.print(f"[green]PCDF {scheduler.name} job {job_id} completed successfully.[/green]")
+    console.print(message("runner.job-done", SCHEDULER=scheduler.name, JOB=job_id))
     return 0
 
 

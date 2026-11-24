@@ -32,12 +32,12 @@ needs_edit=0
 [[ "$INPUT_MANIFEST" == *"<"* ]] && needs_edit=1
 [[ "$OUTPUT_BASE" == *"<"* ]] && needs_edit=1
 if (( needs_edit )); then
-    echo "ERROR: replace the placeholder values for the account, input manifest, and output directory." >&2
+    echo "{{@shell.slurm-needs-edit}}" >&2
     exit 2
 fi
 
 if [[ -n "${PCDF_ALLOW_COMPUTE_DOWNLOAD:-}" ]]; then
-    echo "WARNING: PCDF_ALLOW_COMPUTE_DOWNLOAD is ignored because compute-node downloads are disabled." >&2
+    echo "{{@shell.slurm-download-ignored}}" >&2
 fi
 
 mkdir -p "$OUTPUT_BASE" "$RUN_DIR"
@@ -45,29 +45,29 @@ cleanup_run_dir() {
     if [[ -z "${PCDF_KEEP_RUN_DIR:-}" && -d "$RUN_DIR" ]]; then
         rm -rf "$RUN_DIR"
     else
-        echo "Keeping generated job helpers in $RUN_DIR"
+        echo "{{@shell.slurm-keeping-helpers}}"
     fi
 }
 trap cleanup_run_dir EXIT
 
 if [[ ! -s "$INPUT_MANIFEST" ]]; then
-    echo "ERROR: missing or empty input manifest: $INPUT_MANIFEST" >&2
-    echo "Create the manifest before submitting this compute job." >&2
+    echo "{{@shell.slurm-no-manifest}}" >&2
+    echo "{{@shell.slurm-create-manifest}}" >&2
     exit 2
 fi
 
 if ! command -v uv >/dev/null 2>&1; then
-    echo "ERROR: uv is not on PATH. Load it before submitting the job." >&2
+    echo "{{@shell.slurm-no-uv}}" >&2
     exit 2
 fi
 
 if ! command -v parallel >/dev/null 2>&1; then
-    echo "ERROR: GNU parallel is not on PATH." >&2
+    echo "{{@shell.slurm-no-parallel}}" >&2
     exit 2
 fi
 
 if (( CONVERTER_CPUS_PER_CONVERSION < 1 )); then
-    echo "ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1." >&2
+    echo "{{@shell.slurm-bad-cpus}}" >&2
     exit 2
 fi
 
@@ -95,7 +95,7 @@ physical_cores_on_node() {
 }
 
 export UV_CACHE_DIR="${SCRATCH:-$HOME}/.cache/uv"
-echo "Preparing the Python environment."
+echo "{{@common.preparing-environment}}"
 uv run "$PYTHON_SCRIPT" --help >/dev/null
 
 PAYLOAD_SCRIPT="$RUN_DIR/convert-${SLURM_JOB_ID}.sh"
@@ -112,7 +112,7 @@ export OPENBLAS_NUM_THREADS="$CPUS_PER_CONVERSION"
 export MKL_NUM_THREADS="$CPUS_PER_CONVERSION"
 export NUMEXPR_NUM_THREADS="$CPUS_PER_CONVERSION"
 export VECLIB_MAXIMUM_THREADS="$CPUS_PER_CONVERSION"
-echo "Task ${TASK_ID}: $INPUT_FILE -> $OUTPUT_BASE"
+echo "{{@shell.slurm-task}}"
 uv run --no-sync \
     "$PYTHON_SCRIPT" \
     "$INPUT_FILE" \
@@ -136,20 +136,19 @@ awk \
 
 NODE_WORK=$(wc -l < "$NODE_MANIFEST")
 if (( NODE_WORK == 0 )); then
-    echo "Node ${SLURM_NODEID}: no input files were assigned. This node has no work to do."
+    echo "{{@shell.slurm-no-node-work}}"
     exit 0
 fi
 
 PHYSICAL_CORES=$(physical_cores_on_node)
 if (( PHYSICAL_CORES < 1 )); then
-    echo "ERROR: could not determine the number of physical CPU cores on this node." >&2
+    echo "{{@shell.slurm-no-cores}}" >&2
     exit 2
 fi
 
 JOBS_ON_NODE=$((PHYSICAL_CORES / CPUS_PER_CONVERSION))
 if (( JOBS_ON_NODE < 1 )); then
-    echo "ERROR: the requested ${CPUS_PER_CONVERSION} CPUs per conversion exceed" >&2
-    echo "the ${PHYSICAL_CORES} physical cores available on this node." >&2
+    echo "{{@shell.slurm-too-many-cpus}}" >&2
     exit 2
 fi
 if (( JOBS_ON_NODE > NODE_WORK )); then
@@ -163,8 +162,7 @@ export MKL_NUM_THREADS="$CPUS_PER_CONVERSION"
 export NUMEXPR_NUM_THREADS="$CPUS_PER_CONVERSION"
 export VECLIB_MAXIMUM_THREADS="$CPUS_PER_CONVERSION"
 
-echo "Node ${SLURM_NODEID}: assigned files: ${NODE_WORK}, physical cores:" \
-     "${PHYSICAL_CORES}, concurrent conversions: ${JOBS_ON_NODE}."
+echo "{{@shell.slurm-node-summary}}"
 
 parallel \
     --colsep "	" \
@@ -183,7 +181,7 @@ export PERLMUTTER_PHYSICAL_CORES
 export -f physical_cores_on_node
 
 if (( TOTAL_WORK == 0 )); then
-    echo "ERROR: input manifest contains no work." >&2
+    echo "{{@shell.slurm-empty-manifest}}" >&2
     exit 2
 fi
 
@@ -192,16 +190,14 @@ if (( MAX_CONCURRENT > TOTAL_WORK )); then
     MAX_CONCURRENT="$TOTAL_WORK"
 fi
 
-echo "Exclusive CPU nodes: ${SLURM_NNODES}"
-echo "Node list:      ${SLURM_JOB_NODELIST:-unknown}"
-echo "Input manifest: $INPUT_MANIFEST"
-echo "Input files:    $TOTAL_WORK"
-echo "Output dataset: $OUTPUT_BASE"
-echo "Run helpers:    $RUN_DIR"
-echo "CPU topology:   ${PERLMUTTER_PHYSICAL_CORES} physical cores /" \
-     "${PERLMUTTER_LOGICAL_CPUS} logical CPUs per Perlmutter CPU node"
-echo "Conversions:    up to ${MAX_CONCURRENT} at once, using" \
-     "${CPUS_PER_CONVERSION} physical cores each"
+echo "{{@shell.slurm-nodes}}"
+echo "{{@shell.slurm-node-list}}"
+echo "{{@shell.slurm-manifest}}"
+echo "{{@shell.slurm-files}}"
+echo "{{@shell.slurm-output}}"
+echo "{{@shell.slurm-helpers}}"
+echo "{{@shell.slurm-topology}}"
+echo "{{@shell.slurm-concurrency}}"
 
 srun \
     --no-kill \

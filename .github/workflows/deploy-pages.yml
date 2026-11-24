@@ -27,14 +27,12 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v6
 
-      - name: Prepare the static site
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.4.0
+
+      - name: Build the static site
         run: |
-          mkdir -p _site/templates _site/assets
-          cp ATLAS/ntuple-wizard.html _site/index.html
-          cp ATLAS/ntuple-wizard.css ATLAS/ntuple-wizard.js _site/
-          cp ATLAS/ntuple-wizard.objects.json _site/
-          cp -R ATLAS/templates/. _site/templates/
-          cp -R ATLAS/assets/. _site/assets/
+          uv run ATLAS/build_site.py _site
           touch _site/.nojekyll
 
       - name: Configure GitHub Pages

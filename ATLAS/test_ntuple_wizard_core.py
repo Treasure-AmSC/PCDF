@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -15,8 +16,113 @@ from ntuple_wizard_core import (
     WizardState,
     build_condor,
     build_python,
+    build_readme,
+    render_bundle_template,
     write_bundle,
 )
+from build_site import TEMPLATE_IDS, build_site, render_wizard_html, runtime_text
+from wizard_text import catalog, parse_catalog, wizard_text
+
+
+_RENDERED = tempfile.TemporaryDirectory()
+unittest.addModuleCleanup(_RENDERED.cleanup)
+
+
+def rendered_script(name: str) -> Path:
+    """Return a script from templates/ filled in the way the wizards fill it in."""
+    target = Path(_RENDERED.name) / name
+    if not target.exists():
+        target.write_text(render_bundle_template(name))
+    return target
+
+
+class WizardPageTest(unittest.TestCase):
+    ATLAS_DIR = Path(__file__).parent
+
+    def test_page_keys_all_exist_in_the_catalog(self) -> None:
+        source = (self.ATLAS_DIR / "ntuple-wizard.html.j2").read_text()
+        used = set(re.findall(r"\bt\('([a-z0-9.-]+)'", source))
+        self.assertTrue(used)
+        self.assertEqual(sorted(used - set(catalog())), [])
+
+    def test_rendered_page_is_complete_and_makes_no_requests(self) -> None:
+        html = render_wizard_html()
+        outside_scripts = re.sub(r"<script.*?</script>", "", html, flags=re.S)
+        self.assertNotIn("{{", outside_scripts)
+        self.assertIn("SLURM on NERSC Perlmutter</option>", html)
+        for name in TEMPLATE_IDS:
+            self.assertIn(f'id="template-{name}"', html)
+        for element_id in ("object-config", "wizard-text"):
+            self.assertIn(f'id="{element_id}"', html)
+        script = (self.ATLAS_DIR / "ntuple-wizard.js").read_text()
+        self.assertNotIn("fetch(", script)
+
+    def test_only_runtime_entries_reach_the_browser(self) -> None:
+        html = render_wizard_html()
+        self.assertIn("bundle.section-slurm", html)
+        self.assertNotIn("field.qos-label", re.search(r'id="wizard-text">(.*?)</script>', html, re.S).group(1))
+
+    def test_every_key_the_script_uses_is_in_the_catalog_and_embedded(self) -> None:
+        script = (self.ATLAS_DIR / "ntuple-wizard.js").read_text()
+        keys = set(re.findall(r'wizard(?:Text|Html)\(\s*"([^"]+)"', script))
+        keys |= set(re.findall(r'"([a-z]+\.[a-z0-9-]+)"', script))
+        keys -= {"ntuple-wizard.objects.json"}
+        plural_bases = set(re.findall(r'pluralKey\(\s*"([^"]+)"', script))
+        for base in plural_bases:
+            keys.discard(base)
+            keys |= {f"{base}-one", f"{base}-many"}
+        self.assertTrue(keys)
+        embedded = runtime_text()
+        for key in sorted(keys):
+            with self.subTest(key=key):
+                self.assertIn(key, catalog())
+                self.assertIn(key, embedded)
+
+    def test_every_key_the_python_programs_use_is_in_the_catalog(self) -> None:
+        prefixes = {key.split(".")[0] for key in catalog()}
+        pattern = re.compile(r'"((?:%s)\.[a-z0-9.-]+)"' % "|".join(sorted(prefixes)))
+        for name in ("ntuple-wizard-tui.py", "ntuple_wizard_core.py"):
+            source = (self.ATLAS_DIR / name).read_text()
+            plural_bases = set(re.findall(r'plural_text\(\s*"([^"]+)"', source))
+            used = set(pattern.findall(source)) - plural_bases
+            for base in plural_bases:
+                used |= {f"{base}-one", f"{base}-many"}
+            for key in sorted(used):
+                with self.subTest(file=name, key=key):
+                    self.assertIn(key, catalog())
+
+    def test_every_catalog_reference_in_the_templates_exists_and_reaches_the_browser(self) -> None:
+        embedded = runtime_text()
+        for template in sorted((self.ATLAS_DIR / "templates").iterdir()):
+            source = template.read_text()
+            keys = set(re.findall(r"{{@([a-z0-9.-]+)}}", source))
+            keys |= set(re.findall(r'message\(\s*"([a-z]+\.[a-z0-9.-]+)"', source))
+            for prefix in re.findall(r"{{MESSAGES:([a-z]+)}}", source):
+                keys |= {key for key in catalog() if key.startswith(f"{prefix}.")}
+            for key in sorted(keys):
+                with self.subTest(template=template.name, key=key):
+                    self.assertIn(key, catalog())
+                    self.assertIn(key, embedded)
+
+    def test_rendered_bundle_scripts_have_no_placeholders_left(self) -> None:
+        for name in ("make-manifest.template.py", "run-pcdf.template.py", "run-pcdf.template.sh",
+                     "run-pcdf-condor-job.template.sh"):
+            with self.subTest(template=name):
+                text = render_bundle_template(name)
+                self.assertNotRegex(text, r"{{@|{{MESSAGES:")
+
+    def test_catalog_rejects_duplicate_keys(self) -> None:
+        with self.assertRaises(ValueError):
+            parse_catalog("@@ a\none\n@@ a\ntwo\n")
+
+    def test_build_writes_a_site_that_links_only_local_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            build_site(Path(temporary))
+            names = {path.name for path in Path(temporary).iterdir()}
+            self.assertEqual(names, {"index.html", "ntuple-wizard.css", "ntuple-wizard.js", "assets"})
+            page = (Path(temporary) / "index.html").read_text()
+            self.assertIn('href="ntuple-wizard.css"', page)
+            self.assertIn('src="ntuple-wizard.js"', page)
 
 
 class ManifestHelperTest(unittest.TestCase):
@@ -27,11 +133,11 @@ class ManifestHelperTest(unittest.TestCase):
         self.assertIn('aliases.pop("Const", None)', source)
 
     def test_directory_mode_writes_local_root_paths(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "download"
             root.mkdir()
-            input_file = root / "DAOD_JETM16.1.pool.root"
+            input_file = root / "DAOD_JETMOD1.1.pool.root"
             input_file.write_bytes(b"x" * 1025)
             manifest = Path(temporary) / "inputs.txt"
 
@@ -80,6 +186,25 @@ class ManifestHelperTest(unittest.TestCase):
 
             with tarfile.open(bundle) as archive:
                 self.assertNotIn("pcdf-ntuple/output/previous.parquet", archive.getnames())
+
+    def test_wizard_text_entries_are_present_and_filled(self) -> None:
+        for key in (
+            "bundle.format-note-physlite", "bundle.format-note-jetmod1", "bundle.sample-note-data",
+            "bundle.sample-note-simulation", "bundle.manifest-description-condor",
+            "bundle.manifest-description-slurm", "bundle.file-lines-condor", "bundle.file-lines-slurm",
+            "bundle.file-lines-workflow", "bundle.section-condor", "bundle.section-slurm", "bundle.section-no-batch",
+        ):
+            with self.subTest(key=key):
+                self.assertTrue(wizard_text(key).strip())
+        self.assertNotIn("{{", build_readme(WizardState(scheduler="condor")))
+
+    def test_readme_names_the_scheduler_files_and_separates_sections(self) -> None:
+        condor = build_readme(WizardState(scheduler="condor"))
+        slurm = build_readme(WizardState(scheduler="slurm"))
+        self.assertIn("code/run-pcdf-condor-job.sh", condor)
+        self.assertNotIn("code/run-pcdf-condor-job.sh", slurm)
+        self.assertIn("folder.\n\nHTCondor run\n", condor)
+        self.assertIn("folder.\n\nPerlmutter run\n", slurm)
 
     def test_bundle_ships_the_configured_output_directory(self) -> None:
         cases = {
@@ -137,7 +262,7 @@ class ManifestHelperTest(unittest.TestCase):
             inputs = temporary_path / "download"
             inputs.mkdir()
             for number in (1, 2):
-                (inputs / f"DAOD_JETM16.1._00000{number}.pool.root.1").write_bytes(b"x" * 1025)
+                (inputs / f"DAOD_JETMOD1.1._00000{number}.pool.root.1").write_bytes(b"x" * 1025)
 
             # A stand-in uv writes the manifest in place of the interactive
             # helper, which has its own tests, and records every other command
@@ -168,12 +293,12 @@ class ManifestHelperTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             calls = uv_log.read_text().splitlines()
-            self.assertIn("run ./code/ntuple-maker-jetm16.py --help", calls)
+            self.assertIn("run ./code/ntuple-maker-jetmod1.py --help", calls)
             conversions = sorted(call for call in calls if not call.endswith("--help"))
             self.assertEqual(
                 conversions,
                 [
-                    f"run ./code/ntuple-maker-jetm16.py {inputs}/DAOD_JETM16.1._00000{number}.pool.root.1 -o output"
+                    f"run ./code/ntuple-maker-jetmod1.py {inputs}/DAOD_JETMOD1.1._00000{number}.pool.root.1 -o output"
                     for number in (1, 2)
                 ],
             )
@@ -188,7 +313,7 @@ class ManifestHelperTest(unittest.TestCase):
         self.assertIn("request_memory = 2048 MB", submit_text)
 
     def test_rucio_mode_strips_the_proxy_from_replica_pfns(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             package = workspace / "rucio"
@@ -228,7 +353,7 @@ class ManifestHelperTest(unittest.TestCase):
             self.assertEqual(manifest.read_text(), "/global/cfs/cdirs/m1234/atlas/file.root\n")
 
     def test_rucio_mode_explains_how_to_create_a_missing_proxy(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             environment = {
                 "PYTHONDONTWRITEBYTECODE": "1",
@@ -250,7 +375,7 @@ class ManifestHelperTest(unittest.TestCase):
             self.assertNotIn("lsetup rucio", result.stdout)
 
     def test_rucio_mode_preserves_existing_authentication_configuration(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             package = workspace / "rucio"
@@ -285,7 +410,7 @@ class ManifestHelperTest(unittest.TestCase):
             self.assertEqual(manifest.read_text(), "/global/cfs/file.root\n")
 
     def test_rucio_mode_creates_a_proxy_with_a_child_scratch_directory(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             atlas_root = workspace / "atlas"
@@ -330,7 +455,7 @@ class ManifestHelperTest(unittest.TestCase):
             self.assertEqual(manifest.read_text(), "/global/cfs/file.root\n")
 
     def test_slurm_mode_can_download_a_dataset_through_a_dtn(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary)
             home = workspace / "home"
@@ -364,7 +489,7 @@ class ManifestHelperTest(unittest.TestCase):
             proxy_info.chmod(0o755)
 
             ssh_log = workspace / "ssh-arguments.txt"
-            downloaded = scratch / "pcdf-rucio" / "user.alice.dataset" / "DAOD_JETM16.test.pool.root"
+            downloaded = scratch / "pcdf-rucio" / "user.alice.dataset" / "DAOD_JETMOD1.test.pool.root"
             ssh = binary_directory / "ssh"
             ssh.write_text(
                 "#!/bin/sh\n"
@@ -415,11 +540,11 @@ class ManifestHelperTest(unittest.TestCase):
             self.assertIn(str(proxy), ssh_arguments)
 
     def test_condor_mode_does_not_offer_dtn_download(self) -> None:
-        helper = Path(__file__).parent / "templates" / "make-manifest.template.py"
+        helper = rendered_script("make-manifest.template.py")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "download"
             root.mkdir()
-            input_file = root / "DAOD_JETM16.1.pool.root"
+            input_file = root / "DAOD_JETMOD1.1.pool.root"
             input_file.write_bytes(b"x" * 1025)
             manifest = Path(temporary) / "inputs.txt"
 
