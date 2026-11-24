@@ -5,6 +5,12 @@
 # ]
 # ///
 
+"""Legacy hand-written JETMOD1 converter, kept for reference only.
+
+The wizards generate their converter from templates/ntuple-maker.template.py.
+This script has known bugs, so do not use it for production datasets.
+"""
+
 import uproot as up
 import awkward as ak
 import numpy as np
