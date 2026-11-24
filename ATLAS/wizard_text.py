@@ -14,6 +14,7 @@ from pathlib import Path
 
 CATALOG_PATH = Path(__file__).resolve().parent / "wizard-text.txt"
 PLACEHOLDER = re.compile(r"{{([A-Z0-9_]+)}}")
+KEY_PATTERN = re.compile(r"[a-z][a-z0-9.-]*")
 
 
 def parse_catalog(text: str) -> dict[str, str]:
@@ -23,6 +24,8 @@ def parse_catalog(text: str) -> dict[str, str]:
     for line in text.splitlines():
         if line.startswith("@@ "):
             key = line[3:].strip()
+            if not KEY_PATTERN.fullmatch(key):
+                raise ValueError(f"Invalid wizard text key: {key!r}")
             if key in entries:
                 raise ValueError(f"Duplicate wizard text key: {key}")
             entries[key] = []

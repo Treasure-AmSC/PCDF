@@ -111,9 +111,11 @@ class WizardPageTest(unittest.TestCase):
                 text = render_bundle_template(name)
                 self.assertNotRegex(text, r"{{@|{{MESSAGES:")
 
-    def test_catalog_rejects_duplicate_keys(self) -> None:
+    def test_catalog_rejects_duplicate_and_malformed_keys(self) -> None:
         with self.assertRaises(ValueError):
             parse_catalog("@@ a\none\n@@ a\ntwo\n")
+        with self.assertRaises(ValueError):
+            parse_catalog('@@ key" and runs to the next one\nbody\n')
 
     def test_build_writes_a_site_that_links_only_local_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

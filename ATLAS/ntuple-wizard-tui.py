@@ -200,9 +200,9 @@ class NtupleWizardTui(App[None]):
                                     yield Input(placeholder=wizard_text("field.requirements-placeholder"), id="condor_requirements")
                             with Collapsible(title=wizard_text("tui.advanced-paths-title"), collapsed=True, id="advanced_paths"):
                                 yield Label(wizard_text("field.output-label"), classes="field-label")
-                                yield Input(value=self.state_data.output_base, placeholder=wizard_text("field.output-placeholder"), id="output", validators=[Function(self.non_empty, wizard_text("field.output-error"))], validate_on=["blur", "submitted"])
-                                yield Label(wizard_text("field.manifest-label"), classes="field-label")
-                                yield Input(value=self.state_data.manifest, placeholder=wizard_text("field.manifest-placeholder"), id="manifest", validators=[Function(self.non_empty, wizard_text("field.manifest-error"))], validate_on=["blur", "submitted"])
+                                yield Input(value=self.state_data.output_base, placeholder=wizard_text("field.output-label"), id="output", validators=[Function(self.non_empty, wizard_text("field.output-error"))], validate_on=["blur", "submitted"])
+                                yield Label(wizard_text("common.input-manifest-path"), classes="field-label")
+                                yield Input(value=self.state_data.manifest, placeholder=wizard_text("common.input-manifest-path"), id="manifest", validators=[Function(self.non_empty, wizard_text("field.manifest-error"))], validate_on=["blur", "submitted"])
                             yield Static(wizard_text("tui.perlmutter-yes" if self.perlmutter else "tui.perlmutter-no"), classes="hint")
                         with VerticalScroll(classes="column"):
                             yield Static(wizard_text("tui.manifest-source-title"), classes="section-title")
@@ -281,14 +281,14 @@ class NtupleWizardTui(App[None]):
             for key, value in config["objects"].items()
         ]
         slurm_status = (
-            wizard_text(
+            plural_text(
                 "tui.summary-condor",
-                CORES=state.condor_cpus,
+                state.condor_cpus,
                 MEMORY=state.condor_memory_mb,
                 DISK=state.condor_disk_mb,
             )
             if state.scheduler == "condor"
-            else wizard_text("tui.summary-slurm", NODES=state.nodes, QOS=state.qos, TIME=state.time)
+            else plural_text("tui.summary-slurm", state.nodes, QOS=state.qos, TIME=state.time)
         )
         summary = "\n".join([
             wizard_text("tui.summary-input", FORMAT=state.input_format, SAMPLE=state.sample_type),
@@ -676,13 +676,13 @@ class NtupleWizardTui(App[None]):
         if result.stderr:
             self.log_message(result.stderr.strip())
         if result.returncode:
-            self.log_message(wizard_text("tui.submission-failed", CODE=result.returncode))
+            self.log_message(wizard_text("tui.submission-failed", COMMAND=command[0], CODE=result.returncode))
             return
         self.job_id = self.parse_condor_cluster_id(result.stdout) if self.state_data.scheduler == "condor" else self.parse_sbatch_job_id(result.stdout)
         if self.job_id:
             self.job_scheduler = self.state_data.scheduler
             self.set_job_log_paths()
-            scheduler_name = wizard_text("tui.scheduler-condor" if self.state_data.scheduler == "condor" else "tui.scheduler-slurm")
+            scheduler_name = wizard_text("term.htcondor" if self.state_data.scheduler == "condor" else "term.slurm")
             self.query_one("#job_status", Static).update(wizard_text("tui.submitted", SCHEDULER=scheduler_name, JOB=self.job_id))
             self.start_job_auto_refresh()
             self.refresh_job_status()
@@ -775,7 +775,7 @@ class NtupleWizardTui(App[None]):
             self.query_one("#job_status", Static).update(status)
             self.log_message(status)
         else:
-            scheduler = wizard_text("tui.scheduler-condor" if self.job_scheduler == "condor" else "tui.scheduler-slurm")
+            scheduler = wizard_text("term.htcondor" if self.job_scheduler == "condor" else "term.slurm")
             message = result.stderr.strip() or wizard_text("tui.job-gone", JOB=self.job_id, SCHEDULER=scheduler)
             self.query_one("#job_status", Static).update(message)
             self.log_message(message)

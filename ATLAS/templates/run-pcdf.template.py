@@ -163,9 +163,9 @@ def wait_for_slurm(console: Console, job_id: str) -> None:
                     if not started:
                         progress.update(start_task, completed=1, total=1, description=message("runner.job-started"))
                         started = True
-                    progress.update(finish_task, description=message("runner.job-running", DETAIL=detail or message("runner.no-location")))
+                    progress.update(finish_task, description=message("runner.job-running", DETAIL=detail or message("runner.none-reported")))
                 else:
-                    progress.update(start_task, description=message("runner.job-pending", STATE=state.lower(), DETAIL=detail or message("runner.no-reason")))
+                    progress.update(start_task, description=message("runner.job-pending", STATE=state.lower(), DETAIL=detail or message("runner.none-reported")))
                 time.sleep(POLL_SECONDS)
                 continue
             accounting = slurm_completed_state(job_id)
@@ -329,7 +329,14 @@ def run_locally(console: Console, settings: LocalRun) -> None:
             raise
     console.print(message("runner.logs-location", LOGS=logs, STAMP=stamp))
     if failed:
-        raise RuntimeError(message("runner.some-failed", FAILED=len(failed), TOTAL=len(inputs), FIRST=min(failed)))
+        first = min(failed)
+        raise RuntimeError(message(
+            "runner.some-failed",
+            FAILED=len(failed),
+            TOTAL=len(inputs),
+            LINE=first + 1,
+            LOG=f"{logs}/pcdf-ntuple-local-{stamp}.{first}.err",
+        ))
 
 
 def parse_args() -> argparse.Namespace:

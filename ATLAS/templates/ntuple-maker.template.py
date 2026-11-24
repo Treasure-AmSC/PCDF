@@ -341,7 +341,7 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
 
     event = arrays["Event"]
     if len(event) == 0:
-        raise click.ClickException(message("converter.no-events"))
+        raise click.ClickException(message("converter.no-events", INPUT=input))
 
     print(f"{POINT} {message('converter.read-events', COUNT=len(event))}")
     event_index = make_global_idx(

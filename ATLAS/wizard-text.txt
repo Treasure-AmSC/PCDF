@@ -14,16 +14,6 @@
 ##   shell.*, dtn.*             inserted into shell scripts one entry at a time
 ##                              ({{@key}}).
 
-@@ key" and runs to the next one. Blank lines
-## around an entry are not part of it. Lines that start with "##" are comments.
-## {{NAME}} marks a value that the program fills in.
-##
-## The page build embeds the entries the browser script uses: every "bundle."
-## entry, and any entry whose key appears as a quoted string in the script
-## (plus the "-one" and "-many" forms of a key passed to pluralKey). The rest
-## are written into the page when it is built, or used by the TUI.
-
-
 @@ scheduler.slurm
 SLURM on NERSC Perlmutter
 
@@ -180,7 +170,7 @@ Collision data
 Select output objects
 
 @@ objects.help
-Turning off an object also turns off tables that depend on it.
+Turning off an object also turns off the objects that depend on it.
 
 @@ size.estimate-label
 Estimated Parquet size:
@@ -213,7 +203,7 @@ Generate batch files
 Batch system
 
 @@ batch.system-help
-HTCondor workers must see the input files, converter, and output directory at the same paths as the submit host. Without HTCondor, run-pcdf.sh runs the conversions on the machine where you start it.
+HTCondor workers must see the input files, converter, and output directory at the same paths as the submit host. Without HTCondor, `run-pcdf.sh` runs the conversions on the machine where you start it.
 
 @@ field.account-label
 NERSC project account
@@ -246,7 +236,7 @@ Request at least one CPU node.
 Wall time
 
 @@ field.walltime-error
-Use HH:MM:SS, for example 00:30:00.
+Use HH:MM:SS for the wall time, for example 00:30:00.
 
 @@ field.cpus-placeholder
 CPU cores
@@ -281,26 +271,20 @@ Optional ClassAd expression
 @@ field.requirements-label
 Worker requirements (optional)
 
-@@ field.output-placeholder
-Output base directory
-
 @@ field.output-label
 Output dataset directory
 
 @@ field.output-error
-Enter an output directory.
+Enter an output dataset directory.
 
-@@ field.manifest-placeholder
+@@ common.input-manifest-path
 Input manifest path
 
-@@ field.manifest-label
-Input-file manifest path
-
 @@ field.manifest-error
-Enter the manifest path.
+Enter an input manifest path.
 
 @@ field.manifest-help
-The workflow creates this file before submission. Compute nodes do not download data.
+`run-pcdf.sh` creates this file before submission. Compute nodes do not download data.
 
 @@ field.converter-label
 Converter path
@@ -330,7 +314,7 @@ Generated scripts
 Generated Python script
 
 @@ generate.batch-heading
-Generated batch submission file
+Generated batch file
 
 @@ ui.back
 Back
@@ -414,7 +398,7 @@ A workload manager that queues independent jobs. This wizard expects a filesyste
 NERSC Perlmutter
 
 @@ term.perlmutter.help
-The NERSC supercomputer where this job script runs.
+The NERSC supercomputer that runs the SLURM job this wizard prepares.
 
 @@ term.input-manifest
 Input manifest
@@ -429,7 +413,7 @@ Appearance
 Use material textures
 
 @@ appearance.textures-help
-Turn off the background and frame grain. Glass effects and colours remain.
+Turn off the background and frame grain. Glass effects and colors remain.
 
 @@ ui.close
 Close
@@ -444,7 +428,7 @@ For collision data, the program skips truth and flavor fields. It adds `lumiBloc
 input manifest
 
 @@ batch.intro
-The workflow submits one conversion for each path in the {{MANIFEST}}.
+The `run-pcdf.sh` script submits one conversion for each path in the {{MANIFEST}}.
 
 @@ keyboard.label
 Keyboard:
@@ -461,7 +445,7 @@ Input
 Objects
 
 @@ summary.batch-off
-No batch submission file will be generated.
+No batch file will be generated.
 
 @@ summary.condor-cores-one
 HTCondor queues one job per input file. Each job requests 1 CPU core and {{MEMORY}} MiB of memory.
@@ -476,7 +460,7 @@ The SLURM job uses 1 whole CPU node. It runs one file conversion on each physica
 The SLURM job uses {{NODES}} whole CPU nodes. It runs one file conversion on each physical CPU core.
 
 @@ summary.manifest-on
-The workflow writes input paths to {{PATH}} before submission. Every path must be readable from the compute nodes.
+`run-pcdf.sh` writes the input paths to {{PATH}} before submission. Every path must be readable from the compute nodes.
 
 @@ summary.manifest-off
 You do not need a manifest when batch file generation is off.
@@ -488,10 +472,10 @@ Batch file generation is turned off.
 Generated HTCondor submit file
 
 @@ generate.slurm-heading
-Generated SLURM submission script
+Generated SLURM script
 
 @@ generate.download-condor
-Download HTCondor file
+Download HTCondor submit file
 
 @@ generate.download-slurm
 Download SLURM script
@@ -503,13 +487,13 @@ Extract the bundle on a filesystem shared by the HTCondor access point and execu
 Make sure `uv` is available on the execute nodes. They must also be able to read the input paths and write to the output directory.
 
 @@ run.condor-start
-Run `./run-pcdf.sh`. The workflow creates the manifest, asks before submission, and follows the jobs until they finish. It does not transfer DAOD files.
+Run `./run-pcdf.sh`. The script creates the manifest, asks before submission, and follows the jobs until they finish. It does not transfer DAOD files.
 
 @@ run.slurm-copy
 Copy the bundle to a Perlmutter login node, extract it, and enter the `pcdf-ntuple` directory.
 
 @@ run.slurm-start
-Run `./run-pcdf.sh`. The workflow can find local files, use NERSC_LOCALGROUPDISK replicas, or download a Rucio dataset through a NERSC DTN before submission.
+Run `./run-pcdf.sh`. The script can find local files, use NERSC_LOCALGROUPDISK replicas, or download a Rucio dataset through a NERSC DTN before submission.
 
 @@ run.slurm-stop
 You can stop monitoring without cancelling the job. Scheduler output and error messages are written under `logs/`.
@@ -614,10 +598,10 @@ Cannot continue. {{REASON}}
 Converter download started.
 
 @@ announce.condor-download
-HTCondor file download started.
+HTCondor submit file download started.
 
 @@ announce.slurm-download
-SLURM file download started.
+SLURM script download started.
 
 @@ announce.bundle-download
 Bundle download started.
@@ -626,7 +610,7 @@ Bundle download started.
 Bundle download failed: {{ERROR}}
 
 @@ error.load-failed
-The wizard could not load the files it needs: {{ERROR}}
+The wizard could not load its built-in data: {{ERROR}}. Reload the page, and report the problem if it continues.
 
 ## Terminal wizard text
 
@@ -664,7 +648,7 @@ Terms used here
 Input format
 
 @@ tui.objects-hint
-Required tables remain selected. Turning off a table also turns off tables that depend on it.
+Required objects stay selected. Turning off an object also turns off the objects that depend on it.
 
 @@ tui.variables-title
 Output variables
@@ -685,7 +669,7 @@ Storage visible at the same path from submit and execute nodes.
 Loading accounts from iris…
 
 @@ tui.account-manual-placeholder
-Manual NERSC account
+Or enter a NERSC project account
 
 @@ tui.advanced-help
 Most users can leave these settings unchanged.
@@ -712,7 +696,7 @@ Perlmutter detected: No. HTCondor submission is available when condor_submit is 
 Manifest source
 
 @@ tui.manifest-source-hint
-The bundle helper can also find a Rucio dataset copied to NERSC_LOCALGROUPDISK.
+The bundle's code/make-manifest.py can also look up a Rucio dataset copied to NERSC_LOCALGROUPDISK.
 
 @@ tui.scan-root-label
 Local data directory
@@ -721,7 +705,7 @@ Local data directory
 Directory used with rucio download
 
 @@ tui.scan-root-error
-Data directory must exist.
+The local data directory does not exist.
 
 @@ tui.advanced-manifest-title
 Advanced manifest options
@@ -792,20 +776,26 @@ This host can generate either batch format. HTCondor submission is available whe
 @@ tui.summary-object
 • {{TITLE}}: {{VARIABLES}}
 
-@@ tui.summary-condor
-HTCondor: one job per file, {{CORES}} CPU core(s), {{MEMORY}} MiB memory, {{DISK}} MiB disk.
-
-@@ tui.summary-slurm
-Perlmutter SLURM: {{NODES}} exclusive CPU node(s), queue {{QOS}}, wall time {{TIME}}.
-
 @@ tui.summary-input
 Input: {{FORMAT}} · {{SAMPLE}}
 
+@@ tui.summary-condor-one
+HTCondor: one job per file, 1 CPU core, {{MEMORY}} MiB memory, {{DISK}} MiB disk.
+
+@@ tui.summary-condor-many
+HTCondor: one job per file, {{COUNT}} CPU cores, {{MEMORY}} MiB memory, {{DISK}} MiB disk.
+
+@@ tui.summary-slurm-one
+Perlmutter SLURM: 1 exclusive CPU node, queue {{QOS}}, wall time {{TIME}}.
+
+@@ tui.summary-slurm-many
+Perlmutter SLURM: {{COUNT}} exclusive CPU nodes, queue {{QOS}}, wall time {{TIME}}.
+
 @@ tui.summary-manifest
-Manifest: {{PATH}}
+Input manifest: {{PATH}}
 
 @@ tui.summary-output
-Output: {{PATH}}
+Output dataset directory: {{PATH}}
 
 @@ tui.summary-objects-label
 Objects:
@@ -841,19 +831,19 @@ No file list is loaded. Scanning the selected directory before writing the manif
 No files matched {{PATTERN}} under {{ROOT}}. The manifest was not written.
 
 @@ tui.manifest-no-match
-No matching input files were found.
+No input files matched. Check the filename pattern and the local data directory.
 
 @@ tui.manifest-no-match-title
 Manifest not written
 
 @@ tui.file-count-one
-1 file
+1 input file
 
 @@ tui.file-count-many
-{{COUNT}} files
+{{COUNT}} input files
 
 @@ tui.manifest-wrote
-Wrote {{FILES}} to {{MANIFEST}}.
+Listed {{FILES}} in {{MANIFEST}}.
 
 @@ tui.manifest-wrote-title
 Manifest written
@@ -874,7 +864,7 @@ Submission blocked: input manifest is still missing or empty.
 The input manifest is missing or empty. Writing it before submission.
 
 @@ tui.iris-missing-notice
-This host does not provide the iris command. Enter an account manually.
+This host does not have iris, the NERSC account command. Enter your NERSC project account manually.
 
 @@ tui.iris-missing-title
 Iris unavailable
@@ -883,19 +873,19 @@ Iris unavailable
 Enter an account manually
 
 @@ tui.iris-missing-log
-The iris command was not found. Enter a NERSC account manually.
+The iris command was not found. Enter your NERSC project account manually.
 
 @@ tui.iris-timeout-notice
-The iris command did not finish within 15 seconds. Enter an account manually.
+The iris command did not finish within 15 seconds. Enter your NERSC project account manually.
 
 @@ tui.iris-timeout-title
 Iris timeout
 
 @@ tui.accounts-loaded-one
-Loaded 1 NERSC account from iris.
+Loaded 1 NERSC account from iris. It is selected.
 
 @@ tui.accounts-loaded-many
-Loaded {{COUNT}} NERSC accounts from iris.
+Loaded {{COUNT}} NERSC accounts from iris. The first one is selected.
 
 @@ tui.accounts-loaded-title
 NERSC accounts loaded
@@ -907,16 +897,16 @@ NERSC accounts loaded from iris: {{ACCOUNTS}}
 No iris accounts found
 
 @@ tui.iris-none-notice
-The iris command returned no account names that the wizard could read.
+The iris command returned no account names that the wizard could read. Enter your NERSC project account manually.
 
 @@ tui.iris-none-title
 No NERSC accounts found
 
 @@ tui.account-enter
-Enter a NERSC account.
+Enter a NERSC project account.
 
 @@ tui.account-choose
-Choose or enter a NERSC account.
+Choose or enter a NERSC project account.
 
 @@ tui.fix-batch-title
 Fix batch settings
@@ -958,10 +948,10 @@ Submission needs {{COMMAND}}.
 Submission unavailable
 
 @@ tui.submission-unavailable-log
-The job was not submitted because {{COMMAND}} is unavailable.
+The job was not submitted. Submission needs {{COMMAND}}.
 
 @@ tui.review-required
-Review and confirm the converter and batch file before you submit.
+Review the converter and batch file on the Generate step, then choose Confirm review.
 
 @@ tui.review-required-title
 Review required
@@ -970,19 +960,13 @@ Review required
 Submission blocked: generated scripts have not been reviewed.
 
 @@ tui.submission-failed
-The submission command failed with exit code {{CODE}}.
-
-@@ tui.scheduler-condor
-HTCondor
-
-@@ tui.scheduler-slurm
-SLURM
+{{COMMAND}} failed with exit code {{CODE}}.
 
 @@ tui.submitted
 Submitted {{SCHEDULER}} job {{JOB}}.
 
 @@ tui.log-waiting
-Waiting for {{PATH}}.
+Waiting for {{PATH}} to appear.
 
 @@ tui.log-unreadable
 Could not read {{PATH}}: {{ERROR}}
@@ -1012,7 +996,7 @@ No submitted job
 The {{COMMAND}} command is not available on this host.
 
 @@ tui.job-gone
-Job {{JOB}} is no longer listed by {{SCHEDULER}}.
+Job {{JOB}} is no longer listed by {{SCHEDULER}}. It has finished or stopped. Check the logs below.
 
 @@ tui.account-selected
 Using NERSC account {{ACCOUNT}}.
@@ -1033,7 +1017,7 @@ Also turned off the objects that require it: {{OBJECTS}}.
 {{OBJECT}} turned off
 
 @@ tui.review-confirmed
-The converter and batch files are ready to submit.
+The converter and batch file are ready to submit.
 
 @@ tui.review-confirmed-title
 Review confirmed
@@ -1063,7 +1047,7 @@ uv is required but was not found on PATH.
 Install it from https://docs.astral.sh/uv/getting-started/installation/ and run this again.
 
 @@ shell.condor-no-uv
-ERROR: uv is not available on this HTCondor execute node.
+ERROR: uv is not available on this HTCondor execute node. Install it there or put it on PATH.
 
 @@ shell.slurm-needs-edit
 ERROR: replace the placeholder values for the account, input manifest, and output directory.
@@ -1084,10 +1068,10 @@ Create the manifest before submitting this compute job.
 ERROR: uv is not on PATH. Load it before submitting the job.
 
 @@ shell.slurm-no-parallel
-ERROR: GNU parallel is not on PATH.
+ERROR: GNU parallel is not on PATH. Load it before submitting the job.
 
 @@ shell.slurm-bad-cpus
-ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1.
+ERROR: CONVERTER_CPUS_PER_CONVERSION must be at least 1. Edit it in code/submit-pcdf-ntuple.slurm.
 
 @@ shell.slurm-task
 Task ${TASK_ID}: $INPUT_FILE -> $OUTPUT_BASE
@@ -1155,7 +1139,7 @@ File number {{NUMBER}} exceeds the {{MAXIMUM}} maximum that can be encoded in 16
 Cannot derive a stable partition identity for {{PATH}}
 
 @@ converter.uuid-partitions
-INFO: The input filename has no ATLAS task ID or file number. Using numeric ROOT UUID partitions fileUUIDHigh={{HIGH}}, fileUUIDLow={{LOW}} for {{PATH}}
+INFO: The input filename has no ATLAS task ID or file number, so the output uses numeric ROOT UUID partitions (fileUUIDHigh={{HIGH}}, fileUUIDLow={{LOW}}) for {{PATH}}. See the Output layout section of README_SUBMIT.md in the bundle.
 
 @@ converter.local-index-too-large
 {{LABEL}} local index exceeds {{MAXIMUM}}. The leading 16 bits cannot be reserved for the file number
@@ -1185,7 +1169,7 @@ WARNING: Skipping unreadable input {{INPUT}}: {{ERROR}}
 Cannot read input ROOT file {{INPUT}}: {{ERROR}}
 
 @@ converter.no-events
-The input contains no events
+The input file {{INPUT}} contains no events
 
 @@ converter.read-events
 Read {{COUNT}} events
@@ -1271,16 +1255,13 @@ Waiting for work to finish
 Job has started
 
 @@ runner.job-running
-Job is running ({{DETAIL}})
+Job is running (nodes: {{DETAIL}})
 
-@@ runner.no-location
-no location reported
+@@ runner.none-reported
+none reported
 
 @@ runner.job-pending
-Job is {{STATE}} ({{DETAIL}})
-
-@@ runner.no-reason
-no reason reported
+Job is {{STATE}} (reason: {{DETAIL}})
 
 @@ runner.left-queue-accounting
 Job left the queue. Waiting for SLURM accounting.
@@ -1295,22 +1276,22 @@ Job state is {{STATE}}
 Job completed successfully
 
 @@ runner.slurm-ended
-SLURM job {{JOB}} ended with {{STATE}} ({{EXIT}})
+SLURM job {{JOB}} ended with {{STATE}} ({{EXIT}}). Check the logs in the bundle's logs/ directory.
 
 @@ runner.no-hold-reason
 no hold reason was reported
 
 @@ runner.condor-held
-HTCondor cluster {{JOB}} has held jobs: {{DETAIL}}
+HTCondor cluster {{JOB}} has held jobs: {{DETAIL}}. Fix the cause, then run condor_release {{JOB}}, or run condor_rm {{JOB}} to remove them.
 
 @@ runner.any-started
 At least one job has started
 
 @@ runner.cluster-active
-Cluster is active ({{SUMMARY}})
+Cluster is active. Jobs: {{SUMMARY}}
 
 @@ runner.cluster-waiting
-Cluster is waiting ({{SUMMARY}})
+No job has started yet. Jobs: {{SUMMARY}}
 
 @@ runner.cluster-left-history
 Cluster left the queue. Waiting for HTCondor history.
@@ -1319,10 +1300,10 @@ Cluster left the queue. Waiting for HTCondor history.
 Cluster left the queue
 
 @@ runner.condor-failed
-HTCondor cluster {{JOB}} finished with {{COUNT}} failed job(s)
+HTCondor cluster {{JOB}} finished, but {{COUNT}} of its jobs failed. Check the logs in the bundle's logs/ directory.
 
 @@ runner.condor-all-done
-All {{COUNT}} jobs completed successfully
+All jobs completed successfully ({{COUNT}})
 
 @@ runner.bad-submit-file
 {{FILE}} has no usable arguments or queue line
@@ -1337,10 +1318,10 @@ The input manifest is missing: {{PATH}}
 The input manifest contains no work: {{PATH}}
 
 @@ runner.no-uv
-uv is not on PATH
+uv is not on PATH. Install uv and run this again
 
 @@ runner.workers-prompt
-Conversions to run at once ({{CORES}} CPU core(s) each)
+Conversions to run at once (CPU cores per conversion: {{CORES}})
 
 @@ runner.prepare-failed
 Could not prepare the converter: {{DETAIL}}
@@ -1352,7 +1333,7 @@ Converting with {{WORKERS}} at once
 Logs: {{LOGS}}/pcdf-ntuple-local-{{STAMP}}.<n>.out and .err
 
 @@ runner.some-failed
-{{FAILED}} of {{TOTAL}} conversions failed, for example entry {{FIRST}}
+{{FAILED}} of {{TOTAL}} conversions failed. The first failure is manifest line {{LINE}}, logged in {{LOG}}.
 
 @@ runner.intro
 This launcher creates the input manifest, submits the prepared batch job, then follows it until all work finishes. Stopping this launcher with Ctrl+C does not cancel submitted work.
@@ -1364,10 +1345,10 @@ PCDF job workflow
 [red]Workflow not started:[/red] {{REASON}}
 
 @@ runner.local-condor-only
---local works only with an HTCondor bundle.
+The --local option works only with an HTCondor bundle.
 
 @@ runner.helper-missing
-make-manifest.py is missing.
+code/make-manifest.py is missing from the bundle. Extract the bundle again.
 
 @@ runner.step-manifest
 [bold]1. Create the input manifest[/bold]
@@ -1417,7 +1398,7 @@ Monitoring stopped. Job {{JOB}} remains under {{SCHEDULER}} control.
 Interactively create a PCDF input manifest before submitting a batch job.
 
 @@ manifest.no-rucio-config
-no Rucio configuration was found (set RUCIO_CONFIG or set up an ATLAS environment)
+no Rucio configuration was found. Set RUCIO_CONFIG or set up an ATLAS environment
 
 @@ manifest.no-proxy-tool
 no X.509 proxy and no voms-proxy-init were found
@@ -1451,9 +1432,6 @@ voms-proxy-init did not create a proxy
 @@ manifest.proxy-missing
 voms-proxy-init completed, but no proxy file was found
 
-@@ manifest.set-rucio-config
-no Rucio configuration was found. Set RUCIO_CONFIG
-
 @@ manifest.bad-did
 enter the Rucio dataset as scope:name
 
@@ -1461,7 +1439,7 @@ enter the Rucio dataset as scope:name
 voms-proxy-init was not found on PATH or in ATLASLocalRootBase
 
 @@ manifest.shared-proxy-notice
-The DTN download needs a shared ATLAS VOMS proxy. Creating it will prompt for your grid-certificate passphrase.
+The DTN download needs a shared ATLAS VOMS proxy, a credential file that both the machine you are on and the DTN can read. Creating it will prompt for your grid-certificate passphrase.
 
 @@ manifest.shared-proxy-prompt
 Create or renew the shared proxy at {{PATH}}
@@ -1494,7 +1472,7 @@ Download directory
 could not start SSH for {{HOST}}: {{ERROR}}
 
 @@ manifest.download-failed
-the Rucio download on {{HOST}} failed
+the Rucio download on {{HOST}} failed (see the output above)
 
 @@ manifest.data-dir-prompt
 Downloaded-data directory
@@ -1509,10 +1487,10 @@ the Rucio Python client is unavailable. Run this bundled script with uv
 Rucio lookup failed: {{ERROR}}
 
 @@ manifest.no-replicas
-Rucio returned no replica paths at NERSC_LOCALGROUPDISK
+Rucio returned no replica paths at NERSC_LOCALGROUPDISK (check the dataset name and that it is replicated there)
 
 @@ manifest.no-files
-no usable local ROOT files were found. The manifest was not written
+no usable DAOD files were found (the helper looks for DAOD_*.pool.root* files larger than 1 KiB outside hidden directories)
 
 @@ manifest.intro
 Prepare DAOD files before submission. Batch workers read the manifest and never download data themselves.
@@ -1533,16 +1511,13 @@ You used rucio download and have the files in a directory.
 The dataset is already copied to NERSC_LOCALGROUPDISK.
 
 @@ manifest.option-dtn
-Download a Rucio dataset on a NERSC DTN before SLURM submission.
+You want to download a Rucio dataset on a NERSC DTN before SLURM submission.
 
 @@ manifest.hidden-option-2
-option 2: {{REASON}}
+[dim]Option 2 is not available: {{REASON}}.[/dim]
 
 @@ manifest.hidden-option-3
-option 3: voms-proxy-init or ssh was not found
-
-@@ manifest.hidden-sources
-[dim]Hidden Rucio sources, {{REASONS}}.[/dim]
+[dim]Option 3 is not available: voms-proxy-init or ssh was not found.[/dim]
 
 @@ manifest.source-prompt
 Choose an input source
@@ -1555,9 +1530,6 @@ Rucio account
 
 @@ manifest.dtn-prompt
 NERSC DTN
-
-@@ manifest.path-prompt
-Manifest path
 
 @@ manifest.not-written
 [red]Manifest not written:[/red] {{REASON}}
@@ -1581,7 +1553,7 @@ Grid certificate authorities are unavailable on this DTN: $certificate_directory
 The shared X.509 proxy is unavailable on this DTN: $proxy
 
 @@ dtn.no-vo
-The shared X.509 proxy does not contain ATLAS VOMS credentials.
+The shared X.509 proxy does not contain ATLAS VOMS credentials. Run the manifest helper again to create a new one.
 
 @@ dtn.no-rucio
 The Rucio command is unavailable on this DTN.

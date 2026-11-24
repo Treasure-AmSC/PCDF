@@ -190,15 +190,15 @@
                         </div>
                         <div class="col-md-6">
                           <div class="form-floating">
-                            <input class="form-control slurm-input" id="slurmOutputBase" value="./output" required placeholder="{{ t('field.output-placeholder') }}" data-error-id="slurmOutputBaseError">
+                            <input class="form-control slurm-input" id="slurmOutputBase" value="./output" required placeholder="{{ t('field.output-label') }}" data-error-id="slurmOutputBaseError">
                             <label for="slurmOutputBase">{{ t('field.output-label') }}</label>
                             <div class="invalid-feedback" id="slurmOutputBaseError">{{ t('field.output-error') }}</div>
                           </div>
                         </div>
                         <div class="col-md-6">
                           <div class="form-floating">
-                            <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="{{ t('field.manifest-placeholder') }}" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
-                            <label for="slurmInputManifest">{{ t('field.manifest-label') }}</label>
+                            <input class="form-control slurm-input" id="slurmInputManifest" value="./pcdf-inputs.txt" required placeholder="{{ t('common.input-manifest-path') }}" aria-describedby="slurmInputManifestHelp" data-error-id="slurmInputManifestError">
+                            <label for="slurmInputManifest">{{ t('common.input-manifest-path') }}</label>
                             <div class="invalid-feedback" id="slurmInputManifestError">{{ t('field.manifest-error') }}</div>
                           </div>
                           <div class="form-text text-secondary" id="slurmInputManifestHelp">{{ t('field.manifest-help') }}</div>

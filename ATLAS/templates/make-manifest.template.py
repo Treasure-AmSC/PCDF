@@ -29,7 +29,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.traceback import install as install_rich_traceback
 
-MESSAGES = {{MESSAGES:manifest}}
+MESSAGES = {{MESSAGES:common}} | {{MESSAGES:manifest}}
 
 
 def message(key: str, **values: object) -> str:
@@ -199,7 +199,7 @@ def configure_rucio(console: Console) -> None:
     if not os.environ.get("RUCIO_CONFIG"):
         config = rucio_config_path()
         if config is None:
-            raise RuntimeError(message("manifest.set-rucio-config"))
+            raise RuntimeError(message("manifest.no-rucio-config"))
         os.environ["RUCIO_CONFIG"] = str(config)
 
     certificate_directory = ATLAS_ROOT / "etc" / "grid-security-emi" / "certificates"
@@ -486,8 +486,8 @@ def main() -> int:
         else:
             hidden.append(message("manifest.hidden-option-3"))
     console.print(choices)
-    if hidden:
-        console.print(message("manifest.hidden-sources", REASONS="; ".join(hidden)))
+    for note in hidden:
+        console.print(note)
     source = Prompt.ask(message("manifest.source-prompt"), choices=source_choices, default="1")
     try:
         if source == "1":
@@ -503,7 +503,7 @@ def main() -> int:
             requested_validity, minimum_seconds = prompt_proxy_validity()
             proxy = ensure_shared_x509_proxy(console, requested_validity, minimum_seconds)
             download_rucio_on_dtn(did, rucio_account, host, root, proxy)
-        output = Path(ask_path(message("manifest.path-prompt"), "pcdf-inputs.txt")).expanduser()
+        output = Path(ask_path(message("common.input-manifest-path"), "pcdf-inputs.txt")).expanduser()
         if source in {"1", "3"}:
             paths = local_files(root)
         else:
