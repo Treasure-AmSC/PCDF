@@ -68,7 +68,8 @@ HTCondor run
 2. Check code/submit-pcdf-ntuple.condor. Its input manifest, converter, and output
    directory must be visible at the same paths on every execute node. The
    submit file does not copy DAOD inputs through HTCondor file transfer. Each
-   execute node also needs uv on its PATH.
+   execute node also needs `uv`, the Python script runner that runs the
+   converter, on its PATH.
 3. Start the included workflow:
    ./run-pcdf.sh
    It creates the manifest, asks before submitting, then follows all jobs in
@@ -80,11 +81,12 @@ Single machine without HTCondor
 -------------------------------
 When condor_submit is not on PATH, ./run-pcdf.sh offers to run the
 conversions on this machine instead. Use ./run-pcdf.sh --local to do this even
-when HTCondor is installed. It reads the manifest, output directory, and CPU
-cores per file from code/submit-pcdf-ntuple.condor, and runs as many
-conversions at once as the available cores allow. Each conversion writes its
-output and error logs under logs/. Rerunning skips files whose output is
-already complete.
+when HTCondor is installed. This mode needs `uv` on this machine and does not
+need HTCondor. This mode still reads the manifest, output directory, and CPU
+cores per file from code/submit-pcdf-ntuple.condor, so keep that file in the
+bundle. It runs as many conversions at once as the available cores allow. Each
+conversion writes its output and error logs under logs/. Rerunning skips files
+whose output is already complete.
 
 @@ bundle.section-slurm
 Perlmutter run
@@ -99,16 +101,18 @@ Perlmutter run
 3. Start the included workflow:
    ./run-pcdf.sh
    It creates the manifest, asks before submitting, then shows the queued,
-   running, and completed job states. It does not cancel the job if you stop
+   running, and completed job states. The job keeps running if you stop
    monitoring with Ctrl+C.
-   The manifest helper can scan a directory populated by `rucio download` or
-   look up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`. It removes the
-   access proxy's scheme, host, and port from each replica PFN, retaining its
-   local path. It can also create a private shared ATLAS VOMS proxy, SSH to a
-   NERSC DTN, and download a Rucio dataset into `$SCRATCH` before submission. The
-   transform does not require Rucio.
 4. To run each step yourself, use code/make-manifest.py, sbatch
    code/submit-pcdf-ntuple.slurm, and squeue -u $USER.
+
+The manifest helper can scan a directory populated by `rucio download`, or look
+up a `scope:name` dataset at `NERSC_LOCALGROUPDISK`, a Rucio storage element.
+For each replica it keeps only the local path, without the scheme, host, and
+port of the replica PFN. It can also create a private ATLAS VOMS proxy, connect
+to a NERSC data transfer node (DTN), and download a Rucio dataset into
+`$SCRATCH` before submission. The login node and the DTN both read the proxy.
+The batch job itself does not need Rucio.
 
 @@ bundle.section-no-batch
 Batch run

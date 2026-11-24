@@ -223,6 +223,14 @@ class ManifestHelperTest(unittest.TestCase):
                     readme = archive.extractfile("pcdf-ntuple/README_SUBMIT.md").read().decode()
                 self.assertIn(f"- {expected.removeprefix('pcdf-ntuple/') if expected else output_base}", readme)
 
+    def test_rendered_readme_has_no_placeholders_and_separated_sections(self) -> None:
+        for scheduler, heading in (("slurm", "Perlmutter run"), ("condor", "HTCondor run")):
+            with self.subTest(scheduler=scheduler):
+                readme = build_readme(WizardState(scheduler=scheduler))
+                self.assertNotIn("{{", readme)
+                self.assertIn(f"\n\n{heading}\n{'-' * len(heading)}\n", readme)
+                self.assertIn("64-bit unsigned integer", readme)
+
     def test_htcondor_bundle_queues_one_shared_filesystem_job_per_input(self) -> None:
         state = WizardState(
             scheduler="condor",

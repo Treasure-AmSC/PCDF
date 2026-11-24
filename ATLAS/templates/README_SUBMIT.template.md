@@ -6,7 +6,7 @@ Generated files
 - code/{{PYTHON_NAME}} is the executable converter.
 - code/make-manifest.py {{MANIFEST_DESCRIPTION}}
 {{SLURM_FILE_LINE}}{{WORKFLOW_FILE_LINE}}- README_SUBMIT.md contains these instructions.
-- pcdf-inputs.txt is the default generated file manifest.
+- pcdf-inputs.txt is the input manifest that the workflow creates by default.
 - {{OUTPUT_DIR}}/ contains generated Parquet datasets.
 - logs/ contains scheduler output and error logs.
 
@@ -18,8 +18,10 @@ each table is written to:
 `<table>/tid=<tid>/fileNumber=<fileNumber>/data.parquet`
 
 Here, `tid` is the ATLAS production task ID. The converter removes leading
-zeros from `fileNumber`, so Parquet tools read it as an integer. Generated
-indices include the file number. This keeps them unique within each `tid`.
+zeros from `fileNumber`, so Parquet tools read it as an integer. Each index
+column, such as `eventIndex` or `jetIndex`, holds a 64-bit unsigned integer.
+Its top 16 bits are the file number, so indices are unique within each `tid`.
+Its low 48 bits give the position of the row within its table in that file.
 
 Event rows include `lumiBlock`. When the wizard is set to collision data, the
 converter omits simulation-only truth and flavor labels.
@@ -35,8 +37,8 @@ signed 64-bit integer because more Parquet tools support signed integers. A
 negative value still keeps the original bits. It is the two's-complement form
 of the same 64-bit value.
 
-Indices in UUID folders are local to the file. Use both UUID fields when you
-join tables. Renaming or copying the same ROOT file does not change its output
+Indices in UUID folders are local to the file, because their file number is 0.
+Use both UUID fields when you join tables. Renaming or copying the same ROOT file does not change its output
 folder.
 
 {{SLURM_SECTION}}
