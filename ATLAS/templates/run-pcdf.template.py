@@ -361,7 +361,7 @@ def main() -> int:
         return 2
 
     console.print("[bold]1. Create the input manifest[/bold]")
-    for directory in ("input", "output", "logs"):
+    for directory in ("input", "logs"):
         (BUNDLE_DIRECTORY / directory).mkdir(exist_ok=True)
     manifest_scheduler = "condor" if scheduler.name == "HTCondor" else "slurm"
     manifest_result = subprocess.run(

@@ -1054,6 +1054,18 @@
       return new Blob(chunks, { type: "application/x-tar" });
     }
 
+    // Batch jobs run from the bundle directory, so only a relative output path
+    // that stays inside it can be shipped as an empty directory. Without batch
+    // generation the converter's output location is chosen at run time.
+    function bundleOutputDir() {
+      if (!state.slurm.enabled) return "output";
+      const value = (state.slurm.outputBase || "").trim();
+      if (/^[/~$]/.test(value)) return null;
+      const parts = value.split("/").filter((part) => part && part !== ".");
+      if (!parts.length || parts.includes("..")) return null;
+      return parts.join("/");
+    }
+
     function bundleReadme() {
       const pythonName = generatedPythonName().split("/").pop();
       let batchFileLine = "";
@@ -1115,6 +1127,7 @@ Perlmutter run
       }
       return applyTemplate(requireTemplate("readme"), {
         PYTHON_NAME: pythonName,
+        OUTPUT_DIR: bundleOutputDir() || state.slurm.outputBase.trim(),
         MANIFEST_DESCRIPTION: state.slurm.scheduler === "condor"
           ? "interactively writes an input manifest from local files or NERSC_LOCALGROUPDISK replica PFNs."
           : "interactively writes an input manifest from local files, NERSC_LOCALGROUPDISK replica PFNs, or a Rucio dataset downloaded through a NERSC DTN.",
@@ -1157,10 +1170,13 @@ Perlmutter run
         const files = [
           { name: `${root}/`, content: "", type: "directory", mode: 0o755 },
           { name: `${root}/code/`, content: "", type: "directory", mode: 0o755 },
-          { name: `${root}/output/`, content: "", type: "directory", mode: 0o755 },
           { name: `${root}/logs/`, content: "", type: "directory", mode: 0o755 },
           { name: `${root}/code/${pythonName}`, content: scriptOutput.value, mode: 0o755 },
         ];
+        const outputDir = bundleOutputDir();
+        if (outputDir) {
+          files.push({ name: `${root}/${outputDir}/`, content: "", type: "directory", mode: 0o755 });
+        }
         if (state.slurm.enabled) {
           files.push({
             name: `${root}/code/${batchFilename()}`,

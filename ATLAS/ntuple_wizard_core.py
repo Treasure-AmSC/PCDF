@@ -201,6 +201,18 @@ def expanded_path(value: str) -> str:
     return str(Path(os.path.expandvars(os.path.expanduser(value))))
 
 
+def bundle_output_dir(output_base: str) -> str | None:
+    """Return the output directory relative to the bundle, or None if it lies elsewhere.
+
+    Batch jobs run from the bundle directory, so only a relative path that
+    stays inside it can be shipped as an empty directory.
+    """
+    path = Path(expanded_path(output_base))
+    if path.is_absolute() or ".." in path.parts or path.parts in ((), (".",)):
+        return None
+    return path.as_posix()
+
+
 def build_slurm(state: WizardState, output_dir: Path) -> str:
     return apply_template((TEMPLATE_DIR / "submit-pcdf-ntuple.template.slurm").read_text(), {
         "ACCOUNT_LINE": f"#SBATCH --account={state.account}",
@@ -299,6 +311,7 @@ Perlmutter run
     return apply_template((TEMPLATE_DIR / "README_SUBMIT.template.md").read_text(), {
         "PYTHON_NAME": python_name,
         "INPUT_FORMAT": state.input_format,
+        "OUTPUT_DIR": bundle_output_dir(state.output_base) or expanded_path(state.output_base),
         "MANIFEST_DESCRIPTION": manifest_description,
         "SLURM_FILE_LINE": batch_file_line,
         "WORKFLOW_FILE_LINE": "- run-pcdf.sh starts the interactive manifest, submission, and monitoring workflow.\n",
@@ -310,9 +323,11 @@ def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path
     output_dir.mkdir(parents=True, exist_ok=True)
     bundle_root = output_dir / BUNDLE_ROOT_NAME
     code_dir = bundle_root / CODE_DIR_NAME
-    runtime_output_dir = bundle_root / "output"
+    output_relative = bundle_output_dir(state.output_base)
+    runtime_output_dir = bundle_root / output_relative if output_relative else None
     logs_dir = bundle_root / "logs"
-    for directory in (code_dir, runtime_output_dir, logs_dir):
+    shipped_dirs = [code_dir, logs_dir] + ([runtime_output_dir] if runtime_output_dir else [])
+    for directory in shipped_dirs:
         directory.mkdir(parents=True, exist_ok=True)
     py_path = code_dir / generated_python_name(state.input_format)
     if state.scheduler == "condor":
@@ -343,7 +358,7 @@ def write_bundle(state: WizardState, output_dir: Path) -> tuple[Path, Path, Path
     if state.scheduler == "condor":
         condor_job_path.chmod(0o755)
     with tarfile.open(bundle_path, "w") as archive:
-        for directory in (bundle_root, code_dir, runtime_output_dir, logs_dir):
+        for directory in [bundle_root, *shipped_dirs]:
             info = tarfile.TarInfo(str(directory.relative_to(output_dir)) + "/")
             info.type = tarfile.DIRTYPE
             info.mode = 0o755

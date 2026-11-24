@@ -81,6 +81,23 @@ class ManifestHelperTest(unittest.TestCase):
             with tarfile.open(bundle) as archive:
                 self.assertNotIn("pcdf-ntuple/output/previous.parquet", archive.getnames())
 
+    def test_bundle_ships_the_configured_output_directory(self) -> None:
+        cases = {
+            "./results/run1": ("pcdf-ntuple/results/run1/", True),
+            "../elsewhere": (None, False),
+            "/scratch/out": (None, False),
+        }
+        for output_base, (expected, _) in cases.items():
+            with self.subTest(output_base=output_base), tempfile.TemporaryDirectory() as temporary:
+                _, _, bundle = write_bundle(WizardState(output_base=output_base), Path(temporary))
+                with tarfile.open(bundle) as archive:
+                    names = archive.getnames()
+                    self.assertNotIn("pcdf-ntuple/output/", names)
+                    if expected:
+                        self.assertIn(expected.rstrip("/"), names)
+                    readme = archive.extractfile("pcdf-ntuple/README_SUBMIT.md").read().decode()
+                self.assertIn(f"- {expected.removeprefix('pcdf-ntuple/') if expected else output_base}", readme)
+
     def test_htcondor_bundle_queues_one_shared_filesystem_job_per_input(self) -> None:
         state = WizardState(
             scheduler="condor",

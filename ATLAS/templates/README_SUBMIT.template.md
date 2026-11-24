@@ -7,7 +7,7 @@ Generated files
 - code/make-manifest.py {{MANIFEST_DESCRIPTION}}
 {{SLURM_FILE_LINE}}{{WORKFLOW_FILE_LINE}}- README_SUBMIT.md contains these instructions.
 - pcdf-inputs.txt is the default generated file manifest.
-- output/ contains generated Parquet datasets.
+- {{OUTPUT_DIR}}/ contains generated Parquet datasets.
 - logs/ contains scheduler output and error logs.
 
 Output layout
