@@ -8,23 +8,68 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
 from urllib.parse import parse_qs, unquote, urlsplit
 
+try:
+    import readline
+except ImportError:
+    readline = None
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
+from rich.traceback import install as install_rich_traceback
 
 ATLAS_ROOT = Path(
     os.environ.get("ATLAS_LOCAL_ROOT_BASE", "/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase")
 )
 DTN_HOSTS = tuple(f"dtn0{index}.nersc.gov" for index in range(1, 5))
+
+
+def grid_tool(name: str) -> Path | None:
+    """Find a grid-middleware command on PATH, falling back to ATLASLocalRootBase."""
+    found = shutil.which(name)
+    if found:
+        return Path(found)
+    wrapper = ATLAS_ROOT / "wrappers" / "gridMW" / name
+    return wrapper if wrapper.is_file() else None
+
+
+def rucio_config_path() -> Path | None:
+    """Find a Rucio client configuration, or None when the client has none to read."""
+    candidates = [os.environ.get("RUCIO_CONFIG")]
+    if os.environ.get("RUCIO_HOME"):
+        candidates.append(str(Path(os.environ["RUCIO_HOME"]) / "etc" / "rucio.cfg"))
+    candidates += [
+        str(Path.home() / ".rucio" / "etc" / "rucio.cfg"),
+        "/opt/rucio/etc/rucio.cfg",
+        str(ATLAS_ROOT / "x86_64" / "rucio-clients" / "current" / "etc" / "rucio.cfg"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).expanduser().is_file():
+            return Path(candidate).expanduser()
+    return None
+
+
+def rucio_sources_unavailable() -> str | None:
+    """Explain why Rucio input sources cannot be offered, or return None when they can."""
+    if rucio_config_path() is None:
+        return "no Rucio configuration was found (set RUCIO_CONFIG or set up an ATLAS environment)"
+    auth_type = os.environ.get("RUCIO_AUTH_TYPE")
+    if (not auth_type or auth_type == "x509_proxy") and not (
+        local_x509_proxy() or grid_tool("voms-proxy-init")
+    ):
+        return "no X.509 proxy and no voms-proxy-init were found"
+    return None
 REMOTE_DTN_DOWNLOAD = r'''set -euo pipefail
 
 did="$1"
@@ -34,27 +79,27 @@ proxy="$4"
 
 atlas_root="${ATLAS_LOCAL_ROOT_BASE:-/cvmfs/atlas.cern.ch/repo/ATLASLocalRootBase}"
 atlas_setup="$atlas_root/user/atlasLocalSetup.sh"
-if [[ ! -r "$atlas_setup" ]]; then
-    echo "ATLAS setup is unavailable on this DTN: $atlas_setup" >&2
-    exit 2
+proxy_info=voms-proxy-info
+rucio_config="${RUCIO_CONFIG:-}"
+certificate_directory="${X509_CERT_DIR:-}"
+if [[ -r "$atlas_setup" ]]; then
+    source "$atlas_setup"
+    lsetup rucio
+    lsetup emi
+    proxy_info="$atlas_root/wrappers/gridMW/voms-proxy-info"
+    rucio_config="${rucio_config:-$atlas_root/x86_64/rucio-clients/current/etc/rucio.cfg}"
+    certificate_directory="${certificate_directory:-$atlas_root/etc/grid-security-emi/certificates}"
 fi
 
-source "$atlas_setup"
-lsetup rucio
-lsetup emi
-
-proxy_info="$atlas_root/wrappers/gridMW/voms-proxy-info"
-rucio_config="$atlas_root/x86_64/rucio-clients/current/etc/rucio.cfg"
-certificate_directory="$atlas_root/etc/grid-security-emi/certificates"
-if [[ ! -x "$proxy_info" ]]; then
-    echo "voms-proxy-info is unavailable on this DTN: $proxy_info" >&2
+if ! command -v "$proxy_info" >/dev/null; then
+    echo "voms-proxy-info is unavailable on this DTN." >&2
     exit 2
 fi
-if [[ ! -r "$rucio_config" ]]; then
-    echo "ATLAS Rucio configuration is unavailable on this DTN: $rucio_config" >&2
+if [[ -n "$rucio_config" && ! -r "$rucio_config" ]]; then
+    echo "The Rucio configuration is unreadable on this DTN: $rucio_config" >&2
     exit 2
 fi
-if [[ ! -d "$certificate_directory" ]]; then
+if [[ -n "$certificate_directory" && ! -d "$certificate_directory" ]]; then
     echo "Grid certificate authorities are unavailable on this DTN: $certificate_directory" >&2
     exit 2
 fi
@@ -73,11 +118,11 @@ export X509_USER_PROXY="$proxy"
 export RUCIO_CLIENT_PROXY="$proxy"
 export RUCIO_AUTH_TYPE=x509_proxy
 export RUCIO_ACCOUNT="$rucio_account"
-export RUCIO_CONFIG="$rucio_config"
-export X509_CERT_DIR="$certificate_directory"
+[[ -z "$rucio_config" ]] || export RUCIO_CONFIG="$rucio_config"
+[[ -z "$certificate_directory" ]] || export X509_CERT_DIR="$certificate_directory"
 
 if ! command -v rucio >/dev/null; then
-    echo "The Rucio command is unavailable after ATLAS setup on this DTN." >&2
+    echo "The Rucio command is unavailable on this DTN." >&2
     exit 2
 fi
 mkdir -p "$destination"
@@ -125,8 +170,8 @@ def proxy_setup_instructions() -> str:
 
 def create_x509_proxy(console: Console) -> None:
     """Offer to create a proxy without changing this process's environment."""
-    initializer = ATLAS_ROOT / "wrappers" / "gridMW" / "voms-proxy-init"
-    if not initializer.is_file():
+    initializer = grid_tool("voms-proxy-init")
+    if initializer is None:
         raise RuntimeError(f"no valid X.509 proxy was found. {proxy_setup_instructions()}")
 
     console.print(
@@ -151,12 +196,12 @@ def create_x509_proxy(console: Console) -> None:
         raise RuntimeError("voms-proxy-init completed, but no proxy file was found")
 
 
-def configure_atlas_rucio(console: Console) -> None:
-    """Load ATLAS settings and require a valid login-node X.509 proxy."""
+def configure_rucio(console: Console) -> None:
+    """Locate the Rucio configuration and, for proxy authentication, a valid proxy."""
     if not os.environ.get("RUCIO_CONFIG"):
-        config = ATLAS_ROOT / "x86_64" / "rucio-clients" / "current" / "etc" / "rucio.cfg"
-        if not config.is_file():
-            raise RuntimeError(f"ATLAS Rucio configuration is unavailable at {config}")
+        config = rucio_config_path()
+        if config is None:
+            raise RuntimeError("no Rucio configuration was found. Set RUCIO_CONFIG")
         os.environ["RUCIO_CONFIG"] = str(config)
 
     certificate_directory = ATLAS_ROOT / "etc" / "grid-security-emi" / "certificates"
@@ -190,8 +235,8 @@ def shared_proxy_path() -> Path:
 
 def proxy_is_usable(proxy: Path, minimum_seconds: int) -> bool:
     """Check the proxy lifetime and require ATLAS VOMS credentials."""
-    proxy_info = ATLAS_ROOT / "wrappers" / "gridMW" / "voms-proxy-info"
-    if not proxy.is_file() or not proxy_info.is_file():
+    proxy_info = grid_tool("voms-proxy-info")
+    if not proxy.is_file() or proxy_info is None:
         return False
     lifetime = subprocess.run(
         [str(proxy_info), "-file", str(proxy), "-timeleft"],
@@ -221,9 +266,9 @@ def create_shared_x509_proxy(
     minimum_seconds: int,
 ) -> None:
     """Create an ATLAS proxy at a private path visible from the DTNs."""
-    initializer = ATLAS_ROOT / "wrappers" / "gridMW" / "voms-proxy-init"
-    if not initializer.is_file():
-        raise RuntimeError(f"no ATLAS VOMS proxy tool was found at {initializer}")
+    initializer = grid_tool("voms-proxy-init")
+    if initializer is None:
+        raise RuntimeError("voms-proxy-init was not found on PATH or in ATLASLocalRootBase")
     console.print(
         "The DTN download needs a shared ATLAS VOMS proxy. Creating it will "
         "prompt for your grid-certificate passphrase."
@@ -268,6 +313,31 @@ def ensure_shared_x509_proxy(
     return proxy
 
 
+def _complete_path(text: str, state: int) -> str | None:
+    """readline completer: complete filesystem paths, marking directories with a slash."""
+    matches = sorted(glob.glob(os.path.expanduser(text) + "*"))
+    if text.startswith("~"):
+        home = os.path.expanduser("~")
+        matches = ["~" + match[len(home):] if match.startswith(home) else match for match in matches]
+    matches = [match + "/" if os.path.isdir(os.path.expanduser(match)) else match for match in matches]
+    return matches[state] if state < len(matches) else None
+
+
+def ask_path(label: str, default: str) -> str:
+    """Prompt for a path with Tab completion where readline is available."""
+    if readline is None:
+        return Prompt.ask(label, default=default)
+    previous = readline.get_completer(), readline.get_completer_delims()
+    readline.set_completer(_complete_path)
+    readline.set_completer_delims("\n")
+    readline.parse_and_bind("bind ^I rl_complete" if "libedit" in (readline.__doc__ or "") else "tab: complete")
+    try:
+        return Prompt.ask(label, default=default)
+    finally:
+        readline.set_completer(previous[0])
+        readline.set_completer_delims(previous[1])
+
+
 def prompt_nonempty(label: str, default: str | None = None) -> str:
     while True:
         value = Prompt.ask(label, default=default or "", show_default=bool(default)).strip()
@@ -297,7 +367,7 @@ def prompt_download_directory() -> Path:
     default = scratch_root / "pcdf-rucio"
     while True:
         destination = Path(
-            Prompt.ask("Download directory", default=str(default))
+            ask_path("Download directory", str(default))
         ).expanduser().resolve(strict=False)
         in_scratch = destination.is_relative_to(scratch_root)
         in_project_cfs = destination != cfs_root and destination.is_relative_to(cfs_root)
@@ -338,7 +408,7 @@ def download_rucio_on_dtn(
 
 def prompt_directory(console: Console) -> Path:
     while True:
-        root = Path(Prompt.ask("Downloaded-data directory", default=".")).expanduser()
+        root = Path(ask_path("Downloaded-data directory", ".")).expanduser()
         if root.is_dir():
             return root
         console.print(f"[red]Not a directory:[/red] {root}")
@@ -415,19 +485,30 @@ def main() -> int:
     choices.add_column("Option", style="bold cyan", no_wrap=True)
     choices.add_column("Use when")
     choices.add_row("1", "You used rucio download and have the files in a directory.")
-    choices.add_row("2", "The dataset is already copied to NERSC_LOCALGROUPDISK.")
-    source_choices = ["1", "2"]
+    source_choices = ["1"]
+    hidden: list[str] = []
+    unavailable = rucio_sources_unavailable()
+    if unavailable is None:
+        choices.add_row("2", "The dataset is already copied to NERSC_LOCALGROUPDISK.")
+        source_choices.append("2")
+    else:
+        hidden.append(f"option 2: {unavailable}")
     if args.scheduler == "slurm":
-        choices.add_row("3", "Download a Rucio dataset on a NERSC DTN before SLURM submission.")
-        source_choices.append("3")
+        if grid_tool("voms-proxy-init") and shutil.which("ssh"):
+            choices.add_row("3", "Download a Rucio dataset on a NERSC DTN before SLURM submission.")
+            source_choices.append("3")
+        else:
+            hidden.append("option 3: voms-proxy-init or ssh was not found")
     console.print(choices)
+    if hidden:
+        console.print(f"[dim]Hidden Rucio sources, {'; '.join(hidden)}.[/dim]")
     source = Prompt.ask("Choose an input source", choices=source_choices, default="1")
     try:
         if source == "1":
             root = prompt_directory(console)
         elif source == "2":
             did = validate_did(prompt_nonempty("Dataset DID (scope:name)"))
-            configure_atlas_rucio(console)
+            configure_rucio(console)
         else:
             did = validate_did(prompt_nonempty("Dataset DID (scope:name)"))
             rucio_account = prompt_nonempty("Rucio account", os.environ.get("RUCIO_ACCOUNT"))
@@ -436,7 +517,7 @@ def main() -> int:
             requested_validity, minimum_seconds = prompt_proxy_validity()
             proxy = ensure_shared_x509_proxy(console, requested_validity, minimum_seconds)
             download_rucio_on_dtn(did, rucio_account, host, root, proxy)
-        output = Path(Prompt.ask("Manifest path", default="pcdf-inputs.txt")).expanduser()
+        output = Path(ask_path("Manifest path", "pcdf-inputs.txt")).expanduser()
         if source in {"1", "3"}:
             paths = local_files(root)
         else:
@@ -450,4 +531,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    install_rich_traceback()
     raise SystemExit(main())

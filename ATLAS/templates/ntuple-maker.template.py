@@ -22,6 +22,7 @@ import numba as nb
 import numpy as np
 import uproot as up
 from rich import print
+from rich.traceback import install as install_rich_traceback
 
 POINT = "[green][b]‣[/b][/green]"
 INPUT_FORMAT = "{{INPUT_FORMAT}}"
@@ -502,4 +503,5 @@ def ntuple_maker(input, output, skip_unreadable, skip_existing):
 
 
 if __name__ == "__main__":
+    install_rich_traceback()
     ntuple_maker()

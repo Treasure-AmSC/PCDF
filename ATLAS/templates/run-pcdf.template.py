@@ -26,6 +26,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, IntPrompt
+from rich.traceback import install as install_rich_traceback
 
 
 CODE_DIRECTORY = Path(__file__).resolve().parent
@@ -415,4 +416,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    install_rich_traceback()
     raise SystemExit(main())
