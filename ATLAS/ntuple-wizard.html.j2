@@ -21,7 +21,7 @@
     <section class="row justify-content-center">
       <div class="col-12 col-xxl-11 pcdf-page-width">
         <div class="mb-4 text-center text-lg-start">
-          <h1 class="display-5 fw-bold"><i class="bi bi-stars me-2" aria-hidden="true"></i>{{ t('page.heading') }}</h1>
+          <h1 class="display-5 fw-bold"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle class="ring" cx="16" cy="16" r="14.5"/><path class="track" d="M16 16 Q23.5 14 27 6.5"/><path class="track" d="M16 16 Q9 12 4.5 11.2"/><path class="track" d="M16 16 Q22 17.5 28 24.2"/><path class="track" d="M16 16 Q15.2 23.5 9.8 27.6"/><path class="track" d="M16 16 Q13.5 10.5 14.9 3.9"/><g class="hit"><rect x="24.3" y="2.9" width="4" height="2.2" transform="rotate(33 26.3 4)"/><rect x="26.4" y="23.4" width="4" height="2.2" transform="rotate(48 28.4 24.5)"/><rect x="6.9" y="26.6" width="4" height="2.2" transform="rotate(-52 8.9 27.7)"/><rect x="1.9" y="9.7" width="4" height="2.2" transform="rotate(-12 3.9 10.8)"/><rect x="12.9" y="1.3" width="4" height="2.2" transform="rotate(-8 14.9 2.4)"/></g><circle class="vertex" cx="16" cy="16" r="2"/></svg>{{ t('page.heading') }}</h1>
           <p class="lead text-secondary mb-0">{{ t('page.lead', DAOD=term('tip-daod', t('term.atlas-daod'), t('term.atlas-daod.help'))) }}</p>
         </div>
 
@@ -79,6 +79,7 @@
                 <div>
                   <h2 id="stepObjectsHeading" class="h4 mb-1" tabindex="-1">{{ t('objects.heading') }}</h2>
                   <p class="text-secondary mb-0">{{ t('objects.help') }}</p>
+                  <p class="text-secondary small mb-0 mt-1" id="objectsDataNote" hidden></p>
                 </div>
                 <div class="selection-actions align-self-start">
                   <p class="size-estimate mb-0">{{ t('size.estimate-label') }} <strong id="objectSizeEstimate"></strong></p>
@@ -221,11 +222,11 @@
               <div class="row g-4 generate-grid">
                 <div class="col-xl-5 summary-column">
                   <h2 id="stepGenerateHeading" class="h4 generate-heading" tabindex="-1">{{ t('generate.heading') }}</h2>
-                  <div id="summary" class="vstack gap-3 mb-4"></div>
+                  <div id="summary" class="review-summary"></div>
                   <div class="action-bar">
-                    <button class="btn btn-primary fw-bold" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>{{ t('generate.download-bundle') }}</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>{{ t('generate.download-converter') }}</button>
-                    <button class="btn btn-outline-light" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>{{ t('generate.download-batch') }}</button>
+                    <button class="btn btn-primary btn-lg fw-bold" type="button" id="downloadBundle" disabled><i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>{{ t('generate.download-bundle') }}</button>
+                    <button class="btn btn-outline-light btn-sm" type="button" id="downloadScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>{{ t('generate.download-converter') }}</button>
+                    <button class="btn btn-outline-light btn-sm" type="button" id="downloadSlurmScript" disabled><i class="bi bi-download me-1" aria-hidden="true"></i>{{ t('generate.download-batch') }}</button>
                   </div>
                   <div class="alert alert-info mt-4 mb-0" id="runInstructions">
                     <h3 class="h6">{{ t('generate.run-heading') }}</h3>
@@ -249,7 +250,7 @@
 
             <div class="wizard-footer d-flex justify-content-between gap-3 pt-4 border-top border-secondary-subtle">
               <button class="btn btn-outline-light" type="button" id="prevStep" aria-keyshortcuts="F8">{{ t('ui.back') }}</button>
-              <p class="keyboard-help text-secondary small mb-0"><span class="fw-semibold">{{ t('keyboard.label') }}</span> <kbd>F8</kbd> {{ t('ui.back') }} · <kbd>F9</kbd> {{ t('ui.next') }} · <kbd>F2</kbd> <button class="glossary-link" id="glossaryOpen" type="button" aria-haspopup="dialog" aria-controls="glossaryModal" aria-keyshortcuts="F2">{{ t('ui.help') }}</button></p>
+              <p class="keyboard-help text-secondary small mb-0"><span class="fw-semibold">{{ t('keyboard.label') }}</span> <span class="key-hint"><kbd>F8</kbd> {{ t('ui.back') }}</span> <span class="key-hint"><kbd>F9</kbd> {{ t('ui.next') }}</span> <span class="key-hint"><kbd>F2</kbd> <button class="glossary-link" id="glossaryOpen" type="button" aria-haspopup="dialog" aria-controls="glossaryModal" aria-keyshortcuts="F2">{{ t('ui.help') }}</button></span></p>
               <button class="btn btn-primary" type="button" id="nextStep" aria-keyshortcuts="F9">{{ t('ui.next') }}</button>
             </div>
           </form>

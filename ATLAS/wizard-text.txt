@@ -444,6 +444,15 @@ Input
 @@ summary.objects
 Objects
 
+@@ summary.objects-total-one
+1 object, {{SIZE}}
+
+@@ summary.objects-total-many
+{{COUNT}} objects, {{SIZE}}
+
+@@ summary.objects-show
+Show the list
+
 @@ summary.batch-off
 No batch file will be generated.
 
@@ -498,26 +507,23 @@ Run `./run-pcdf.sh`. The script can find local files, use NERSC_LOCALGROUPDISK r
 @@ run.slurm-stop
 You can stop monitoring without cancelling the job. Scheduler output and error messages are written under `logs/`.
 
-@@ objects.badge-always
+@@ objects.note-always
 Always included
 
-@@ objects.badge-requires-one
+@@ objects.note-requires-one
 Requires {{OBJECT}}
 
-@@ objects.badge-requires-many
+@@ objects.note-requires-many
 Requires {{COUNT}} other objects
 
-@@ objects.badge-used-by-one
-Used by 1 selected object
+@@ objects.note-needed-by
+Needed by {{OBJECTS}}
 
-@@ objects.badge-used-by-many
-Used by {{COUNT}} selected objects
-
-@@ objects.badge-unavailable
+@@ objects.note-unavailable
 Not available for PHYSLITE
 
-@@ objects.badge-labels-omitted
-Simulation-only labels omitted
+@@ objects.note-labels-omitted
+For collision data, simulation-only labels are left out of the tables that have them.
 
 @@ objects.variable-count-one
 {{COUNT}} variable
@@ -531,17 +537,23 @@ Estimated Parquet size for this table
 @@ variables.select-object-first
 Select at least one output object before choosing variables.
 
-@@ variables.badge-required
+@@ variables.note-required
 Required vector component
 
-@@ variables.badge-data-unavailable
+@@ variables.note-data-unavailable
 Not written for collision data
 
 @@ objects.output-label
 Output objects
 
 @@ variables.panel-heading
-{{OBJECT}} variables
+Variables of {{OBJECT}}
+
+@@ variables.column-include
+Include
+
+@@ variables.column-source
+Branch in the file
 
 @@ size.bytes-per-event
 {{VALUE}} B/event
@@ -567,10 +579,10 @@ Showing {{OBJECT}} variables.
 @@ announce.input-set
 Input set to {{FORMAT}}, {{SAMPLE}}.
 
-@@ announce.sample-simulation
+@@ sample.name-simulation
 simulation
 
-@@ announce.sample-data
+@@ sample.name-data
 collision data
 
 @@ announce.recommended-selected

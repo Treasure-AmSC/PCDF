@@ -376,16 +376,21 @@
       return bytesPerEvent(bytes.toPrecision(2));
     }
 
-    function sizeEstimateClass(bytes) {
-      if (bytes >= 1000) return "size-cost-high";
-      if (bytes >= 100) return "size-cost-medium";
-      return "size-cost-low";
+    function costClass(bytes) {
+      return bytes >= 1000 ? "cost-high" : "cost-normal";
     }
 
-    function updateSizeBadge(output, bytes) {
-      output.textContent = formatBytesPerEvent(bytes);
-      output.classList.remove("size-cost-low", "size-cost-medium", "size-cost-high");
-      output.classList.add(sizeEstimateClass(bytes));
+    // A bar on a log scale, from 1 B to 10 kB per event, next to the number.
+    // The number carries the meaning, so the bar is hidden from screen readers.
+    function costMarkup(bytes) {
+      const fraction = bytes > 0 ? Math.min(1, Math.max(0.04, Math.log10(bytes) / 4)) : 0;
+      return `<span class="cost-bar" aria-hidden="true"><span style="width: ${Math.round(fraction * 100)}%"></span></span>` +
+        `<span class="cost-value">${escapeHtml(formatBytesPerEvent(bytes))}</span>`;
+    }
+
+    function updateCost(output, bytes) {
+      output.className = `cost ${costClass(bytes)}`;
+      output.innerHTML = costMarkup(bytes);
     }
 
     function updateSizeEstimates() {
@@ -396,11 +401,11 @@
       });
       Object.keys(OBJECTS).forEach((key) => {
         const output = document.getElementById(`obj-size-${key}`);
-        if (output) updateSizeBadge(output, estimatedObjectBytesPerEvent(key));
+        if (output) updateCost(output, estimatedObjectBytesPerEvent(key));
       });
       const activeOutput = document.getElementById("activeObjectSizeEstimate");
       if (activeOutput && state.activeVariableObject) {
-        updateSizeBadge(activeOutput, estimatedObjectBytesPerEvent(state.activeVariableObject));
+        updateCost(activeOutput, estimatedObjectBytesPerEvent(state.activeVariableObject));
       }
     }
 
@@ -441,37 +446,40 @@
       return requiredVariablesFor(key).has(name);
     }
 
-    function dependencyBadges(key) {
+    function objectNote(kind, key, values) {
+      const icon = kind === "warning" ? '<i class="bi bi-exclamation-triangle" aria-hidden="true"></i> ' : "";
+      return `<li class="object-note object-note-${kind}">${icon}${wizardHtml(key, values)}</li>`;
+    }
+
+    function dependencyNotes(key) {
       const dependents = key === "Event"
         ? []
         : dependentObjectsFor(key).filter((dependent) => state.selectedObjects.has(dependent));
       const dependencies = dependenciesFor(key).filter((dependency) => dependency !== "Event");
-      const badges = key === "Event"
-        ? [`<span class="badge text-bg-info">${wizardHtml("objects.badge-always")}</span>`]
-        : [];
-      if (dependencies.length) {
-        const requires = dependencies.length === 1
-          ? wizardHtml("objects.badge-requires-one", { OBJECT: OBJECTS[dependencies[0]].title })
-          : wizardHtml("objects.badge-requires-many", { COUNT: dependencies.length });
-        badges.push(`<span class="badge text-bg-info">${requires}</span>`);
+      const notes = key === "Event" ? [objectNote("info", "objects.note-always")] : [];
+      if (dependencies.length === 1) {
+        notes.push(objectNote("info", "objects.note-requires-one", { OBJECT: OBJECTS[dependencies[0]].title }));
+      } else if (dependencies.length) {
+        notes.push(objectNote("info", "objects.note-requires-many", { COUNT: dependencies.length }));
       }
       if (dependents.length) {
-        badges.push(`<span class="badge text-bg-warning">${wizardHtml(pluralKey("objects.badge-used-by", dependents.length), { COUNT: dependents.length })}</span>`);
+        notes.push(objectNote("info", "objects.note-needed-by", {
+          OBJECTS: dependents.map((dependent) => OBJECTS[dependent].title).join(", "),
+        }));
       }
-      return badges.join("");
+      return notes;
     }
 
     function renderObjects() {
       objectList.innerHTML = Object.entries(OBJECTS).map(([key, object]) => {
         const unavailable = !isObjectAvailable(key);
         const checked = state.selectedObjects.has(key) && !unavailable;
-        const statusBadges = [
-          dependencyBadges(key),
-          unavailable ? `<span class="badge text-bg-warning">${wizardHtml("objects.badge-unavailable")}</span>` : "",
-          state.sampleType === "DATA" && (object.mcOnlyVariables || []).length ? `<span class="badge text-bg-info">${wizardHtml("objects.badge-labels-omitted")}</span>` : "",
+        const notes = [
+          ...dependencyNotes(key),
+          unavailable ? objectNote("warning", "objects.note-unavailable") : "",
         ].filter(Boolean).join("");
         const descriptionIds = [`obj-desc-${key}`, `obj-meta-${key}`];
-        if (statusBadges) descriptionIds.push(`obj-status-${key}`);
+        if (notes) descriptionIds.push(`obj-status-${key}`);
         return `
           <div class="col-md-6 col-xl-4">
             <label class="card object-card h-100 border-secondary-subtle ${unavailable ? "opacity-50" : ""}" for="obj-${key}">
@@ -484,16 +492,19 @@
                 </div>
                 <p class="small text-secondary mb-2" id="obj-desc-${key}">${object.description}</p>
                 <div class="object-card-footer">
-                  ${statusBadges ? `<div class="object-status" id="obj-status-${key}">${statusBadges}</div>` : ""}
+                  ${notes ? `<ul class="object-notes" id="obj-status-${key}">${notes}</ul>` : ""}
                   <div class="object-meta" id="obj-meta-${key}">
-                    <span class="badge text-bg-secondary object-variable-count">${wizardHtml(pluralKey("objects.variable-count", availableVariableEntries(key).length), { COUNT: availableVariableEntries(key).length })}</span>
-                    ${unavailable ? "" : `<span class="badge object-size-badge ${sizeEstimateClass(estimatedObjectBytesPerEvent(key))}" id="obj-size-${key}" title="${wizardHtml("objects.size-title")}">${formatBytesPerEvent(estimatedObjectBytesPerEvent(key))}</span>`}
+                    <span class="object-variable-count">${wizardHtml(pluralKey("objects.variable-count", availableVariableEntries(key).length), { COUNT: availableVariableEntries(key).length })}</span>
+                    ${unavailable ? "" : `<span class="cost ${costClass(estimatedObjectBytesPerEvent(key))}" id="obj-size-${key}" title="${wizardHtml("objects.size-title")}">${costMarkup(estimatedObjectBytesPerEvent(key))}</span>`}
                   </div>
                 </div>
               </div>
             </label>
           </div>`;
       }).join("");
+      const dataNote = document.getElementById("objectsDataNote");
+      dataNote.hidden = state.sampleType !== "DATA";
+      dataNote.textContent = wizardText("objects.note-labels-omitted");
       updateSizeEstimates();
 
       objectList.querySelectorAll(".object-toggle").forEach((input) => {
@@ -547,16 +558,21 @@
           const detailIds = [`var-branch-${activeKey}-${name}`];
           if (required && available) detailIds.push(`var-required-${activeKey}-${name}`);
           if (!available) detailIds.push(`var-unavailable-${activeKey}-${name}`);
+          const notes = [
+            required && available ? `<span class="variable-note" id="var-required-${activeKey}-${name}">${wizardHtml("variables.note-required")}</span>` : "",
+            !available ? `<span class="variable-note" id="var-unavailable-${activeKey}-${name}">${wizardHtml("variables.note-data-unavailable")}</span>` : "",
+          ].join("");
           return `
-            <div class="form-check mb-2 ${available ? "" : "opacity-50"}">
-              <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${activeKey}" id="var-${activeKey}-${name}" aria-labelledby="var-label-${activeKey}-${name}" aria-describedby="${detailIds.join(" ")}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
-              <label class="form-check-label" for="var-${activeKey}-${name}">
-                <code class="variable-name" id="var-label-${activeKey}-${name}">${name}</code>
-                ${required && available ? `<span class="badge text-bg-warning ms-1" id="var-required-${activeKey}-${name}">${wizardHtml("variables.badge-required")}</span>` : ""}
-                ${!available ? `<span class="badge text-bg-info ms-1" id="var-unavailable-${activeKey}-${name}">${wizardHtml("variables.badge-data-unavailable")}</span>` : ""}
-                <span class="d-block small text-secondary" id="var-branch-${activeKey}-${name}">${branchText}</span>
-              </label>
-            </div>`;
+            <tr class="${available ? "" : "opacity-50"}">
+              <td class="variable-check">
+                <input class="form-check-input variable-toggle" type="checkbox" value="${name}" data-object="${activeKey}" id="var-${activeKey}-${name}" aria-labelledby="var-label-${activeKey}-${name}" aria-describedby="${detailIds.join(" ")}" ${checked ? "checked" : ""} ${required || !available ? "disabled" : ""}>
+              </td>
+              <th scope="row" class="variable-name-cell">
+                <label for="var-${activeKey}-${name}"><code class="variable-name" id="var-label-${activeKey}-${name}">${name}</code></label>
+                ${notes}
+              </th>
+              <td class="variable-branch" id="var-branch-${activeKey}-${name}">${branchText}</td>
+            </tr>`;
       }).join("");
       const options = selected.map((key) =>
         `<option value="${key}" ${key === activeKey ? "selected" : ""}>${OBJECTS[key].title}</option>`
@@ -574,8 +590,15 @@
             <div class="variable-tab-list" role="tablist" aria-label="${wizardHtml("objects.output-label")}" aria-orientation="vertical">${tabs}</div>
           </div>
           <section class="variable-panel" id="variable-panel" role="tabpanel" tabindex="0" aria-labelledby="variable-tab-${activeKey}">
-            <h3 class="h5">${wizardHtml("variables.panel-heading", { OBJECT: activeObject.title })} <span class="badge ${sizeEstimateClass(estimatedObjectBytesPerEvent(activeKey))}" id="activeObjectSizeEstimate">${formatBytesPerEvent(estimatedObjectBytesPerEvent(activeKey))}</span></h3>
-            <div class="variable-grid">${variables}</div>
+            <h3 class="h5">${wizardHtml("variables.panel-heading", { OBJECT: activeObject.title })} <span class="cost ${costClass(estimatedObjectBytesPerEvent(activeKey))}" id="activeObjectSizeEstimate">${costMarkup(estimatedObjectBytesPerEvent(activeKey))}</span></h3>
+            <table class="variable-table">
+              <thead><tr>
+                <th scope="col" class="variable-check"><span class="visually-hidden">${wizardHtml("variables.column-include")}</span></th>
+                <th scope="col">${wizardHtml("term.variable")}</th>
+                <th scope="col">${wizardHtml("variables.column-source")}</th>
+              </tr></thead>
+              <tbody>${variables}</tbody>
+            </table>
           </section>
         </div>`;
 
@@ -887,24 +910,25 @@
       const manifestSummary = state.slurm.enabled
         ? wizardHtml("summary.manifest-on", { PATH: state.slurm.inputManifest })
         : wizardHtml("summary.manifest-off");
+      const objectCount = Object.keys(config.objects).length;
+      const objectsTotal = wizardHtml(pluralKey("summary.objects-total", objectCount), {
+        COUNT: objectCount,
+        SIZE: formatBytesPerEvent(estimatedTotalBytesPerEvent()),
+      });
+      const sampleName = wizardHtml(config.sampleType === "MC" ? "sample.name-simulation" : "sample.name-data");
       summary.innerHTML = `
-        <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">${wizardHtml("summary.input")}</h3>
-          <p class="mb-1 fw-semibold">${escapeHtml(config.inputFormat)} · ${escapeHtml(config.sampleType)}</p>
-          <p class="mb-0 small">${wizardHtml("size.estimate-label")} ${escapeHtml(formatBytesPerEvent(estimatedTotalBytesPerEvent()))}</p>
-        </div></div>
-        <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">${wizardHtml("summary.objects")}</h3>
-          <ul class="mb-0">${objectSummary}</ul>
-        </div></div>
-        <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">${wizardHtml("batch.heading")}</h3>
-          <p class="mb-0">${escapeHtml(slurmSummary)}</p>
-        </div></div>
-        <div class="card border-secondary-subtle"><div class="card-body">
-          <h3 class="h6 text-uppercase text-secondary">${wizardHtml("term.input-manifest")}</h3>
-          <p class="mb-0">${manifestSummary}</p>
-        </div></div>`;
+        <dl class="review-list">
+          <dt>${wizardHtml("summary.input")}</dt>
+          <dd>${escapeHtml(config.inputFormat)}, ${sampleName}</dd>
+          <dt>${wizardHtml("summary.objects")}</dt>
+          <dd>${objectsTotal}
+            <details class="review-objects"><summary>${wizardHtml("summary.objects-show")}</summary><ul>${objectSummary}</ul></details>
+          </dd>
+          <dt>${wizardHtml("batch.heading")}</dt>
+          <dd>${escapeHtml(slurmSummary)}</dd>
+          <dt>${wizardHtml("term.input-manifest")}</dt>
+          <dd>${manifestSummary}</dd>
+        </dl>`;
     }
 
     document.querySelectorAll("input[name='inputFormat'], input[name='sampleType']").forEach((input) => {
@@ -929,7 +953,7 @@
         updateGeneratedScript();
         announce(wizardText("announce.input-set", {
           FORMAT: state.inputFormat,
-          SAMPLE: wizardText(state.sampleType === "MC" ? "announce.sample-simulation" : "announce.sample-data"),
+          SAMPLE: wizardText(state.sampleType === "MC" ? "sample.name-simulation" : "sample.name-data"),
         }));
       });
     });
