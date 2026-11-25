@@ -115,6 +115,17 @@ class WizardPageTest(unittest.TestCase):
                 text = render_bundle_template(name)
                 self.assertNotRegex(text, r"{{@|{{MESSAGES:")
 
+    def test_keyboard_hint_matches_the_shortcuts_the_script_handles(self) -> None:
+        html = render_wizard_html()
+        hint = re.search(r'<p class="keyboard-help.*?</p>', html, re.S).group(0)
+        self.assertEqual(re.findall(r"<kbd[^>]*>([^<]+)</kbd>", hint), ["F8", "F9", "F1"])
+        self.assertEqual(re.findall(r'data-mac="([^"]+)"', hint), ["Shift+Enter", "Enter", "\u2318/"])
+        self.assertEqual(set(re.findall(r'aria-keyshortcuts="([^"]+)"', html)), {"F8", "F9", "F1"})
+        script = (self.ATLAS_DIR / "ntuple-wizard.js").read_text()
+        for marker in ('event.key === "F1"', 'event.key === "F8"', 'event.key === "F9"',
+                       'event.key === "Enter"', 'event.key === "/"', "event.metaKey"):
+            self.assertIn(marker, script)
+
     def test_catalog_rejects_duplicate_and_malformed_keys(self) -> None:
         with self.assertRaises(ValueError):
             parse_catalog("@@ a\none\n@@ a\ntwo\n")

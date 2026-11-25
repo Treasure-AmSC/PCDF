@@ -151,6 +151,7 @@
       const glossaryTitle = document.getElementById("glossaryTitle");
       const previous = document.getElementById("prevStep");
       const next = document.getElementById("nextStep");
+      const isMac = /Mac/.test(navigator.userAgent);
 
       const openGlossary = () => {
         if (glossary.open) return;
@@ -187,8 +188,25 @@
           controls[next].focus();
           return;
         }
-        if (event.altKey || event.shiftKey || event.ctrlKey || event.metaKey || event.repeat) return;
-        if (event.key === "F2") {
+        if (event.repeat || event.altKey) return;
+        if (isMac) {
+          // Function keys are media keys on Mac laptops, so use Command+/ for the
+          // help and Enter for the steps. Enter continues and Shift+Enter goes
+          // back, unless the focused element uses Enter itself.
+          if (event.metaKey && !event.ctrlKey && event.key === "/") {
+            event.preventDefault();
+            if (glossary.open) closeGlossary();
+            else openGlossary();
+          } else if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !glossary.open &&
+                     !event.target.closest("button, a, summary, textarea, [role='tab']")) {
+            event.preventDefault();
+            const button = event.shiftKey ? previous : next;
+            if (!button.disabled && !button.hidden) button.click();
+          }
+          return;
+        }
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        if (event.key === "F1") {
           event.preventDefault();
           if (glossary.open) closeGlossary();
           else openGlossary();
@@ -200,6 +218,15 @@
           if (!next.disabled && !next.hidden) next.click();
         }
       });
+
+      if (isMac) {
+        document.querySelectorAll("kbd[data-mac]").forEach((key) => {
+          key.textContent = key.dataset.mac;
+        });
+        previous.removeAttribute("aria-keyshortcuts");
+        next.removeAttribute("aria-keyshortcuts");
+        glossaryOpen.setAttribute("aria-keyshortcuts", "Meta+/");
+      }
     }
 
 
